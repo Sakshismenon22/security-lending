@@ -1,0 +1,600 @@
+package com.example.lender_service;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+import com.example.lender_service.dto.*;
+import com.example.lender_service.model.*;
+import com.example.lender_service.repository.*;
+import com.example.lender_service.service.*;
+import java.math.BigDecimal;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@Transactional
+class LenderWorkflowTests {
+  @Autowired DirectoryService directory;
+  @Autowired InventoryService inventory;
+  @Autowired MarketService market;
+  @Autowired BorrowerCommandService commands;
+  @Autowired AgreementService agreementService;
+  @Autowired ReservationService reservationService;
+  @Autowired LoanService loanService;
+  @Autowired CollateralService collateral;
+  @Autowired LifecycleRequestService lifecycleRequests;
+  @Autowired LifecycleEventService lifecycle;
+  @Autowired ReadService read;
+  @Autowired OutboxService outbox;
+  @Autowired JsonService json;
+  @Autowired OrganizationRepository organizations;
+  @Autowired UserRepository users;
+  @Autowired MslaRepository agreements;
+  @Autowired LocateRequestRepository locates;
+  @Autowired ReservationRepository reservations;
+  @Autowired LoanRepository loans;
+  @Autowired LoanReturnRepository returns;
+  @Autowired CollateralPositionRepository positions;
+  @Autowired InventoryPositionRepository stock;
+  @Autowired OutboxEventRepository events;
+  @Autowired InboxEventRepository inbox;
+  @Autowired RebateRepository rebates;
+  @Autowired LenderAccountRepository accounts;
+  @Autowired MarginCallRepository calls;
+  @Autowired LoanDefaultRepository defaults;
+  @Autowired MockMvc mvc;
+  static final AtomicLong ids = new AtomicLong(10000);
+
+  static BigDecimal bd(String s) {
+    return new BigDecimal(s);
+  }
+
+  Organization organization() {
+    long id = ids.incrementAndGet();
+    return directory.create(new OrganizationRequest("Demo fund " + id, "LENDER_" + id, id));
+  }
+
+  BorrowerConnection connection(Organization o) {
+    return directory.connect(
+        o.getId(), new BorrowerConnectionRequest("BORROWER_DEMO", 1, "Borrower firm"));
+  }
+
+  long security(String price) {
+    long id = ids.incrementAndGet();
+    market.register(new SecurityRequest(id, "EQ" + id, "NSE", "Demo equity", "INE" + id, "INR"));
+    market.quote(id, bd(price), Instant.now().minusSeconds(120));
+    return id;
+  }
+
+  String body(Organization o, String type, long reference, long msla, Object data) {
+    return json.write(
+        new BorrowerCommand(
+            UUID.randomUUID().toString(),
+            type,
+            1,
+            reference,
+            Instant.now(),
+            "COUNTERPARTY",
+            msla,
+            o.getExternalId(),
+            json.tree(json.write(data))));
+  }
+
+  void command(Organization o, String type, long reference, long msla, Object data) {
+    commands.receive(body(o, type, reference, msla, data), "BORROWER_DEMO");
+  }
+
+  Msla agreement(Organization o, BorrowerConnection c, long pledgeSecurity, boolean recallAllowed) {
+    var rules = new ArrayList<RuleRequest>();
+    rules.add(new RuleRequest("CASH", null, BigDecimal.ZERO));
+    if (pledgeSecurity > 0) rules.add(new RuleRequest("SECURITY", pledgeSecurity, bd("0.10")));
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+    var proposal =
+        new AgreementProposal(
+            o.getPublicReferenceId(),
+            "MSLA-" + UUID.randomUUID(),
+            today.minusDays(1),
+            today.plusYears(1),
+            bd("1000000"),
+            bd("0.03"),
+            bd("0.01"),
+            bd("1.05"),
+            "MONTHLY",
+            365,
+            recallAllowed,
+            24,
+            48,
+            rules);
+    command(o, "AGREEMENT_PROPOSED", 10, 10, proposal);
+    var a = agreements.findByConnectionIdAndBorrowerMslaId(c.getId(), 10L).orElseThrow();
+    agreementService.decide(o.getId(), a.getId(), true, "Approved");
+    return a;
+  }
+
+  Reservation reservation(Organization o, BorrowerConnection c, long security, long quantity) {
+    command(
+        o,
+        "LOCATE_REQUESTED",
+        100,
+        10,
+        new LocateCommand(10, security, quantity, Instant.now().plusSeconds(3600)));
+    var locate = locates.findByConnectionIdAndBorrowerLocateId(c.getId(), 100L).orElseThrow();
+    reservationService.decideLocate(o.getId(), locate.getId(), quantity, true, "Available");
+    command(o, "RESERVATION_REQUESTED", 200, 10, new ReservationCommand(100, quantity));
+    var r = reservations.findByConnectionIdAndBorrowerReservationId(c.getId(), 200L).orElseThrow();
+    reservationService.decide(o.getId(), r.getId(), quantity, true, "Reserved");
+    return r;
+  }
+
+  Loan pendingLoan(Organization o, BorrowerConnection c, long quantity) {
+    var allocation = new AllocationRequest("CASH", null, 0, bd("11000"), null);
+    command(o, "COLLATERAL_PLEDGE_REQUESTED", 300, 10, new PledgeCommand(400, allocation));
+    command(o, "LOAN_REQUESTED", 300, 10, new LoanCommand(200, quantity, List.of(allocation)));
+    return loans.findByConnectionIdAndBorrowerLoanId(c.getId(), 300L).orElseThrow();
+  }
+
+  Loan activeLoan(Organization o, BorrowerConnection c, long security, boolean recallAllowed) {
+    inventory.create(o.getId(), new InventoryRequest(security, 1000, "Initial custody"));
+    agreement(o, c, 0, recallAllowed);
+    reservation(o, c, security, 100);
+    var l = pendingLoan(o, c, 100);
+    var p = positions.findByConnectionIdAndBorrowerPositionId(c.getId(), 400L).orElseThrow();
+    collateral.confirm(o.getId(), p.getId(), "COLLATERAL-RECEIPT");
+    loanService.decide(o.getId(), l.getId(), true, "Approved");
+    loanService.settle(o.getId(), l.getId(), "LOAN-SETTLEMENT");
+    return l;
+  }
+
+  void lifecycle(
+      Organization o, String type, long reference, long version, Map<String, Object> data) {
+    lifecycle.receive(
+        json.write(
+            new LifecycleEvent(
+                UUID.randomUUID().toString(),
+                type,
+                o.getId(),
+                reference,
+                version,
+                Instant.now(),
+                json.tree(json.write(data)))));
+  }
+
+  @Test
+  void organizationSupportsMultipleUsersAndProtectsLastAdministrator() {
+    var o = organization();
+    var admin =
+        directory.member(o.getId(), new MemberRequest("Admin", "admin@example.com", "ADMIN"));
+    directory.member(o.getId(), new MemberRequest("Desk", "desk@example.com", "LENDING_DESK"));
+    assertEquals(2, users.countByOrganizationId(o.getId()));
+    assertThrows(
+        ResponseStatusException.class,
+        () ->
+            directory.updateMember(
+                o.getId(), admin.getId(), new MemberUpdateRequest("READ_ONLY", false)));
+  }
+
+  @Test
+  void incomingProposalsAreDeduplicatedAndRequireTheRegisteredSender() {
+    var o = organization();
+    var c = connection(o);
+    var today = LocalDate.now();
+    var p =
+        new AgreementProposal(
+            o.getPublicReferenceId(),
+            "MSLA",
+            today,
+            today.plusYears(1),
+            bd("1000"),
+            bd("0.03"),
+            bd("0.01"),
+            bd("1.05"),
+            "MONTHLY",
+            365,
+            true,
+            24,
+            48,
+            List.of(new RuleRequest("CASH", null, BigDecimal.ZERO)));
+    String payload = body(o, "AGREEMENT_PROPOSED", 10, 10, p);
+    commands.receive(payload, "BORROWER_DEMO");
+    commands.receive(payload, "BORROWER_DEMO");
+    assertEquals(
+        1,
+        agreements
+            .findByOrganizationId(o.getId(), org.springframework.data.domain.Pageable.unpaged())
+            .getTotalElements());
+    assertThrows(ResponseStatusException.class, () -> commands.receive(payload, "OTHER_BORROWER"));
+    assertEquals(1, inbox.count());
+  }
+
+  @Test
+  void locateApprovalDoesNotReserveButReservationApprovalDoes() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    inventory.create(o.getId(), new InventoryRequest(s, 1000, "Custody"));
+    agreement(o, c, 0, true);
+    command(
+        o,
+        "LOCATE_REQUESTED",
+        100,
+        10,
+        new LocateCommand(10, s, 100, Instant.now().plusSeconds(3600)));
+    var locate = locates.findByConnectionIdAndBorrowerLocateId(c.getId(), 100L).orElseThrow();
+    reservationService.decideLocate(o.getId(), locate.getId(), 100, true, "Available");
+    assertEquals(0, inventory.position(o.getId(), s).getReservedQuantity());
+    command(o, "RESERVATION_REQUESTED", 200, 10, new ReservationCommand(100, 100));
+    var r = reservations.findByConnectionIdAndBorrowerReservationId(c.getId(), 200L).orElseThrow();
+    assertEquals(0, inventory.position(o.getId(), s).getReservedQuantity());
+    reservationService.decide(o.getId(), r.getId(), 80, true, "Partial allocation");
+    assertEquals(80, inventory.position(o.getId(), s).getReservedQuantity());
+    assertEquals(80, r.getRemainingQuantity());
+  }
+
+  @Test
+  void stockCannotBeReducedBelowExistingReservations() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    var p = inventory.create(o.getId(), new InventoryRequest(s, 100, "Custody"));
+    agreement(o, c, 0, true);
+    reservation(o, c, s, 80);
+    assertThrows(
+        ResponseStatusException.class,
+        () ->
+            inventory.adjust(
+                o.getId(), p.getId(), new InventoryAdjustmentRequest(-30, "Withdraw")));
+    assertEquals(100, p.getTotalQuantity());
+  }
+
+  @Test
+  void collateralCanArriveBeforeLoanWithoutBecomingConfirmed() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    inventory.create(o.getId(), new InventoryRequest(s, 1000, "Custody"));
+    agreement(o, c, 0, true);
+    reservation(o, c, s, 100);
+    var allocation = new AllocationRequest("CASH", null, 0, bd("11000"), null);
+    command(o, "COLLATERAL_PLEDGE_REQUESTED", 300, 10, new PledgeCommand(400, allocation));
+    var p = positions.findByConnectionIdAndBorrowerPositionId(c.getId(), 400L).orElseThrow();
+    assertNull(p.getLoanId());
+    assertEquals("PLEDGE_PENDING", p.getStatus());
+    command(o, "LOAN_REQUESTED", 300, 10, new LoanCommand(200, 100, List.of(allocation)));
+    assertNotNull(p.getLoanId());
+    assertEquals(
+        0, accounts.findByOrganizationId(o.getId()).orElseThrow().getCashCollateralHeld().signum());
+  }
+
+  @Test
+  void approvalAndSettlementAreSeparateAndSettlementIsIdempotent() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    inventory.create(o.getId(), new InventoryRequest(s, 1000, "Custody"));
+    agreement(o, c, 0, true);
+    reservation(o, c, s, 100);
+    var loan = pendingLoan(o, c, 100);
+    var position = positions.findByLoanId(loan.getId()).get(0);
+    loanService.decide(o.getId(), loan.getId(), true, "Approved");
+    assertEquals(0, inventory.position(o.getId(), s).getLoanedQuantity());
+    assertThrows(
+        ResponseStatusException.class,
+        () -> loanService.settle(o.getId(), loan.getId(), "BEFORE-COLLATERAL"));
+    collateral.confirm(o.getId(), position.getId(), "CASH");
+    loanService.settle(o.getId(), loan.getId(), "SETTLED");
+    loanService.settle(o.getId(), loan.getId(), "SETTLED");
+    assertEquals(100, inventory.position(o.getId(), s).getLoanedQuantity());
+    assertEquals(0, inventory.position(o.getId(), s).getReservedQuantity());
+    assertEquals("ACTIVE", loan.getStatus());
+  }
+
+  @Test
+  void rejectionRestoresReservationAndRejectsUnsettledCollateral() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    inventory.create(o.getId(), new InventoryRequest(s, 1000, "Custody"));
+    agreement(o, c, 0, true);
+    var reservation = reservation(o, c, s, 100);
+    var loan = pendingLoan(o, c, 100);
+    loanService.decide(o.getId(), loan.getId(), false, "Rejected");
+    assertEquals(100, reservation.getRemainingQuantity());
+    assertEquals(100, inventory.position(o.getId(), s).getReservedQuantity());
+    assertEquals("REJECTED", positions.findByLoanId(loan.getId()).get(0).getStatus());
+  }
+
+  @Test
+  void partialAndFullReturnsUpdateInventoryOnlyAfterSettlement() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    var loan = activeLoan(o, c, s, true);
+    command(o, "RETURN_REQUESTED", 500, 10, new ReturnCommand(300, 40, 0));
+    var r = returns.findByConnectionIdAndBorrowerReturnId(c.getId(), 500L).orElseThrow();
+    assertEquals(100, inventory.position(o.getId(), s).getLoanedQuantity());
+    loanService.returnDecision(o.getId(), r.getId(), true, "RETURN40");
+    assertEquals(60, loan.getOutstandingQuantity());
+    command(o, "RETURN_REQUESTED", 501, 10, new ReturnCommand(300, 60, 0));
+    loanService.returnDecision(
+        o.getId(),
+        returns.findByConnectionIdAndBorrowerReturnId(c.getId(), 501L).orElseThrow().getId(),
+        true,
+        "RETURN60");
+    assertEquals("CLOSED", loan.getStatus());
+    assertEquals(0, inventory.position(o.getId(), s).getLoanedQuantity());
+    assertEquals(1000, inventory.position(o.getId(), s).getAvailableQuantity());
+  }
+
+  @Test
+  void collateralReleaseWaitsForRequestAndCannotUndercollateralizeAnActiveLoan() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    var loan = activeLoan(o, c, s, true);
+    var p = positions.findByLoanId(loan.getId()).get(0);
+    command(o, "COLLATERAL_RELEASE_REQUESTED", 400, 10, Map.of("loanId", 300));
+    assertEquals("RELEASE_REQUESTED", p.getStatus());
+    assertThrows(
+        ResponseStatusException.class,
+        () -> collateral.release(o.getId(), p.getId(), "TOO-EARLY", true));
+    collateral.release(o.getId(), p.getId(), "Not enough cover", false);
+    assertEquals("POSTED", p.getStatus());
+  }
+
+  @Test
+  void onlyLifecycleExpiryInstructionsUnlockExpiredReservations() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    inventory.create(o.getId(), new InventoryRequest(s, 1000, "Custody"));
+    agreement(o, c, 0, true);
+    var r = reservation(o, c, s, 100);
+    r.setExpiresAt(
+        Instant.now().minusSeconds(10).truncatedTo(java.time.temporal.ChronoUnit.MILLIS));
+    assertEquals(100, inventory.position(o.getId(), s).getReservedQuantity());
+    lifecycle(
+        o, "RESERVATION_EXPIRED", r.getId(), 1, Map.of("expectedExpiresAt", r.getExpiresAt()));
+    assertEquals(0, inventory.position(o.getId(), s).getReservedQuantity());
+    assertEquals("EXPIRED", r.getStatus());
+  }
+
+  @Test
+  void lateLoanRequestsReceiveBusinessRejectionInsteadOfAllocatingExpiredStock() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    inventory.create(o.getId(), new InventoryRequest(s, 1000, "Custody"));
+    agreement(o, c, 0, true);
+    var r = reservation(o, c, s, 100);
+    reservationService.release(o.getId(), r, false);
+    var loan = pendingLoan(o, c, 100);
+    assertEquals("REJECTED", loan.getStatus());
+    assertEquals(0, inventory.position(o.getId(), s).getReservedQuantity());
+  }
+
+  @Test
+  void recallsAreDelegatedAndRequireAgreementPermission() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    var loan = activeLoan(o, c, s, false);
+    assertThrows(
+        ResponseStatusException.class,
+        () ->
+            lifecycleRequests.recall(
+                o.getId(), loan.getId(), new RecallRequest(10, "Need shares", "recall-one")));
+    assertEquals(0, readCount(o, "recalls"));
+  }
+
+  long readCount(Organization o, String resource) {
+    var page =
+        (com.example.lender_service.response.PageResponse<?>) read.list(o.getId(), resource, 0, 50);
+    return page.totalElements();
+  }
+
+  @Test
+  void permittedRecallRequestDoesNotCreateRecallOrDeadlineLocally() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    var loan = activeLoan(o, c, s, true);
+    var r =
+        lifecycleRequests.recall(
+            o.getId(), loan.getId(), new RecallRequest(30, "Need shares", "recall-one"));
+    assertEquals("PENDING", r.getStatus());
+    assertEquals(0, readCount(o, "recalls"));
+    assertEquals(
+        r.getId(),
+        lifecycleRequests
+            .recall(o.getId(), loan.getId(), new RecallRequest(30, "Need shares", "recall-one"))
+            .getId());
+  }
+
+  @Test
+  void externallyReportedRebatesAreNotRecalculatedAndPaymentIsDeduplicated() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    var loan = activeLoan(o, c, s, true);
+    long id = ids.incrementAndGet();
+    lifecycle(
+        o,
+        "REBATE_ACCRUED",
+        id,
+        1,
+        Map.of(
+            "loanId",
+            loan.getId(),
+            "rate",
+            "0.0123456789",
+            "amount",
+            "12.345678",
+            "date",
+            "2026-11-08",
+            "paymentDate",
+            "2026-12-01"));
+    var rebate = rebates.findByOrganizationIdAndOwnerReferenceId(o.getId(), id).orElseThrow();
+    assertEquals(0, bd("0.0123456789").compareTo(rebate.getRate()));
+    String body =
+        json.write(
+            new LifecycleEvent(
+                UUID.randomUUID().toString(),
+                "REBATE_PAID",
+                o.getId(),
+                id,
+                2,
+                Instant.now(),
+                json.tree(json.write(Map.of("loanId", loan.getId(), "amount", "12.345678")))));
+    lifecycle.receive(body);
+    lifecycle.receive(body);
+    assertEquals(
+        0,
+        bd("12.345678")
+            .compareTo(accounts.findByOrganizationId(o.getId()).orElseThrow().getRebatePaid()));
+  }
+
+  @Test
+  void marginCallSnapshotsDoNotTriggerLocalDefaultsAndStaleVersionsAreIgnored() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    var loan = activeLoan(o, c, s, true);
+    long id = ids.incrementAndGet();
+    var data =
+        new LinkedHashMap<String, Object>(
+            Map.of(
+                "loanId",
+                loan.getId(),
+                "externalId",
+                "MC-1",
+                "amount",
+                "100",
+                "fulfilledAmount",
+                "0",
+                "reason",
+                "Owner valuation",
+                "status",
+                "OPEN",
+                "dueAt",
+                Instant.now().minusSeconds(3600)));
+    lifecycle(o, "MARGIN_CALL_UPDATED", id, 1, data);
+    assertEquals(0, defaults.count());
+    data.put("status", "OVERDUE");
+    lifecycle(o, "MARGIN_CALL_UPDATED", id, 2, data);
+    data.put("status", "OPEN");
+    lifecycle(o, "MARGIN_CALL_UPDATED", id, 1, data);
+    assertEquals(
+        "OVERDUE",
+        calls.findByOrganizationIdAndOwnerReferenceId(o.getId(), id).orElseThrow().getStatus());
+  }
+
+  @Test
+  void confirmationsUseBorrowerIdsAndRemoteOrganizationWithMonotonicResourceVersions() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    inventory.create(o.getId(), new InventoryRequest(s, 1000, "Custody"));
+    agreement(o, c, 0, true);
+    var r = reservation(o, c, s, 100);
+    reservationService.release(o.getId(), r, false);
+    var confirmations =
+        events
+            .findByOrganizationId(o.getId(), org.springframework.data.domain.Pageable.unpaged())
+            .getContent()
+            .stream()
+            .sorted(Comparator.comparing(OutboxEvent::getId))
+            .filter(e -> e.getTopic().equals("lender.confirmations.v1"))
+            .map(e -> json.tree(e.getPayload()))
+            .filter(e -> e.get("type").asText().startsWith("RESERVATION_"))
+            .toList();
+    assertEquals(2, confirmations.size());
+    assertEquals(200, confirmations.get(0).get("referenceId").asLong());
+    assertEquals(1, confirmations.get(0).get("organizationId").asLong());
+    assertEquals("BORROWER_DEMO", confirmations.get(0).get("borrowerExternalId").asText());
+    assertEquals(1, confirmations.get(0).get("version").asLong());
+    assertEquals(2, confirmations.get(1).get("version").asLong());
+  }
+
+  @Test
+  void tenantScopeAndHttpValidationPreventInvalidOperations() throws Exception {
+    var o = organization();
+    var second = organization();
+    long s = security("100");
+    var p = inventory.create(o.getId(), new InventoryRequest(s, 100, "Custody"));
+    assertThrows(
+        ResponseStatusException.class,
+        () ->
+            inventory.adjust(
+                second.getId(), p.getId(), new InventoryAdjustmentRequest(1, "Wrong tenant")));
+    mvc.perform(
+            post("/api/v1/organizations/" + o.getId() + "/inventory")
+                .contentType("application/json")
+                .content("{\"securityId\":1,\"quantity\":-1,\"reference\":\"invalid\"}"))
+        .andExpect(status().isBadRequest());
+    mvc.perform(get("/api/v1/organizations/" + o.getId() + "/loans?size=201"))
+        .andExpect(status().isBadRequest());
+    mvc.perform(post("/api/v1/organizations/" + o.getId() + "/margin-calls"))
+        .andExpect(status().isMethodNotAllowed());
+    mvc.perform(post("/api/v1/organizations/" + o.getId() + "/loans/1/accrue"))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void offlineOutboxStillDeliversAllWebsocketInvalidationsWithoutMarkingKafkaPublished() {
+    var o = organization();
+    for (int i = 0; i < 10 && !outbox.pending().isEmpty(); i++)
+      for (var key : outbox.pending()) outbox.publishNext(key);
+    var rows =
+        events
+            .findByOrganizationId(o.getId(), org.springframework.data.domain.Pageable.unpaged())
+            .getContent();
+    assertTrue(rows.stream().allMatch(OutboxEvent::getWsSent));
+    assertTrue(rows.stream().noneMatch(OutboxEvent::getPublished));
+  }
+
+  @Test
+  void ownerRequestRetriesIgnoreObjectOrderButCannotChangeTargetLoan() {
+    var o = organization();
+    var c = connection(o);
+    long security = security("100");
+    inventory.create(o.getId(), new InventoryRequest(security, 1000, "Custody"));
+    agreement(o, c, 0, true);
+    reservation(o, c, security, 200);
+    var first = pendingLoan(o, c, 100);
+    collateral.confirm(
+        o.getId(), positions.findByLoanId(first.getId()).get(0).getId(), "CASH-FIRST");
+    loanService.decide(o.getId(), first.getId(), true, "Approved");
+    loanService.settle(o.getId(), first.getId(), "FIRST");
+    var allocation = new AllocationRequest("CASH", null, 0, bd("11000"), null);
+    command(o, "COLLATERAL_PLEDGE_REQUESTED", 301, 10, new PledgeCommand(401, allocation));
+    command(o, "LOAN_REQUESTED", 301, 10, new LoanCommand(200, 100, List.of(allocation)));
+    var second = loans.findByConnectionIdAndBorrowerLoanId(c.getId(), 301L).orElseThrow();
+    collateral.confirm(
+        o.getId(), positions.findByLoanId(second.getId()).get(0).getId(), "CASH-SECOND");
+    loanService.decide(o.getId(), second.getId(), true, "Approved");
+    loanService.settle(o.getId(), second.getId(), "SECOND");
+    var body = new RecallRequest(10, "Portfolio sale", "stable-client-id");
+    var request = lifecycleRequests.recall(o.getId(), first.getId(), body);
+    var fields = new ArrayList<>(json.map(json.tree(request.getPayload())).entrySet());
+    Collections.reverse(fields);
+    var reordered = new LinkedHashMap<String, Object>();
+    fields.forEach(e -> reordered.put(e.getKey(), e.getValue()));
+    request.setPayload(json.write(reordered));
+    assertEquals(request.getId(), lifecycleRequests.recall(o.getId(), first.getId(), body).getId());
+    assertThrows(
+        ResponseStatusException.class,
+        () -> lifecycleRequests.recall(o.getId(), second.getId(), body));
+  }
+}

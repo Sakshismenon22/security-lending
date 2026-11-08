@@ -1,0 +1,12 @@
+FIX44-SecuritiesLending.xml is derived from the FIX44.xml resource distributed
+with org.quickfixj:quickfixj-messages-fix44:2.3.2. The local additions are the
+bilateral U1/U2/U3 messages and fields 9001, 9002, and 9003.
+
+QuickFIX/J project and license information:
+https://github.com/quickfix-j/quickfixj
+
+FIX specifications and field definitions originate with FIX Trading Community:
+https://www.fixtrading.org/
+
+These custom messages are a demo bilateral agreement, not an official FIX
+Trading Community securities-lending application specification.

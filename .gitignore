@@ -1,0 +1,15 @@
+# Logs from every backend, frontend, FIX adapter and bundled Kafka broker.
+**/logs/
+**/log/
+*.log
+*.log.*
+*.log-*
+*.out
+*.err
+hs_err_pid*
+replay_pid*
+
+# QuickFIX message stores and the portal's Kafka runtime are generated locally.
+**/runtime/
+
+# Application properties are intentionally version controlled.

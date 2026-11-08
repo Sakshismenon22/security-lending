@@ -1,0 +1,19 @@
+{
+  "dependencies": {
+    "@stomp/stompjs": "^7.5.0",
+    "axios": "^1.21.0",
+    "stompjs": "^2.3.3",
+    "ws": "^8.22.1"
+  },
+  "name": "test-scripts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "addSecurities.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module"
+}

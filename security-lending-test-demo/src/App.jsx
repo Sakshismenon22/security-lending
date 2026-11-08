@@ -1,0 +1,1025 @@
+import { useState } from "react";
+import {
+  actions,
+  categories,
+  defaults,
+  requestPath,
+  workflow,
+} from "./api/catalog";
+import { sendRequest, unwrap, rowsOf } from "./api/client";
+const names = {
+  borrower: "Borrower",
+  lender: "Lender",
+  borrowerAdapter: "Borrower FIX",
+  lenderAdapter: "Lender FIX",
+  market: "Market data",
+};
+const ports = {
+  borrower: 8081,
+  lender: 8084,
+  borrowerAdapter: 8082,
+  lenderAdapter: 8083,
+  market: 8080,
+};
+function saved() {
+  try {
+    return JSON.parse(localStorage.getItem("lending-lab-context")) || {};
+  } catch {
+    return {};
+  }
+}
+const labelOf = (key) =>
+  key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+const json = (value) => JSON.stringify(value, null, 2);
+export default function App() {
+  const [context, setContext] = useState(() => ({
+    borrowerOrg: "",
+    lenderOrg: "",
+    borrowerUser: "",
+    lenderUser: "",
+    ...saved(),
+  }));
+  const [side, setSide] = useState("borrower"),
+    [category, setCategory] = useState("Setup"),
+    [operation, setOperation] = useState(null),
+    [fields, setFields] = useState({}),
+    [resourceId, setResourceId] = useState(""),
+    [key, setKey] = useState(""),
+    [page, setPage] = useState(0),
+    [size, setSize] = useState(25),
+    [result, setResult] = useState(null),
+    [history, setHistory] = useState([]),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [health, setHealth] = useState({}),
+    [directories, setDirectories] = useState({}),
+    [users, setUsers] = useState({}),
+    [checked, setChecked] = useState({}),
+    [tab, setTab] = useState("actions"),
+    [search, setSearch] = useState(""),
+    [inspected, setInspected] = useState(null),
+    [confirm, setConfirm] = useState(false);
+  const org = context[side + "Org"],
+    available = actions.filter(
+      (a) =>
+        a.category === category &&
+        (a.side === side ||
+          (category === "Operations" && a.side === side + "Adapter")) &&
+        a.label.toLowerCase().includes(search.toLowerCase()),
+    );
+  function updateContext(patch) {
+    setContext((old) => {
+      const next = { ...old, ...patch };
+      localStorage.setItem("lending-lab-context", JSON.stringify(next));
+      return next;
+    });
+  }
+  function choose(a) {
+    setOperation(a);
+    setFields(
+      Object.fromEntries(
+        Object.entries(defaults(a)).map(([k, v]) => [
+          k,
+          typeof v === "object" && v !== null ? json(v) : v,
+        ]),
+      ),
+    );
+    setResourceId("");
+    setKey(a.idempotency ? crypto.randomUUID() : "");
+    setPage(0);
+    setResult(null);
+    setInspected(null);
+    setError("");
+    setConfirm(false);
+  }
+  function changeSide(value) {
+    setSide(value);
+    setOperation(null);
+    setResult(null);
+    setError("");
+  }
+  function changeCategory(value) {
+    setCategory(value);
+    setOperation(null);
+    setResult(null);
+    setError("");
+    setTab("actions");
+    setSearch("");
+  }
+  function body() {
+    if (operation.body === undefined) return undefined;
+    const template = defaults(operation);
+    return Object.fromEntries(
+      Object.entries(fields).map(([k, v]) => {
+        const original = template[k];
+        if (typeof original === "object" && original !== null)
+          return [k, JSON.parse(v)];
+        if (typeof original === "number") {
+          if (v === "" || !Number.isFinite(Number(v)))
+            throw Error(`${labelOf(k)} must be a number.`);
+          return [k, Number(v)];
+        }
+        if (typeof original === "boolean")
+          return [k, v === true || v === "true"];
+        if (original === null) {
+          if (v === null || v === "" || v === "null") return [k, null];
+          if (!Number.isFinite(Number(v)))
+            throw Error(`${labelOf(k)} must be a number or null.`);
+          return [k, Number(v)];
+        }
+        return [k, v];
+      }),
+    );
+  }
+  function request() {
+    if (!operation) throw Error("Select a test action.");
+    return {
+      side: operation.side,
+      path: requestPath(
+        operation,
+        context[operation.side + "Org"],
+        resourceId,
+        page,
+        size,
+      ),
+      method: operation.method,
+      body: body(),
+      headers: operation.idempotency ? { "Idempotency-Key": key } : undefined,
+    };
+  }
+  function remember(r) {
+    setResult(r);
+    setHistory((old) => [r, ...old].slice(0, 100));
+    setInspected(null);
+  }
+  async function execute(e) {
+    e?.preventDefault();
+    setError("");
+    let req;
+    try {
+      req = request();
+      if (operation.idempotency && !key.trim())
+        throw Error("Idempotency-Key is required.");
+    } catch (ex) {
+      setError(ex.message);
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await sendRequest(req);
+      remember(r);
+      if (r.ok) {
+        const data = unwrap(r.payload);
+        if (operation.capture && data?.id)
+          updateContext({ [operation.capture]: String(data.id) });
+        if (
+          operation.path === "/api/v1/organizations" &&
+          operation.method === "GET"
+        )
+          setDirectories((old) => ({
+            ...old,
+            [operation.side]: rowsOf(r.payload),
+          }));
+        if (operation.path === "/users" && operation.method === "GET")
+          setUsers((old) => ({ ...old, [side]: rowsOf(r.payload) }));
+        if (operation.csv) {
+          const url = URL.createObjectURL(
+            new Blob([r.payload], { type: "text/csv" }),
+          );
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = "borrower-statement.csv";
+          link.click();
+          URL.revokeObjectURL(url);
+        }
+      }
+    } catch (ex) {
+      setError(
+        ex.name === "TimeoutError"
+          ? "Request timed out. Check the service and inspect its logs before retrying a write."
+          : ex.message +
+              " — check that the service is running and the Vite proxy target is correct.",
+      );
+    } finally {
+      setBusy(false);
+      setConfirm(false);
+    }
+  }
+  async function checkHealth() {
+    setBusy(true);
+    setError("");
+    const results = await Promise.all(
+      Object.keys(ports).map(async (service) => {
+        try {
+          const r = await sendRequest({
+            side: service,
+            path: service.includes("Adapter")
+              ? "/api/v1/adapter/status"
+              : service === "market"
+                ? "/api/v1/security-master/get-all-securities"
+                : "/api/v1/organizations",
+          });
+          return [service, { ok: r.ok, status: r.status }];
+        } catch {
+          return [service, { ok: false, status: "unreachable" }];
+        }
+      }),
+    );
+    setHealth(Object.fromEntries(results));
+    setBusy(false);
+  }
+  async function loadIdentity() {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await sendRequest({ side, path: "/api/v1/organizations" });
+      if (!r.ok)
+        throw Error(
+          "Could not load organizations. Inspect the service response.",
+        );
+      setDirectories((old) => ({ ...old, [side]: rowsOf(r.payload) }));
+      if (org) {
+        const u = await sendRequest({
+          side,
+          path: `/api/v1/organizations/${org}/users?size=200`,
+        });
+        if (!u.ok) throw Error("Could not load users for this organization.");
+        setUsers((old) => ({ ...old, [side]: rowsOf(u.payload) }));
+      }
+    } catch (ex) {
+      setError(ex.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function smoke() {
+    setBusy(true);
+    setError("");
+    for (const service of ["borrower", "lender"]) {
+      const id = context[service + "Org"];
+      if (!/^[1-9]\d*$/.test(id)) continue;
+      for (const resource of [
+        "dashboard",
+        "agreements",
+        "locates",
+        "reservations",
+        "loans",
+        "collateral",
+        "margin-calls",
+        "recalls",
+        "fees",
+        "rebates",
+        "defaults",
+        "buy-ins",
+      ]) {
+        try {
+          const r = await sendRequest({
+            side: service,
+            path: `/api/v1/organizations/${id}/${resource}`,
+          });
+          remember(r);
+        } catch (ex) {
+          remember({
+            ok: false,
+            status: "network",
+            side: service,
+            method: "GET",
+            path: resource,
+            payload: { error: ex.message },
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+    }
+    setBusy(false);
+    setTab("history");
+  }
+  let preview;
+  try {
+    preview = operation ? request() : null;
+  } catch {
+    preview = null;
+  }
+  const rows = result ? rowsOf(result.payload) : [],
+    data = result ? unwrap(result.payload) : null;
+  return (
+    <div className="app">
+      <aside>
+        <div className="logo">
+          <span>SL</span>
+          <div>
+            Lending lab<small>BACKEND WORKFLOW TESTER</small>
+          </div>
+        </div>
+        <div className="side-switch">
+          {["borrower", "lender"].map((s) => (
+            <button
+              key={s}
+              onClick={() => changeSide(s)}
+              className={side === s ? "selected" : ""}
+              disabled={busy}
+            >
+              {names[s]}
+            </button>
+          ))}
+        </div>
+        <div className="nav-label">TEST WORKFLOWS</div>
+        <nav>
+          {categories.map((cat, i) => (
+            <button
+              key={cat}
+              disabled={busy}
+              className={category === cat && tab === "actions" ? "active" : ""}
+              onClick={() => changeCategory(cat)}
+            >
+              <span>{String(i + 1).padStart(2, "0")}</span>
+              {cat}
+            </button>
+          ))}
+        </nav>
+        <div className="side-bottom">
+          <button disabled={busy} onClick={() => setTab("guide")}>
+            ☷ Guided workflow
+          </button>
+          <button disabled={busy} onClick={() => setTab("history")}>
+            ↗ Request history <b>{history.length}</b>
+          </button>
+          <p>Real HTTP requests. No simulated approvals or payments.</p>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <div>
+            <span className="pill">LOCAL TEST ENVIRONMENT</span>
+            <span>
+              {names[side]} service · :{ports[side]}
+            </span>
+          </div>
+          <button className="button" disabled={busy} onClick={checkHealth}>
+            Check connections
+          </button>
+        </header>
+        <div className="content">
+          <div className="title-row">
+            <div>
+              <div className="eyebrow">
+                SECURITIES LENDING / {names[side].toUpperCase()}
+              </div>
+              <h1>
+                {tab === "guide"
+                  ? "End-to-end workflow"
+                  : tab === "history"
+                    ? "Request history"
+                    : category}
+              </h1>
+              <p>Exercise the real services and inspect every response.</p>
+            </div>
+            <button
+              className="button"
+              disabled={busy || (!context.borrowerOrg && !context.lenderOrg)}
+              onClick={smoke}
+            >
+              Run read-only smoke checks
+            </button>
+          </div>
+          <div className="service-strip">
+            {Object.keys(ports).map((s) => (
+              <div key={s}>
+                <i
+                  className={health[s] ? (health[s].ok ? "up" : "down") : ""}
+                />
+                <strong>{names[s]}</strong>
+                <span>:{ports[s]}</span>
+                <small>
+                  {health[s]?.ok
+                    ? "Reachable"
+                    : health[s]?.status || "Not checked"}
+                </small>
+              </div>
+            ))}
+          </div>
+          <section className="identity">
+            <div>
+              <strong>Test identity</strong>
+              <small>
+                Context selection only — authentication is not implemented.
+              </small>
+            </div>
+            <label>
+              Organization ID
+              <input
+                aria-label="Organization ID"
+                type="number"
+                min="1"
+                value={org}
+                disabled={busy}
+                onChange={(e) => {
+                  updateContext({
+                    [side + "Org"]: e.target.value,
+                    [side + "User"]: "",
+                  });
+                  setUsers((old) => ({ ...old, [side]: [] }));
+                }}
+              />
+            </label>
+            <label>
+              Registered organization
+              <select
+                aria-label="Registered organization"
+                value={org}
+                disabled={busy}
+                onChange={(e) => {
+                  updateContext({
+                    [side + "Org"]: e.target.value,
+                    [side + "User"]: "",
+                  });
+                  setUsers((old) => ({ ...old, [side]: [] }));
+                }}
+              >
+                <option value="">Select organization</option>
+                {org &&
+                  !(directories[side] || []).some(
+                    (o) => String(o.id) === String(org),
+                  ) && (
+                    <option value={org}>
+                      Current organization #{org} · reload directory
+                    </option>
+                  )}
+                {(directories[side] || []).map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name} · #{o.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Test as user
+              <select
+                value={context[side + "User"]}
+                disabled={busy}
+                onChange={(e) =>
+                  updateContext({ [side + "User"]: e.target.value })
+                }
+              >
+                <option value="">Select registered user</option>
+                {(users[side] || [])
+                  .filter((u) => u.active !== false)
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} · {u.email}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <button className="button" disabled={busy} onClick={loadIdentity}>
+              Load organizations / users
+            </button>
+          </section>
+          {error && (
+            <div className="notice error" role="alert">
+              {error}
+              <button onClick={() => setError("")}>×</button>
+            </div>
+          )}
+          {category === "Setup" && tab === "actions" && (
+            <div className="notice">
+              <strong>
+                Registration is available. Password login is pending.
+              </strong>
+              <span>
+                The backend has no login, token, password, or role-enforcement
+                endpoints. Register organizations and users below, then choose a
+                test identity above. This selection does not authenticate or
+                authorize requests.
+              </span>
+              <button disabled title="No backend login endpoint exists">
+                Login unavailable
+              </button>
+            </div>
+          )}
+          {[
+            "Collateral & risk",
+            "Margin & recalls",
+            "Billing & payments",
+            "Operations",
+          ].includes(category) &&
+            tab === "actions" && (
+              <div className="notice owner">
+                <strong>Lifecycle/payment owner required</strong>
+                <span>
+                  EOD ratio checks, margin-call creation, reservation expiry,
+                  daily fee/rebate accrual, payment execution, defaults, and
+                  buy-ins cannot finish until the separate owner service is
+                  implemented and connected. Existing requests and read
+                  projections are available below.
+                </span>
+              </div>
+            )}
+          {tab === "guide" ? (
+            <section className="panel guide">
+              <div className="panel-title">
+                <h2>Follow a request across both platforms</h2>
+                <span>
+                  {Object.values(checked).filter(Boolean).length} /{" "}
+                  {workflow.length} manually verified
+                </span>
+              </div>
+              <p className="help">
+                Check a step only after inspecting its resulting business state.
+                An HTTP 200 can mean queued or pending. Local borrower and
+                lender resource IDs may differ.
+              </p>
+              {workflow.map(([cat, text, kind], i) => (
+                <div className="guide-step" key={text}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Verify step ${i + 1}`}
+                    checked={Boolean(checked[i])}
+                    onChange={(e) =>
+                      setChecked((old) => ({ ...old, [i]: e.target.checked }))
+                    }
+                  />
+                  <span className="step-number">{i + 1}</span>
+                  <div>
+                    <strong>{text}</strong>
+                    <small>{kind}</small>
+                  </div>
+                  <button
+                    className="text-button"
+                    onClick={() => changeCategory(cat)}
+                  >
+                    Open →
+                  </button>
+                </div>
+              ))}
+              <div className="notice">
+                <strong>Kafka topic setup</strong>
+                <span>
+                  In the Kafka portal click “Set up lending topics”. These
+                  backends have no NewTopic beans, and the managed broker has
+                  auto topic creation disabled. Kafka is enabled in the services’
+                  application.properties. Start both FIX adapters with run-lender.cmd
+                  and run-borrower.cmd and their configured databases. No environment
+                  variables are required. The market service currently provides
+                  HTTP data, so importing securities does not require Kafka.
+                </span>
+              </div>
+            </section>
+          ) : tab === "history" ? (
+            <section className="panel">
+              <div className="panel-title">
+                <h2>Requests made in this browser session</h2>
+                <div>
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      const url = URL.createObjectURL(
+                        new Blob([json(history)], { type: "application/json" }),
+                      );
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = "lending-test-results.json";
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
+                    Export results
+                  </button>
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      setHistory([]);
+                      setResult(null);
+                    }}
+                  >
+                    Clear history
+                  </button>
+                </div>
+              </div>
+              <div className="history-layout">
+                <div className="history-list">
+                  {history.map((r, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setResult(r);
+                        setInspected(null);
+                      }}
+                    >
+                      <span
+                        className={"status " + (r.ok ? "success" : "failure")}
+                      >
+                        {r.status}
+                      </span>
+                      <div>
+                        <strong>
+                          {names[r.side]} · {r.method}
+                        </strong>
+                        <small>{r.path}</small>
+                      </div>
+                      <time>{new Date(r.timestamp).toLocaleTimeString()}</time>
+                    </button>
+                  ))}
+                  {!history.length && (
+                    <Empty text="No requests yet. Select a workflow action to start testing." />
+                  )}
+                </div>
+                <Response result={result} inspected={inspected} />
+              </div>
+            </section>
+          ) : (
+            <div className="test-layout">
+              <section className="panel action-list">
+                <div className="panel-title">
+                  <h2>Available tests</h2>
+                  <span>{available.length}</span>
+                </div>
+                <input
+                  aria-label="Search actions"
+                  className="action-search"
+                  placeholder="Find an action…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {available.map((a) => (
+                  <button
+                    key={a.id}
+                    disabled={busy}
+                    onClick={() => choose(a)}
+                    className={operation?.id === a.id ? "chosen" : ""}
+                  >
+                    <span className={"method " + a.method.toLowerCase()}>
+                      {a.method}
+                    </span>
+                    <div>
+                      {a.label}
+                      <small>{names[a.side]}</small>
+                    </div>
+                    <span>›</span>
+                  </button>
+                ))}
+                {!available.length && (
+                  <Empty text="No actions for this side in this workflow. Switch platforms to continue." />
+                )}
+              </section>
+              <div className="test-detail">
+                {operation ? (
+                  <section className="panel request-panel">
+                    <div className="panel-title">
+                      <div>
+                        <h2>{operation.label}</h2>
+                        <small>{names[operation.side]} endpoint</small>
+                      </div>
+                      <span
+                        className={"method " + operation.method.toLowerCase()}
+                      >
+                        {operation.method}
+                      </span>
+                    </div>
+                    <div className="endpoint">
+                      {preview?.path || operation.path}
+                    </div>
+                    {operation.note && (
+                      <p className="operation-note">{operation.note}</p>
+                    )}
+                    <form onSubmit={execute}>
+                      <fieldset disabled={busy}>
+                        <div className="form-grid">
+                          {operation.path.includes("{id}") && (
+                            <label>
+                              Resource ID{" "}
+                              <small>
+                                Use the {names[operation.side]} service’s local
+                                ID
+                              </small>
+                              <input
+                                type="number"
+                                min="1"
+                                required
+                                value={resourceId}
+                                onChange={(e) => setResourceId(e.target.value)}
+                              />
+                            </label>
+                          )}
+                          {operation.paged && (
+                            <>
+                              <label>
+                                Page (zero based)
+                                <input
+                                  type="number"
+                                  min="0"
+                                  required
+                                  value={page}
+                                  onChange={(e) =>
+                                    setPage(Number(e.target.value))
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Page size
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="200"
+                                  required
+                                  value={size}
+                                  onChange={(e) =>
+                                    setSize(Number(e.target.value))
+                                  }
+                                />
+                              </label>
+                            </>
+                          )}
+                          {Object.entries(fields).map(([field, value]) => {
+                            const original = defaults(operation)[field],
+                              nested =
+                                original !== null &&
+                                typeof original === "object";
+                            return (
+                              <label
+                                key={field}
+                                className={nested ? "full" : ""}
+                              >
+                                {labelOf(field)}
+                                {nested ? (
+                                  <>
+                                    <small>
+                                      Editable JSON; use actual security IDs.
+                                      CASH uses null securityId; SECURITY
+                                      requires its securityId.
+                                    </small>
+                                    <textarea
+                                      rows={field === "collateral" ? 10 : 8}
+                                      value={value}
+                                      onChange={(e) =>
+                                        setFields((old) => ({
+                                          ...old,
+                                          [field]: e.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </>
+                                ) : typeof original === "boolean" ? (
+                                  <select
+                                    value={String(value)}
+                                    onChange={(e) =>
+                                      setFields((old) => ({
+                                        ...old,
+                                        [field]: e.target.value === "true",
+                                      }))
+                                    }
+                                  >
+                                    <option value="true">true</option>
+                                    <option value="false">false</option>
+                                  </select>
+                                ) : (
+                                  <input
+                                    type={
+                                      typeof original === "number"
+                                        ? "number"
+                                        : field.toLowerCase().includes("email")
+                                          ? "email"
+                                          : "text"
+                                    }
+                                    step="any"
+                                    required={original !== null}
+                                    value={value ?? ""}
+                                    placeholder={
+                                      original === null ? "null (optional)" : ""
+                                    }
+                                    onChange={(e) =>
+                                      setFields((old) => ({
+                                        ...old,
+                                        [field]: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                )}
+                              </label>
+                            );
+                          })}
+                          {operation.idempotency && (
+                            <label className="full">
+                              Idempotency-Key
+                              <input
+                                required
+                                value={key}
+                                onChange={(e) => setKey(e.target.value)}
+                              />
+                              <small>
+                                Keep this key for retries; generate a new key
+                                only for a new payment request.
+                              </small>
+                            </label>
+                          )}
+                        </div>
+                        <details className="request-preview">
+                          <summary>Inspect outgoing request</summary>
+                          <pre>
+                            {json(
+                              preview || {
+                                message:
+                                  "Select organization and resource IDs to preview.",
+                              },
+                            )}
+                          </pre>
+                        </details>
+                        {operation.method !== "GET" && (
+                          <label className="confirm-write">
+                            <input
+                              type="checkbox"
+                              checked={confirm}
+                              onChange={(e) => setConfirm(e.target.checked)}
+                            />{" "}
+                            Send this write to the real development backend
+                          </label>
+                        )}
+                        <div className="request-actions">
+                          <span>
+                            {operation.method === "GET"
+                              ? "Read-only HTTP check"
+                              : "Success does not imply final settlement"}
+                          </span>
+                          <button
+                            className="button primary"
+                            type="submit"
+                            disabled={
+                              busy || (operation.method !== "GET" && !confirm)
+                            }
+                          >
+                            {busy
+                              ? "Request in progress…"
+                              : operation.csv
+                                ? "Download CSV"
+                                : "Send request →"}
+                          </button>
+                        </div>
+                      </fieldset>
+                    </form>
+                  </section>
+                ) : (
+                  <section className="panel">
+                    <Empty text="Choose an action to load its request form. Start with registration, then follow the guided workflow." />
+                    <button
+                      className="button guide-link"
+                      onClick={() => setTab("guide")}
+                    >
+                      Open guided workflow →
+                    </button>
+                  </section>
+                )}
+                {result && (
+                  <section className="panel">
+                    <div className="panel-title">
+                      <h2>Actual service response</h2>
+                      <div>
+                        <span
+                          className={
+                            "status " + (result.ok ? "success" : "failure")
+                          }
+                        >
+                          {result.status}
+                        </span>
+                        <span className="muted">
+                          {" "}
+                          {result.duration ?? "—"} ms
+                        </span>
+                      </div>
+                    </div>
+                    {result.ok && operation?.method !== "GET" && (
+                      <p className="operation-note">
+                        Request accepted by this endpoint. Inspect status and
+                        refresh both sides to verify asynchronous completion.
+                      </p>
+                    )}
+                    {rows.length > 0 && (
+                      <DataTable
+                        rows={rows}
+                        inspect={(row) => setInspected(row)}
+                        selectId={(row) => {
+                          setResourceId(String(row.id ?? ""));
+                          setInspected(row);
+                        }}
+                      />
+                    )}
+                    {data?.totalPages !== undefined && (
+                      <div className="pagination">
+                        <span>
+                          Page {data.page + 1} / {data.totalPages} ·{" "}
+                          {data.totalElements} records
+                        </span>
+                        <button
+                          className="text-button"
+                          disabled={busy || page === 0}
+                          onClick={() => {
+                            setPage((p) => p - 1);
+                          }}
+                        >
+                          Previous page
+                        </button>
+                        <button
+                          className="text-button"
+                          disabled={busy || page + 1 >= data.totalPages}
+                          onClick={() => setPage((p) => p + 1)}
+                        >
+                          Next page
+                        </button>
+                        <small>Change page, then Send request.</small>
+                      </div>
+                    )}
+                    <Response result={result} inspected={inspected} />
+                  </section>
+                )}
+              </div>
+            </div>
+          )}
+          <footer>
+            <span>
+              Browser → Vite proxy → Spring backend → Kafka / FIX → counterparty
+            </span>
+            <span>
+              {busy
+                ? "Request in progress"
+                : "No background writes or fabricated results"}
+            </span>
+          </footer>
+        </div>
+      </main>
+    </div>
+  );
+}
+function Empty({ text }) {
+  return (
+    <div className="empty">
+      <span>⇄</span>
+      <p>{text}</p>
+    </div>
+  );
+}
+function Response({ result, inspected }) {
+  return result ? (
+    <div className="response">
+      <div className="response-meta">
+        <span>{inspected ? "SELECTED RECORD" : "RAW RESPONSE"}</span>
+        <time>{new Date(result.timestamp).toLocaleTimeString()}</time>
+      </div>
+      <pre>
+        {typeof (inspected || result.payload) === "string"
+          ? inspected || result.payload
+          : json(inspected || result.payload)}
+      </pre>
+    </div>
+  ) : (
+    <Empty text="Run a request to inspect its HTTP response." />
+  );
+}
+function DataTable({ rows, inspect, selectId }) {
+  const columns = [...new Set(rows.flatMap((r) => Object.keys(r || {})))].slice(
+    0,
+    9,
+  );
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            {columns.map((c) => (
+              <th key={c}>{labelOf(c)}</th>
+            ))}
+            <th>Inspect</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={row.id ?? i}>
+              {columns.map((c) => (
+                <td
+                  key={c}
+                  title={
+                    typeof row[c] === "object"
+                      ? json(row[c])
+                      : String(row[c] ?? "")
+                  }
+                >
+                  {typeof row[c] === "object"
+                    ? json(row[c])
+                    : String(row[c] ?? "—")}
+                </td>
+              ))}
+              <td>
+                <button className="text-button" onClick={() => inspect(row)}>
+                  View JSON
+                </button>
+                {row.id && (
+                  <button className="text-button" onClick={() => selectId(row)}>
+                    Use ID {row.id}
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
