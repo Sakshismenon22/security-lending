@@ -214,6 +214,15 @@ public class BorrowerCommandService {
     reservations.saveAndFlush(x);
     events.local(
         c.getOrganizationId(), "RESERVATION_RECEIVED", x.getId(), Map.of("reservation", x));
+    // Locate approval already represents the lender's availability decision.
+    // Automatically confirm the linked reservation and reserve inventory without
+    // requiring a second manual reservation approval.
+    reservationService.decide(
+        c.getOrganizationId(),
+        x.getId(),
+        r.quantity(),
+        true,
+        "Automatically reserved after locate approval");
   }
 
   private void pledge(BorrowerConnection c, BorrowerCommand command) {
