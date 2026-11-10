@@ -215,14 +215,30 @@ public class BorrowerCommandService {
     events.local(
         c.getOrganizationId(), "RESERVATION_RECEIVED", x.getId(), Map.of("reservation", x));
     // Locate approval already represents the lender's availability decision.
-    // Automatically confirm the linked reservation and reserve inventory without
-    // requiring a second manual reservation approval.
-    reservationService.decide(
-        c.getOrganizationId(),
-        x.getId(),
-        r.quantity(),
-        true,
-        "Automatically reserved after locate approval");
+    // Confirm immediately when inventory is still available; otherwise reject
+    // explicitly rather than leaving a reservation stuck in REQUESTED.
+    var position = inventory.position(c.getOrganizationId(), l.getSecurityId());
+    if (inventory.available(position) >= r.quantity()) {
+      reservationService.decide(
+          c.getOrganizationId(),
+          x.getId(),
+          r.quantity(),
+          true,
+          "Automatically reserved after locate approval");
+    } else {
+      x.setStatus("REJECTED");
+      events.confirm(
+          c,
+          "RESERVATION_REJECTED",
+          "reservation",
+          x.getBorrowerReservationId(),
+          Map.of("reason", "Inventory was allocated before automatic reservation completed"));
+      events.local(
+          c.getOrganizationId(),
+          "RESERVATION_AUTO_REJECTED",
+          x.getId(),
+          Map.of("reservation", x));
+    }
   }
 
   private void pledge(BorrowerConnection c, BorrowerCommand command) {
