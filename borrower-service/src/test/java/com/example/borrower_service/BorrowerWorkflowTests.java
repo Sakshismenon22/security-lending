@@ -84,6 +84,16 @@ class BorrowerWorkflowTests {
         assertEquals(0,bd("5000").compareTo(money(account(org),"available")));
         assertEquals(n(request,"id"),n(payments.funding(org,new FundingRequest(bd("5000"),"fund-1"),true),"id"));
     }
+    @Test void depositApprovalRequiresAnActiveAdminAndCreditsFunds() {
+        long org=org();
+        long admin=n(directory.member(org,new MemberRequest("Admin","admin@example.com","ADMIN")),"id");
+        long trader=n(directory.member(org,new MemberRequest("Trader","trader@example.com","TRADER")),"id");
+        long request=n(payments.funding(org,new FundingRequest(bd("7500"),"fund-approve"),true),"id");
+        assertThrows(ResponseStatusException.class,()->payments.approveDeposit(org,request,trader));
+        var approved=payments.approveDeposit(org,request,admin);
+        assertEquals(0,bd("7500").compareTo(money(account(org),"available")));
+        assertEquals("CONFIRMED",approved.get("status"));
+    }
     @Test void marketBuyAndOwnedSellUpdateHoldingsCashAndRealizedPnl() {
         long org=org(),security=security("100");fund(org,"10000");
         var buy=trading.order(org,new OrderRequest(security,"BUY","MARKET","OWNED",10,null));assertEquals("FILLED",buy.get("status"));
@@ -168,6 +178,12 @@ class BorrowerWorkflowTests {
         fields.put("status","OVERDUE");apply(org,"MARGIN_CALL_UPDATED",call,2,fields);
         fields.put("status","OPEN");apply(org,"MARGIN_CALL_UPDATED",call,1,fields);
         assertEquals("OVERDUE",db.owned("margin_recall",org,call).get("status"));
+    }
+    @Test void lifecycleCreatedPendingMarginCallIsProjected() {
+        long org=org(),security=security("100");fund(org,"10000");long loan=loan(org,security,agreement(org,0),10),call=sequence.incrementAndGet();
+        var fields=new HashMap<String,Object>();fields.put("loanId",loan);fields.put("externalId","margin-"+call);fields.put("amount","300");fields.put("fulfilledAmount","0");fields.put("reason","Coverage ratio below the MSLA threshold.");fields.put("status","PENDING");fields.put("dueAt",Instant.now().plusSeconds(3600).toString());
+        apply(org,"MARGIN_CALL_UPDATED",call,1,fields);
+        assertEquals("PENDING",db.owned("margin_recall",org,call).get("status"));
     }
     @Test void organizationIsolationPreventsCrossOrganizationOperations() {
         long first=org(),second=org(),security=security("100");fund(first,"10000");long loan=loan(first,security,agreement(first,0),10);

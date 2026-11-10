@@ -164,7 +164,18 @@ export const actions = [
     "/deposits",
     { amount: 1000000, clientRequestId: "$unique" },
     {
-      note: "Deposit stays pending until its payment owner confirms it. No local funding confirmation endpoint exists.",
+      note: "A pending deposit waits for an active administrator to approve it locally before cash becomes available.",
+    },
+  ),
+  b(
+    "deposit-approve",
+    "Setup",
+    "Approve pending deposit",
+    "/deposits/{id}/approve",
+    { userId: 0 },
+    {
+      requiresAdmin: true,
+      note: "Only the currently selected admin user can approve a pending deposit request.",
     },
   ),
   b(
@@ -371,6 +382,29 @@ export const actions = [
     "Respond to margin call with collateral",
     "/margin-calls/{id}/collateral",
     allocation,
+  ),
+  op(
+    "margin-call-manual",
+    "Margin & recalls",
+    "Send manual margin call",
+    "lender",
+    "POST",
+    "/api/v1/lifecycle/loans/{id}/margin-calls",
+    { amount: 250 },
+    {
+      global: true,
+      note: "Demo-only trigger for the lifecycle service. The scheduled job still checks coverage automatically at 3:15 PM and only creates a call when the policy is breached.",
+    },
+  ),
+  l(
+    "margin-call-confirm",
+    "Margin & recalls",
+    "Confirm lender margin call",
+    "/margin-calls/{id}/confirm",
+    { reference: "$unique" },
+    {
+      note: "Explicit lender acknowledgement for a lifecycle-generated margin call. This emits the borrower-facing MARGIN_CALL_UPDATED confirmation used by the borrower UI.",
+    },
   ),
   l(
     "recall-request",

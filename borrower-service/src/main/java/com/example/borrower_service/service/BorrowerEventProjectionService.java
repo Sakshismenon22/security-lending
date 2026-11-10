@@ -4,6 +4,8 @@ import com.example.borrower_service.dto.BorrowerEvent;
 import com.example.borrower_service.repository.BorrowerRepository;
 import jakarta.validation.Validator;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.*;
@@ -16,10 +18,12 @@ import static com.example.borrower_service.repository.BorrowerRepository.*;
 @RequiredArgsConstructor
 @Transactional
 public class BorrowerEventProjectionService {
+    private static final Logger log = LoggerFactory.getLogger(BorrowerEventProjectionService.class);
     private final BorrowerRepository db;private final CollateralService collateral;private final DirectoryService accounts;
     private final PaymentService payments;private final EventWriter events;private final Validator validator;
 
     public Map<String,Object> apply(BorrowerEvent event) {
+        log.info("Applying borrower confirmation: type={}, organizationId={}, referenceId={}, version={}", event.type(), event.organizationId(), event.referenceId(), event.version());
         require(validator.validate(event).isEmpty(),"Invalid confirmation envelope");
         long org=event.organizationId(),id=event.referenceId();db.lock(org);
         if(!db.list("select event_id from inbox_event where event_id=?",event.eventId()).isEmpty())return Map.of("duplicate",true);
@@ -174,7 +178,9 @@ public class BorrowerEventProjectionService {
         db.insert("insert into loan_valuation(organization_id,loan_id,valued_at,loan_market_value,required_collateral,recognized_collateral,coverage_ratio,shortfall,source_event_id) values (?,?,?,?,?,?,?,?,?)",e.organizationId(),number(d,"loanId"),e.occurredAt(),decimal(d,"loanMarketValue"),decimal(d,"requiredCollateral"),decimal(d,"recognizedCollateral"),decimal(d,"coverageRatio"),decimal(d,"shortfall"),e.eventId());
     }
     private void margin(long org,long id,Map<String,Object> d) {
-        long loan=number(d,"loanId");db.owned("loan",org,loan);String status=obligationStatus(d);
+        long loan=number(d,"loanId");db.owned("loan",org,loan);
+        String status=obligationStatus(d);
+        if("PENDING".equals(status)) status="OPEN";
         if(db.list("select id from margin_recall where id=?",id).isEmpty())
             db.update("insert into margin_recall(id,organization_id,loan_id,external_id,amount,fulfilled_amount,reason,status,due_at) values (?,?,?,?,?,?,?,?,?)",id,org,loan,text(d,"externalId"),decimal(d,"amount"),decimal(d,"fulfilledAmount"),text(d,"reason"),status,instantValue(d,"dueAt"));
         else {db.owned("margin_recall",org,id);db.update("update margin_recall set amount=?,fulfilled_amount=?,status=?,due_at=? where id=?",decimal(d,"amount"),decimal(d,"fulfilledAmount"),status,instantValue(d,"dueAt"),id);}
@@ -195,7 +201,7 @@ public class BorrowerEventProjectionService {
         db.owned("loan_default",org,number(d,"defaultId"));require(db.list("select id from buy_in where id=?",id).isEmpty(),"Buy-in projection already exists");
         db.update("insert into buy_in(id,organization_id,default_id,quantity,price,costs,collateral_applied,residual_balance,status) values (?,?,?,?,?,?,?,?,?)",id,org,number(d,"defaultId"),number(d,"quantity"),decimal(d,"price"),decimal(d,"costs"),decimal(d,"collateralApplied"),decimal(d,"residualBalance"),text(d,"status"));
     }
-    private static String obligationStatus(Map<String,Object> d) {String s=text(d,"status");require(Set.of("OPEN","PARTIALLY_FULFILLED","FULFILLED","OVERDUE","CANCELLED").contains(s),"Invalid obligation status");return s;}
+    private static String obligationStatus(Map<String,Object> d) {String s=text(d,"status");require(Set.of("PENDING","OPEN","PARTIALLY_FULFILLED","FULFILLED","OVERDUE","CANCELLED").contains(s),"Invalid obligation status");return s;}
     private static String text(Map<String,Object> d,String key) {Object v=d.get(key);require(v!=null && !v.toString().isBlank(),"Missing event field "+key);return v.toString();}
     private static long number(Map<String,Object> d,String key) {return new BigDecimal(text(d,key)).longValueExact();}
     private static BigDecimal decimal(Map<String,Object> d,String key) {BigDecimal value=new BigDecimal(text(d,key));require(value.signum()>=0,"Negative event amount "+key);return value;}

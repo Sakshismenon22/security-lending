@@ -18,6 +18,16 @@ public class PaymentService {
     public Map<String,Object> funding(long org,FundingRequest r,boolean deposit) {
         return request(org,deposit?"DEPOSIT":"WITHDRAWAL",r.amount(),r.clientRequestId(),null);
     }
+    public Map<String,Object> approveDeposit(long org,long requestId,long approverUserId) {
+        db.lock(org);
+        var request=db.owned("payment_request",org,requestId);
+        require("DEPOSIT".equals(request.get("type")),"Only deposit requests can be approved");
+        require("PENDING".equals(request.get("status")),"Payment is no longer pending");
+        var approver=db.one("select * from users where organization_id=? and id=? and active=true",org,approverUserId);
+        long adminRole=n(db.one("select id from role where role_name='ADMIN'"),"id");
+        require(n(approver,"role_id")==adminRole,"Only an active administrator may approve a deposit");
+        return applyConfirmation(org,requestId,true,money(request,"amount"));
+    }
     public Map<String,Object> payFee(long org,long feeId,String key) {
         db.lock(org);var fee=db.owned("lending_fee",org,feeId);
         // A client retry returns the original pending/confirmed payment rather than charging again.
@@ -44,7 +54,7 @@ public class PaymentService {
         events.write(org,type+"_REQUESTED",id,Map.of("amount",value,"clientRequestId",key,"feeId",fee==null?0:fee));
         return db.owned("payment_request",org,id);
     }
-    void applyConfirmation(long org,long id,boolean confirmed,BigDecimal actualAmount) {
+    Map<String,Object> applyConfirmation(long org,long id,boolean confirmed,BigDecimal actualAmount) {
         var request=db.owned("payment_request",org,id);require("PENDING".equals(request.get("status")),"Payment is no longer pending");
         BigDecimal value=money(request,"amount");require(actualAmount!=null && actualAmount.compareTo(value)==0,"Confirmation amount does not match payment request");
         if("DEPOSIT".equals(request.get("type"))) {
@@ -55,5 +65,6 @@ public class PaymentService {
             if(confirmed && "FEE".equals(request.get("type")))db.update("update lending_fee set status='PAID',paid_at=current_timestamp where id=?",n(request,"fee_id"));
         }
         db.update("update payment_request set status=?,confirmed_at=current_timestamp where id=?",confirmed?"CONFIRMED":"REJECTED",id);
+        return db.owned("payment_request",org,id);
     }
 }

@@ -422,7 +422,8 @@ public class LifecycleEventService {
   private static String obligationStatus(JsonNode d) {
     String status = text(d, "status");
     require(
-        Set.of("OPEN", "PARTIALLY_FULFILLED", "FULFILLED", "OVERDUE", "CANCELLED").contains(status),
+        Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "FULFILLED", "OVERDUE", "CANCELLED")
+            .contains(status),
         "Invalid obligation status");
     return status;
   }

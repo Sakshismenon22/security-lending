@@ -10,6 +10,7 @@ import { sendRequest, unwrap, rowsOf } from "./api/client";
 const names = {
   borrower: "Borrower",
   lender: "Lender",
+  lifecycle: "Lifecycle",
   borrowerAdapter: "Borrower FIX",
   lenderAdapter: "Lender FIX",
   market: "Market data",
@@ -17,6 +18,7 @@ const names = {
 const ports = {
   borrower: 8081,
   lender: 8084,
+  lifecycle: 8085,
   borrowerAdapter: 8082,
   lenderAdapter: 8083,
   market: 8080,
@@ -54,17 +56,27 @@ export default function App() {
     [health, setHealth] = useState({}),
     [directories, setDirectories] = useState({}),
     [users, setUsers] = useState({}),
+    [roles, setRoles] = useState({}),
     [checked, setChecked] = useState({}),
     [tab, setTab] = useState("actions"),
     [search, setSearch] = useState(""),
     [inspected, setInspected] = useState(null),
     [confirm, setConfirm] = useState(false);
   const org = context[side + "Org"],
+    selectedUserId = context[side + "User"],
+    selectedUser = (users[side] || []).find(
+      (u) => String(u.id) === String(selectedUserId),
+    ),
+    selectedUserRole =
+      (roles[side] || []).find(
+        (r) => String(r.id) === String(selectedUser?.roleId),
+      )?.roleName || selectedUser?.role || null,
     available = actions.filter(
       (a) =>
         a.category === category &&
         (a.side === side ||
           (category === "Operations" && a.side === side + "Adapter")) &&
+        (!a.requiresAdmin || selectedUserRole === "ADMIN") &&
         a.label.toLowerCase().includes(search.toLowerCase()),
     );
   function updateContext(patch) {
@@ -109,7 +121,7 @@ export default function App() {
   function body() {
     if (operation.body === undefined) return undefined;
     const template = defaults(operation);
-    return Object.fromEntries(
+    const result = Object.fromEntries(
       Object.entries(fields).map(([k, v]) => {
         const original = template[k];
         if (typeof original === "object" && original !== null)
@@ -130,6 +142,14 @@ export default function App() {
         return [k, v];
       }),
     );
+    if (operation.requiresAdmin) {
+      if (!selectedUserId)
+        throw Error("Select an admin user before approving the deposit.");
+      if (selectedUserRole !== "ADMIN")
+        throw Error("Only an active admin user can approve a deposit.");
+      return { ...result, userId: Number(selectedUserId) };
+    }
+    return result;
   }
   function request() {
     if (!operation) throw Error("Select a test action.");
@@ -238,6 +258,12 @@ export default function App() {
           "Could not load organizations. Inspect the service response.",
         );
       setDirectories((old) => ({ ...old, [side]: rowsOf(r.payload) }));
+      const roleResponse = await sendRequest({
+        side,
+        path: "/api/v1/organizations/roles",
+      });
+      if (roleResponse.ok)
+        setRoles((old) => ({ ...old, [side]: rowsOf(roleResponse.payload) }));
       if (org) {
         const u = await sendRequest({
           side,
