@@ -536,9 +536,10 @@ export default function App() {
                 <strong>Lifecycle/payment owner required</strong>
                 <span>
                   Start lifecycle on port 8085 for margin calls, recalls, and
-                  daily cash rebates. Cash rebates settle in the demo ledger
-                  on the MSLA schedule. External payment execution and
-                  lending fee accrual still require their owner workflows.
+                  daily cash rebates and lending fees. Cash rebates settle in
+                  the demo ledger. Lending fee bills appear on the MSLA
+                  schedule, and payment confirmation follows the existing
+                  payment workflow.
                 </span>
               </div>
             )}

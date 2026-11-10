@@ -394,10 +394,13 @@ class BorrowerWorkflowTests {
     }
 
     @Test
-    void externalFeeBillsArePaidOnceWithoutCalculatingFees() {
+    void externalFeeBillsArePaidOnceWithoutCalculatingFees() throws Exception {
         long org = org(), security = security("100");
         fund(org, "10000");
         long loan = loan(org, security, agreement(org, 0), 10), fee = sequence.incrementAndGet();
+        apply(org, "ACCRUAL_REPORTED", fee, 1, Map.of(
+                "loanId", loan, "type", "FEE", "date", "2026-11-01",
+                "baseValue", "1000", "rate", "0.03", "amount", "0.082192"));
         apply(
                 org,
                 "FEE_BILL_ISSUED",
@@ -422,6 +425,13 @@ class BorrowerWorkflowTests {
         assertEquals(0, bd("123.456789").compareTo(money(account(org), "blocked")));
         apply(org, "PAYMENT_CONFIRMED", request, 1, Map.of("amount", "123.456789"));
         assertEquals("PAID", db.owned(LendingFee.class, org, fee).get("status"));
+        String path = "/api/v1/organizations/" + org + "/loans/" + loan;
+        mvc.perform(get(path + "/fee-accruals"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].type").value("FEE"));
+        mvc.perform(get(path + "/fees"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].status").value("PAID"));
     }
 
     @Test

@@ -448,6 +448,34 @@ export const actions = [
     },
   ),
   l(
+    "fee-run",
+    "Billing & payments",
+    "Run due lending fees for a loan",
+    "/api/v1/lifecycle/loans/{id}/fees/run",
+    undefined,
+    {
+      global: true,
+      note: "Use the lender loan ID. Records completed days and issues bills according to the MSLA.",
+    },
+  ),
+  l(
+    "fee-accrue-today",
+    "Billing & payments",
+    "Record today's demo lending fee",
+    "/api/v1/lifecycle/loans/{id}/fees/demo/accrue-today",
+    undefined,
+    {
+      global: true,
+      note: "Use a settled, open lender loan ID. Records one daily fee using the outstanding shares and price at the time of the call.",
+    },
+  ),
+  op("borrower-loan-fee-accruals", "Billing & payments", "View daily lending fees for a loan",
+    "borrower", "GET", "/loans/{id}/fee-accruals", undefined,
+    { paged: true, note: "Use the borrower loan ID." }),
+  op("borrower-loan-fees", "Billing & payments", "View lending fee bills for a loan",
+    "borrower", "GET", "/loans/{id}/fees", undefined,
+    { paged: true, note: "Use the borrower loan ID. Fee bills appear when the MSLA billing period ends." }),
+  l(
     "rebate-run",
     "Billing & payments",
     "Run due cash rebates for a loan",
@@ -737,7 +765,7 @@ export const workflow = [
   ],
   [
     "Billing & payments",
-    "Run due cash rebates for the lender loan, then check daily accruals, settlements and payments on both sides. Request lending fee payment when a fee bill is available.",
+    "Run lending fees or cash rebates using the lender loan ID. Check daily lending fees and bills using the borrower loan ID. Request lending fee payment when a bill is available.",
     "Owner required",
   ],
   [

@@ -59,4 +59,10 @@ public class Loan {
 
   @Column(name = "rebate_processed_through")
   private LocalDate rebateProcessedThrough;
+
+  @Column(name = "fee_processed_through")
+  private LocalDate feeProcessedThrough;
+
+  @Column(name = "fee_finalized", nullable = false)
+  private boolean feeFinalized;
 }

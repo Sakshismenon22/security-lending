@@ -99,6 +99,19 @@ test("read pagination and API envelopes are handled", () => {
   assert.deepEqual(rowsOf({ data: [{ id: 4 }] }), [{ id: 4 }]);
   assert.deepEqual(rowsOf({ data: { id: 4 } }), []);
 });
+test("lending fee calculations use lifecycle and borrower history uses borrower loan IDs", () => {
+  for (const [id, suffix] of [["fee-run", "run"], ["fee-accrue-today", "demo/accrue-today"]]) {
+    const action = actions.find((a) => a.id === id);
+    assert.equal(action.method, "POST");
+    assert.equal(requestPath(action, "", 12), `/api/v1/lifecycle/loans/12/fees/${suffix}`);
+  }
+  for (const resource of ["fee-accruals", "fees"]) {
+    const action = actions.find((a) => a.id === `borrower-loan-${resource}`);
+    assert.equal(action.side, "borrower");
+    assert.equal(requestPath(action, 5, 34, 0, 20),
+      `/api/v1/organizations/5/loans/34/${resource}?page=0&size=20`);
+  }
+});
 test("HTTP errors remain failures and fee idempotency keys reach the proxy", async () => {
   const original = globalThis.fetch;
   let observed;
