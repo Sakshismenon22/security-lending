@@ -101,6 +101,15 @@ public class BorrowerEventProjectionService {
             require("PENDING".equals(l.get("status")),"Locate is not pending");long quantity=number(d,"approvedQuantity");
             require(quantity>0 && quantity<=n(l,"quantity"),"Invalid approved quantity");
             db.update("update locate_request set status=?,approved_quantity=? where id=?",quantity==n(l,"quantity")?"APPROVED":"PARTIALLY_APPROVED",quantity,id);
+            // An approved locate immediately creates a borrower-side reservation request.
+            // The lender confirms it and reserves inventory through the normal command flow.
+            if(db.list("select id from reservation where locate_id=?",id).isEmpty()) {
+                long reservationId=db.insert(
+                    "insert into reservation(organization_id,locate_id,msla_id,security_id,quantity,remaining_quantity,status,expires_at) values (?,?,?,?,?,0,'REQUESTED',?)",
+                    org,id,n(l,"msla_id"),n(l,"security_id"),quantity,instant(l,"expires_at"));
+                events.write(org,"RESERVATION_REQUESTED",reservationId,
+                    Map.of("locateId",id,"quantity",quantity,"automatic",true));
+            }
         } else db.update("update locate_request set status=? where id=?",type.equals("LOCATE_REJECTED")?"REJECTED":"EXPIRED",id);
     }
     private void reservation(long org,long id,String type,Map<String,Object> d) {
