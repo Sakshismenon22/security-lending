@@ -39,7 +39,7 @@ public class CollateralHistory {
     private Long quantity;
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
     @Column(name="asset_id")
     private Long assetId;

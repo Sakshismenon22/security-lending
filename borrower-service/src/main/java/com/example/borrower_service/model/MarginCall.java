@@ -16,7 +16,6 @@ import java.time.LocalDate;
 @NoArgsConstructor
 public class MarginCall {
     @Id
-    @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id",nullable=false)
     private Long id;
 
@@ -33,7 +32,7 @@ public class MarginCall {
     private BigDecimal amount;
 
     @Column(name="fulfilled_amount",nullable=false,precision=24,scale=6)
-    private BigDecimal fulfilledAmount;
+    private BigDecimal fulfilledAmount = BigDecimal.ZERO;
 
     @Column(name="reason",nullable=false,length=500)
     private String reason;
@@ -42,7 +41,7 @@ public class MarginCall {
     private String status;
 
     @Column(name="request_time",nullable=false)
-    private Instant requestTime;
+    private Instant requestTime = Instant.now();
 
     @Column(name="due_at",nullable=false)
     private Instant dueAt;

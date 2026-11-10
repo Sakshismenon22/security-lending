@@ -95,7 +95,7 @@ public class MarketDataService {
                         );
 
         List<SecurityData> history =
-                securityDataRepository.findAllHistory(
+                securityDataRepository.findBySecurityIdOrderByTradedDateTimestampAsc(
                         security.getId()
                 );
 
@@ -115,7 +115,7 @@ public class MarketDataService {
     @Transactional
     public void processAllSecurities() {
         List<SecurityMaster> securities =
-                securityMasterRepository.findAll();
+                securityMasterRepository.findAll(org.springframework.data.domain.Sort.by("id"));
 
         log.info(
                 "Starting market-data batch for {} securities",
@@ -209,6 +209,9 @@ public class MarketDataService {
          * database upsert updates it as Yahoo provides revised
          * OHLC values.
          */
+        // Serialize candle writes for the same security, including first inserts.
+        securityMasterRepository.lockById(security.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Security not found"));
         saveHistoricalCandles(
                 security,
                 candles
@@ -312,15 +315,17 @@ public class MarketDataService {
                 continue;
             }
 
-            securityDataRepository.upsert(
-                    security.getId(),
-                    candle.tradedDateTimestamp(),
-                    candle.open(),
-                    candle.close(),
-                    candle.high(),
-                    candle.low(),
-                    candle.volume()
-            );
+            var data = securityDataRepository
+                    .findBySecurityIdAndTradedDateTimestamp(security.getId(), candle.tradedDateTimestamp())
+                    .orElseGet(SecurityData::new);
+            data.setSecurity(security);
+            data.setTradedDateTimestamp(candle.tradedDateTimestamp());
+            data.setOpen(candle.open());
+            data.setClose(candle.close());
+            data.setHigh(candle.high());
+            data.setLow(candle.low());
+            data.setVolume(candle.volume());
+            securityDataRepository.save(data);
         }
     }
 

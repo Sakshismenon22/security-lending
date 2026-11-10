@@ -33,12 +33,12 @@ public class OutboxEvent {
     private String payload;
 
     @Column(name="published",nullable=false)
-    private Boolean published;
+    private Boolean published = false;
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
     @Column(name="ws_sent",nullable=false)
-    private Boolean wsSent;
+    private Boolean wsSent = false;
 
 }

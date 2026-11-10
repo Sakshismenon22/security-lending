@@ -237,7 +237,9 @@ export default function App() {
               ? "/api/v1/adapter/status"
               : service === "market"
                 ? "/api/v1/security-master/get-all-securities"
-                : "/api/v1/organizations",
+                : service === "lifecycle"
+                  ? "/actuator/health"
+                  : "/api/v1/organizations",
           });
           return [service, { ok: r.ok, status: r.status }];
         } catch {
@@ -533,11 +535,10 @@ export default function App() {
               <div className="notice owner">
                 <strong>Lifecycle/payment owner required</strong>
                 <span>
-                  EOD ratio checks, margin-call creation, reservation expiry,
-                  daily fee/rebate accrual, payment execution, defaults, and
-                  buy-ins cannot finish until the separate owner service is
-                  implemented and connected. Existing requests and read
-                  projections are available below.
+                  Start lifecycle on port 8085 for margin calls, recalls, and
+                  daily cash rebates. Cash rebates settle in the demo ledger
+                  on the MSLA schedule. External payment execution and
+                  lending fee accrual still require their owner workflows.
                 </span>
               </div>
             )}
@@ -767,7 +768,15 @@ export default function App() {
                                 className={nested ? "full" : ""}
                               >
                                 {labelOf(field)}
-                                {nested ? (
+                                {operation.choices?.[field] ? (
+                                  <select value={value} onChange={(e) =>
+                                    setFields((old) => ({ ...old, [field]: e.target.value }))}>
+                                    <option value="">Default (at loan termination)</option>
+                                    {operation.choices[field].map((choice) => (
+                                      <option key={choice} value={choice}>{choice}</option>
+                                    ))}
+                                  </select>
+                                ) : nested ? (
                                   <>
                                     <small>
                                       Editable JSON; use actual security IDs.

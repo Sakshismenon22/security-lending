@@ -27,9 +27,9 @@ public class Organization {
     private String registrationNumber;
 
     @Column(name="currency",nullable=false,length=3)
-    private String currency;
+    private String currency = "INR";
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
 }

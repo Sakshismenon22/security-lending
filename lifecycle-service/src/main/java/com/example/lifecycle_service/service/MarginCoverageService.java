@@ -92,6 +92,12 @@ public class MarginCoverageService {
 
   @Transactional
   public MarginCoverageDecision triggerMarginCallForLoan(long loanId, BigDecimal requestedAmount) {
+    var loan =
+        loanRepository
+            .findById(loanId)
+            .orElseThrow(() -> new IllegalArgumentException("Loan not found: " + loanId));
+    // Collateral settlement in the lender service locks this same organization row.
+    loanRepository.lockOrganization(loan.getOrganizationId());
     MarginCoverageDecision decision = evaluateLoan(loanId);
     BigDecimal amountToCall =
         requestedAmount != null && requestedAmount.signum() > 0
@@ -99,11 +105,6 @@ public class MarginCoverageService {
             : decision.getMarginCallAmount();
 
     if (amountToCall != null && amountToCall.signum() > 0) {
-      var loan =
-          loanRepository
-              .findById(loanId)
-              .orElseThrow(() -> new IllegalArgumentException("Loan not found: " + loanId));
-
       var existingCall =
           marginCallRepository
               .findFirstByOrganizationIdAndOwnerReferenceIdOrderByCreatedAtDesc(
@@ -129,16 +130,16 @@ public class MarginCoverageService {
         call.setCreatedAt(Instant.now());
       }
 
-      call.setAmount(amountToCall);
-      call.setFulfilledAmount(BigDecimal.ZERO);
+      BigDecimal fulfilled = isExistingOpenCall ? call.getFulfilledAmount() : BigDecimal.ZERO;
+      call.setAmount(fulfilled.add(amountToCall));
+      call.setFulfilledAmount(fulfilled);
       call.setDueAt(Instant.now().plus(Duration.ofHours(24)));
       call.setReason("Coverage ratio below the MSLA threshold.");
       if (!isExistingOpenCall) {
         call.setSourceVersion(call.getSourceVersion() == null ? 1L : call.getSourceVersion() + 1L);
+        call.setCreatedAt(Instant.now());
       }
-      if (call.getStatus() == null || !"OPEN".equalsIgnoreCase(call.getStatus())) {
-        call.setStatus("OPEN");
-      }
+      call.setStatus(fulfilled.signum() > 0 ? "PARTIALLY_FULFILLED" : "OPEN");
       marginCallRepository.save(call);
       publishLifecycleEvent(call);
       decision.setMarginCallAmount(amountToCall);

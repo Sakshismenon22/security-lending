@@ -110,10 +110,10 @@ class MarginCoverageServiceKafkaTest {
     existingCall.setOwnerReferenceId(7L);
     existingCall.setSourceVersion(1L);
     existingCall.setSourceData("{\"type\":\"AUTO_MARGIN_CALL\"}");
-    existingCall.setStatus("PENDING");
+    existingCall.setStatus("PARTIALLY_FULFILLED");
     existingCall.setCreatedAt(Instant.now());
     existingCall.setAmount(new BigDecimal("150"));
-    existingCall.setFulfilledAmount(BigDecimal.ZERO);
+    existingCall.setFulfilledAmount(new BigDecimal("50"));
     existingCall.setDueAt(Instant.now().plusSeconds(60));
     existingCall.setReason("Coverage ratio below the MSLA threshold.");
 
@@ -129,6 +129,9 @@ class MarginCoverageServiceKafkaTest {
     var decision = service.triggerMarginCallForLoan(7L, new BigDecimal("200"));
 
     assertEquals("MARGIN_CALL_REFRESHED", decision.getStatus());
+    assertEquals("PARTIALLY_FULFILLED", existingCall.getStatus());
+    assertEquals(new BigDecimal("50"), existingCall.getFulfilledAmount());
+    assertEquals(new BigDecimal("250"), existingCall.getAmount());
     verify(kafkaTemplate).send(any(ProducerRecord.class));
   }
 }

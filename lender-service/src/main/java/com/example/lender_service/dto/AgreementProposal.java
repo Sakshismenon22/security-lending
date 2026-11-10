@@ -20,4 +20,20 @@ public record AgreementProposal(
     boolean recallAllowed,
     @Min(1) int marginHours,
     @Min(1) int recallHours,
-    @NotEmpty List<@Valid RuleRequest> collateralRules) {}
+    @NotEmpty List<@Valid RuleRequest> collateralRules,
+    @NotNull @Pattern(regexp = "DAILY|WEEKLY|MONTHLY|AT_CLOSE") String rebateSettlementFrequency) {
+
+  public AgreementProposal {
+    if (rebateSettlementFrequency == null || rebateSettlementFrequency.isBlank()) {
+      rebateSettlementFrequency = "AT_CLOSE";
+    }
+  }
+
+  public AgreementProposal(long lenderId, String number, LocalDate effectiveDate, LocalDate expiryDate,
+      BigDecimal creditLimit, BigDecimal feeRate, BigDecimal rebateRate, BigDecimal coverageRatio,
+      String billingFrequency, int dayBasis, boolean recallAllowed, int marginHours, int recallHours,
+      List<RuleRequest> collateralRules) {
+    this(lenderId, number, effectiveDate, expiryDate, creditLimit, feeRate, rebateRate, coverageRatio,
+        billingFrequency, dayBasis, recallAllowed, marginHours, recallHours, collateralRules, "AT_CLOSE");
+  }
+}

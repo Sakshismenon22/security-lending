@@ -9,4 +9,6 @@ public interface RebatePaymentRepository extends JpaRepository<RebatePayment, Lo
   Page<RebatePayment> findByOrganizationId(Long organizationId, Pageable pageable);
 
   Optional<RebatePayment> findByIdAndOrganizationId(Long id, Long organizationId);
+
+  Page<RebatePayment> findByOrganizationIdAndLoanId(Long organizationId, Long loanId, Pageable pageable);
 }

@@ -10,6 +10,7 @@ import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Receives borrower intent; approvals and actual settlement are separate lender operations. */
 @Service
@@ -32,6 +33,7 @@ public class BorrowerCommandService {
   private final ReservationService reservationService;
   private final CollateralService collateral;
   private final EventService events;
+  private final RecallService recalls;
   private final JsonService json;
   private final Clock clock;
 
@@ -131,6 +133,7 @@ public class BorrowerCommandService {
     a.setRebateRate(r.rebateRate());
     a.setCoverageRatio(r.coverageRatio());
     a.setBillingFrequency(r.billingFrequency());
+    a.setRebateSettlementFrequency(r.rebateSettlementFrequency());
     a.setDayBasis(r.dayBasis());
     a.setRecallAllowed(r.recallAllowed());
     a.setMarginHours(r.marginHours());
@@ -318,18 +321,29 @@ public class BorrowerCommandService {
     var r = json.data(command.data(), ReturnCommand.class);
     var loan = found(loans.findByConnectionIdAndBorrowerLoanId(c.getId(), r.loanId()));
     sameAgreement(loan.getMslaId(), c, command);
-    require("ACTIVE".equals(loan.getStatus()), "Loan is not active");
-    long pending =
-        returns.findByLoanId(loan.getId()).stream()
-            .filter(x -> "PENDING".equals(x.getStatus()))
-            .mapToLong(LoanReturn::getQuantity)
-            .sum();
-    require(
-        r.quantity() <= loan.getOutstandingQuantity() - pending,
-        "Return exceeds uncommitted outstanding quantity");
     require(
         returns.findByConnectionIdAndBorrowerReturnId(c.getId(), command.referenceId()).isEmpty(),
         "Return request already exists");
+    try {
+      require("ACTIVE".equals(loan.getStatus()), "Loan is not active");
+      long pending =
+          returns.findByLoanId(loan.getId()).stream()
+              .filter(x -> "PENDING".equals(x.getStatus()))
+              .mapToLong(LoanReturn::getQuantity)
+              .sum();
+      require(
+          r.quantity() <= loan.getOutstandingQuantity() - pending,
+          "Return exceeds uncommitted outstanding quantity");
+      if (r.recallId() != 0) recalls.validateReturn(loan, r.recallId(), r.quantity());
+    } catch (ResponseStatusException rejected) {
+      events.confirm(
+          c,
+          "RETURN_REJECTED",
+          "loan_return",
+          command.referenceId(),
+          Map.of("reason", rejected.getReason()));
+      return;
+    }
     var x = new LoanReturn();
     x.setOrganizationId(c.getOrganizationId());
     x.setConnectionId(c.getId());

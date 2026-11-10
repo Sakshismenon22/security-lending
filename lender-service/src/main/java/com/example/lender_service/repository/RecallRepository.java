@@ -12,4 +12,7 @@ public interface RecallRepository extends JpaRepository<Recall, Long> {
 
   Optional<Recall> findByOrganizationIdAndOwnerReferenceId(
       Long organizationId, Long ownerReferenceId);
+
+  List<Recall> findByLoanIdAndStatusInOrderByDueAtAscIdAsc(
+      Long loanId, Collection<String> statuses);
 }

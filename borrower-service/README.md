@@ -16,7 +16,7 @@ Fee, rebate, valuation, margin-call, recall, default, and buy-in tables in this 
 com.example.borrower_service
   controller/  Borrower HTTP endpoints
   model/       One JPA entity per file; separate composite key classes
-  repository/  Typed Spring Data repositories and explicit transactional SQL support
+  repository/  Spring Data repositories and JPA transaction access
   dto/         One validated request/event DTO per file
   response/    API envelope, stable pagination, problem responses
   config/      HTTP/CORS, WebSocket, Kafka, borrower background jobs

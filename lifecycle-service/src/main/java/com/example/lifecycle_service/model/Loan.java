@@ -2,6 +2,7 @@ package com.example.lifecycle_service.model;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.time.LocalDate;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -55,4 +56,7 @@ public class Loan {
 
   @Column(name = "closed_at")
   private Instant closedAt;
+
+  @Column(name = "rebate_processed_through")
+  private LocalDate rebateProcessedThrough;
 }

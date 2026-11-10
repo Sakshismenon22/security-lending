@@ -33,7 +33,7 @@ public class LocateRequest {
     private Long quantity;
 
     @Column(name="approved_quantity",nullable=false)
-    private Long approvedQuantity;
+    private Long approvedQuantity = 0L;
 
     @Column(name="status",nullable=false,length=30)
     private String status;
@@ -42,6 +42,6 @@ public class LocateRequest {
     private Instant expiresAt;
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
 }

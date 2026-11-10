@@ -30,6 +30,6 @@ public class AuditEvent {
     private String reference;
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
 }

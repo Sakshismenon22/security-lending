@@ -16,7 +16,6 @@ import java.time.LocalDate;
 @NoArgsConstructor
 public class BuyIn {
     @Id
-    @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id",nullable=false)
     private Long id;
 
@@ -45,6 +44,6 @@ public class BuyIn {
     private String status;
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
 }

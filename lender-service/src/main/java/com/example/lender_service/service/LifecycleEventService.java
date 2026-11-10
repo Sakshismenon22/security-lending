@@ -3,6 +3,7 @@ package com.example.lender_service.service;
 import static com.example.lender_service.service.Checks.*;
 
 import com.example.lender_service.dto.LifecycleEvent;
+import com.example.lender_service.dto.RecallRequest;
 import com.example.lender_service.model.*;
 import com.example.lender_service.repository.*;
 import java.math.BigDecimal;
@@ -32,6 +33,7 @@ public class LifecycleEventService {
   private final LoanValuationRepository valuations;
   private final MarginCallRepository calls;
   private final RecallRepository recalls;
+  private final RecallService recallWorkflow;
   private final LendingFeeRepository fees;
   private final RebateRepository rebates;
   private final DailyAccrualRepository accruals;
@@ -97,6 +99,9 @@ public class LifecycleEventService {
               Map.of());
         }
       }
+      case "RECALL_DEADLINE_REACHED" ->
+          recallWorkflow.deadlineReached(
+              e.organizationId(), e.referenceId(), instant(e.data(), "expectedDueAt"));
       case "LIFECYCLE_REQUEST_ACCEPTED", "LIFECYCLE_REQUEST_REJECTED" -> {
         var r = found(requests.findByIdAndOrganizationId(e.referenceId(), e.organizationId()));
         require(
@@ -206,13 +211,40 @@ public class LifecycleEventService {
         calls.save(p);
       }
       case "RECALL_UPDATED" -> {
-        var p =
-            view(
-                e,
-                loan,
-                recalls.findByOrganizationIdAndOwnerReferenceId(
-                    e.organizationId(), e.referenceId()),
-                Recall::new);
+        var existing =
+            recalls.findByOrganizationIdAndOwnerReferenceId(e.organizationId(), e.referenceId());
+        if (d.hasNonNull("lifecycleRequestId")) {
+          var request =
+              found(
+                  requests.findByIdAndOrganizationId(
+                      number(d, "lifecycleRequestId"), e.organizationId()));
+          require(
+              "RECALL_REQUESTED".equals(request.getType())
+                  && Objects.equals(request.getLoanId(), loan.getId())
+                  && Objects.equals(request.getConnectionId(), connection.getId()),
+              "Recall request does not match this loan");
+          if (!Set.of("PENDING", "ACCEPTED").contains(request.getStatus())) return;
+          long quantity = number(d, "quantity");
+          require(
+              quantity == json.parse(request.getPayload(), RecallRequest.class).quantity()
+                  && number(d, "fulfilledQuantity") == 0
+                  && "OPEN".equals(text(d, "status")),
+              "Recall issuance does not match the requested terms");
+          if (existing.isPresent()
+              || !"ACTIVE".equals(loan.getStatus())
+              || quantity
+                  > loan.getOutstandingQuantity() - recallWorkflow.outstanding(loan.getId())) {
+            request.setStatus("REJECTED");
+            events.local(
+                e.organizationId(),
+                "RECALL_REQUEST_REJECTED",
+                request.getId(),
+                Map.of(
+                    "reason", "Recall reference or outstanding quantity is no longer available"));
+            return;
+          }
+        }
+        var p = view(e, loan, existing, Recall::new);
         if (p == null) return;
         p.setQuantity(number(d, "quantity"));
         p.setFulfilledQuantity(number(d, "fulfilledQuantity"));
@@ -278,6 +310,11 @@ public class LifecycleEventService {
         p.setRate(decimal(d, "rate"));
         p.setAccrualDate(date(d, "date"));
         p.setPaymentDate(date(d, "paymentDate"));
+        if (d.hasNonNull("periodStart")) {
+          p.setPeriodStart(date(d, "periodStart"));
+          p.setPeriodEnd(date(d, "periodEnd"));
+          p.setSettlementFrequency(text(d, "settlementFrequency"));
+        }
         p.setStatus("ACCRUED");
         rebates.save(p);
         resource = "rebate";

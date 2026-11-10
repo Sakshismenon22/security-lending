@@ -16,7 +16,6 @@ import java.time.LocalDate;
 @NoArgsConstructor
 public class LendingFee {
     @Id
-    @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id",nullable=false)
     private Long id;
 
@@ -39,7 +38,7 @@ public class LendingFee {
     private BigDecimal feeAmount;
 
     @Column(name="currency",nullable=false,length=3)
-    private String currency;
+    private String currency = "INR";
 
     @Column(name="due_date",nullable=false)
     private LocalDate dueDate;

@@ -11,4 +11,6 @@ public interface FeeAccrualViewRepository extends JpaRepository<FeeAccrualView,L
     List<FeeAccrualView> findByOrganizationId(Long organizationId);
     Page<FeeAccrualView> findByOrganizationId(Long organizationId,Pageable pageable);
     Optional<FeeAccrualView> findByIdAndOrganizationId(Long id,Long organizationId);
+
+  Page<FeeAccrualView> findByOrganizationIdAndLoanIdAndType(Long organizationId, Long loanId, String type, Pageable pageable);
 }

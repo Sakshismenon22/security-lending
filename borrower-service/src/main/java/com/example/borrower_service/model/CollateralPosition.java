@@ -35,16 +35,16 @@ public class CollateralPosition {
     private Long securityId;
 
     @Column(name="quantity",nullable=false)
-    private Long quantity;
+    private Long quantity = 0L;
 
     @Column(name="cash_amount",nullable=false,precision=24,scale=6)
-    private BigDecimal cashAmount;
+    private BigDecimal cashAmount = BigDecimal.ZERO;
 
     @Column(name="haircut",nullable=false,precision=12,scale=8)
     private BigDecimal haircut;
 
     @Column(name="status",nullable=false,length=30)
-    private String status;
+    private String status = "POSTED";
 
     @Column(name="asset_id")
     private Long assetId;

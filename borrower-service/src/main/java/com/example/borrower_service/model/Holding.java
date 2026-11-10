@@ -25,24 +25,24 @@ public class Holding {
     private Long securityId;
 
     @Column(name="owned_quantity",nullable=false)
-    private Long ownedQuantity;
+    private Long ownedQuantity = 0L;
 
     @Column(name="borrowed_quantity",nullable=false)
-    private Long borrowedQuantity;
+    private Long borrowedQuantity = 0L;
 
     @Column(name="pledged_quantity",nullable=false)
-    private Long pledgedQuantity;
+    private Long pledgedQuantity = 0L;
 
     @Column(name="blocked_owned",nullable=false)
-    private Long blockedOwned;
+    private Long blockedOwned = 0L;
 
     @Column(name="blocked_borrowed",nullable=false)
-    private Long blockedBorrowed;
+    private Long blockedBorrowed = 0L;
 
     @Column(name="average_cost",nullable=false,precision=24,scale=6)
-    private BigDecimal averageCost;
+    private BigDecimal averageCost = BigDecimal.ZERO;
 
     @Column(name="realized_pnl",nullable=false,precision=24,scale=6)
-    private BigDecimal realizedPnl;
+    private BigDecimal realizedPnl = BigDecimal.ZERO;
 
 }

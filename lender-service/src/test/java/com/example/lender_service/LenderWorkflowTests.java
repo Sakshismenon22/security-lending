@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +54,7 @@ class LenderWorkflowTests {
   @Autowired RebateRepository rebates;
   @Autowired LenderAccountRepository accounts;
   @Autowired MarginCallRepository calls;
+  @Autowired RecallRepository recalls;
   @Autowired LoanDefaultRepository defaults;
   @Autowired MockMvc mvc;
   static final AtomicLong ids = new AtomicLong(10000);
@@ -423,12 +425,89 @@ class LenderWorkflowTests {
   }
 
   @Test
-  void externallyReportedRebatesAreNotRecalculatedAndPaymentIsDeduplicated() {
+  void recallIssuanceDeadlineAndReturnSettlementReachTheBorrowerOutbox() {
+    var o = organization();
+    var c = connection(o);
+    var loan = activeLoan(o, c, security("100"), true);
+    var request =
+        lifecycleRequests.recall(
+            o.getId(), loan.getId(), new RecallRequest(60, "Need shares", "recall-flow"));
+    long reference = request.getId();
+    lifecycle(
+        o,
+        "RECALL_UPDATED",
+        reference,
+        1,
+        Map.of(
+            "loanId",
+            loan.getId(),
+            "lifecycleRequestId",
+            reference,
+            "externalId",
+            "RECALL-" + reference,
+            "quantity",
+            60,
+            "fulfilledQuantity",
+            0,
+            "reason",
+            "Need shares",
+            "status",
+            "OPEN",
+            "dueAt",
+            Instant.now().plusSeconds(3600).toString()));
+    var recall = read.list(o.getId(), "recalls", 0, 50);
+    assertEquals(1, ((com.example.lender_service.response.PageResponse<?>) recall).totalElements());
+    assertEquals("COMPLETED", request.getStatus());
+
+    command(o, "RETURN_REQUESTED", 500, 10, new ReturnCommand(300, 20, reference));
+    var first = returns.findByConnectionIdAndBorrowerReturnId(c.getId(), 500L).orElseThrow();
+    command(o, "RETURN_REQUESTED", 501, 10, new ReturnCommand(300, 41, reference));
+    assertTrue(returns.findByConnectionIdAndBorrowerReturnId(c.getId(), 501L).isEmpty());
+    loanService.returnDecision(o.getId(), first.getId(), true, "RETURN-1");
+    loanService.returnDecision(o.getId(), first.getId(), true, "RETURN-1");
+
+    var current =
+        recalls.findByOrganizationIdAndOwnerReferenceId(o.getId(), reference).orElseThrow();
+    assertEquals("PARTIALLY_FULFILLED", current.getStatus());
+    assertEquals(20L, current.getFulfilledQuantity().longValue());
+    current.setDueAt(Instant.now().minusSeconds(60));
+    var deadline = Map.<String, Object>of("expectedDueAt", current.getDueAt().toString());
+    lifecycle(o, "RECALL_DEADLINE_REACHED", reference, 1, deadline);
+    assertEquals("OVERDUE", current.getStatus());
+    command(o, "RETURN_REQUESTED", 502, 10, new ReturnCommand(300, 40, reference));
+    var last = returns.findByConnectionIdAndBorrowerReturnId(c.getId(), 502L).orElseThrow();
+    loanService.returnDecision(o.getId(), last.getId(), true, "RETURN-2");
+    lifecycle(o, "RECALL_DEADLINE_REACHED", reference, 1, deadline);
+    assertEquals("FULFILLED", current.getStatus());
+    assertEquals(60L, current.getFulfilledQuantity().longValue());
+    assertEquals(40L, loan.getOutstandingQuantity().longValue());
+    var updates =
+        events.findByOrganizationId(o.getId(), Pageable.unpaged()).getContent().stream()
+            .filter(row -> "lender.confirmations.v1".equals(row.getTopic()))
+            .map(row -> json.tree(row.getPayload()))
+            .filter(event -> "RECALL_UPDATED".equals(event.path("type").asText()))
+            .sorted(Comparator.comparingLong(event -> event.path("version").asLong()))
+            .toList();
+    assertEquals(
+        List.of("OPEN", "PARTIALLY_FULFILLED", "OVERDUE", "FULFILLED"),
+        updates.stream().map(event -> event.path("data").path("status").asText()).toList());
+    assertEquals(300L, updates.get(3).path("data").path("loanId").asLong());
+  }
+
+  @Test
+  void externallyReportedRebatesAreNotRecalculatedAndPaymentIsDeduplicated() throws Exception {
     var o = organization();
     var c = connection(o);
     long s = security("100");
     var loan = activeLoan(o, c, s, true);
     long id = ids.incrementAndGet();
+    lifecycle(
+        o,
+        "ACCRUAL_REPORTED",
+        id,
+        1,
+        Map.of("loanId", loan.getId(), "type", "REBATE", "date", "2026-11-08",
+            "baseValue", "2000", "rate", "0.0123456789", "amount", "12.345678"));
     lifecycle(
         o,
         "REBATE_ACCRUED",
@@ -463,6 +542,12 @@ class LenderWorkflowTests {
         0,
         bd("12.345678")
             .compareTo(accounts.findByOrganizationId(o.getId()).orElseThrow().getRebatePaid()));
+    String path = "/api/v1/organizations/" + o.getId() + "/loans/" + loan.getId();
+    for (String resource : List.of("rebate-accruals", "rebate-settlements", "rebate-payments")) {
+      mvc.perform(get(path + "/" + resource))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.totalElements").value(1));
+    }
   }
 
   @Test
@@ -498,6 +583,102 @@ class LenderWorkflowTests {
     assertEquals(
         "OVERDUE",
         calls.findByOrganizationIdAndOwnerReferenceId(o.getId(), id).orElseThrow().getStatus());
+  }
+
+  @Test
+  void confirmingMarginCollateralPublishesPartialAndFulfilledSnapshotsOnce() throws Exception {
+    var o = organization();
+    var c = connection(o);
+    long borrowedSecurity = security("100");
+    long pledgedSecurity = security("50");
+    inventory.create(o.getId(), new InventoryRequest(borrowedSecurity, 1000, "Initial custody"));
+    agreement(o, c, pledgedSecurity, true);
+    reservation(o, c, borrowedSecurity, 100);
+    var loan = pendingLoan(o, c, 100);
+    collateral.confirm(o.getId(), positions.findByLoanId(loan.getId()).get(0).getId(), "INITIAL");
+    loanService.decide(o.getId(), loan.getId(), true, "Approved");
+    loanService.settle(o.getId(), loan.getId(), "SETTLED");
+
+    long callReference = ids.incrementAndGet();
+    lifecycle(
+        o,
+        "MARGIN_CALL_UPDATED",
+        callReference,
+        1,
+        Map.of(
+            "loanId",
+            loan.getId(),
+            "externalId",
+            "MC-" + callReference,
+            "amount",
+            "200",
+            "fulfilledAmount",
+            "0",
+            "reason",
+            "Coverage shortfall",
+            "status",
+            "OPEN",
+            "dueAt",
+            Instant.now().plusSeconds(3600)));
+    var call =
+        calls.findByOrganizationIdAndOwnerReferenceId(o.getId(), callReference).orElseThrow();
+
+    command(
+        o,
+        "COLLATERAL_PLEDGE_REQUESTED",
+        300,
+        10,
+        new PledgeCommand(401, new AllocationRequest("CASH", null, 0, bd("120"), callReference)));
+    var cash = positions.findByConnectionIdAndBorrowerPositionId(c.getId(), 401L).orElseThrow();
+    // Simulate a receipt posted by the old code, before it also updated the call.
+    cash.setStatus("POSTED");
+    cash.setSettlementReference("OLD-CASH-RECEIPT");
+    collateral.confirm(o.getId(), cash.getId(), "OLD-CASH-RECEIPT");
+    assertEquals("PARTIALLY_FULFILLED", call.getStatus());
+    assertEquals(0, bd("120").compareTo(call.getFulfilledAmount()));
+
+    command(
+        o,
+        "COLLATERAL_PLEDGE_REQUESTED",
+        300,
+        10,
+        new PledgeCommand(
+            402,
+            new AllocationRequest("SECURITY", pledgedSecurity, 2, BigDecimal.ZERO, callReference)));
+    var shares = positions.findByConnectionIdAndBorrowerPositionId(c.getId(), 402L).orElseThrow();
+    mvc.perform(
+            post("/api/v1/organizations/"
+                    + o.getId()
+                    + "/collateral/"
+                    + shares.getId()
+                    + "/confirm")
+                .contentType("application/json")
+                .content(json.write(new SettlementRequest("SHARES-RECEIPT"))))
+        .andExpect(status().isOk());
+    collateral.confirm(o.getId(), shares.getId(), "SHARES-RECEIPT");
+
+    assertEquals("FULFILLED", call.getStatus());
+    assertEquals(0, bd("200").compareTo(call.getFulfilledAmount()));
+    var updates =
+        events
+            .findByOrganizationId(o.getId(), org.springframework.data.domain.Pageable.unpaged())
+            .getContent()
+            .stream()
+            .filter(row -> row.getTopic().equals("lender.confirmations.v1"))
+            .map(row -> json.tree(row.getPayload()))
+            .filter(
+                event ->
+                    "MARGIN_CALL_UPDATED".equals(event.path("type").asText())
+                        && event.path("referenceId").asLong() == callReference)
+            .sorted(Comparator.comparingLong(event -> event.path("version").asLong()))
+            .toList();
+    assertEquals(3, updates.size());
+    assertEquals("PARTIALLY_FULFILLED", updates.get(1).path("data").path("status").asText());
+    var finalUpdate = updates.get(2);
+    assertEquals(3L, finalUpdate.path("version").asLong());
+    assertEquals(
+        loan.getBorrowerLoanId().longValue(), finalUpdate.path("data").path("loanId").asLong());
+    assertEquals("FULFILLED", finalUpdate.path("data").path("status").asText());
   }
 
   @Test

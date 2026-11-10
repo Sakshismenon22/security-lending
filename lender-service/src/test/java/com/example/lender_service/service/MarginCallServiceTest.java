@@ -25,6 +25,7 @@ class MarginCallServiceTest {
   @Mock private LoanRepository loans;
   @Mock private BorrowerConnectionRepository connections;
   @Mock private EventService events;
+  @Mock private TenantService tenants;
 
   @InjectMocks private MarginCallService service;
 

@@ -26,6 +26,7 @@ public class CollateralService {
   private final EventService events;
   private final Clock clock;
   private final LenderAccountLedgerRepository ledger;
+  private final MarginCallService marginCalls;
 
   public Map<String, Object> preview(
       long org, long loanId, boolean includePending, Long excludingPosition) {
@@ -85,6 +86,9 @@ public class CollateralService {
       require(
           reference.equals(p.getSettlementReference()),
           "Collateral already confirmed with a different reference");
+      if (p.getMarginCallId() != null) {
+        marginCalls.applyCollateralReceipt(p, found(loans.findById(p.getLoanId())));
+      }
       return p;
     }
     require("PLEDGE_PENDING".equals(p.getStatus()), "Collateral is not pending");
@@ -106,6 +110,7 @@ public class CollateralService {
         "collateral_position",
         p.getBorrowerPositionId(),
         Map.of());
+    marginCalls.applyCollateralReceipt(p, l);
     events.local(org, "COLLATERAL_SETTLED", id, Map.of("position", p, "loan", l));
     return p;
   }

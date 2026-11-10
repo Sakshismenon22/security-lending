@@ -57,7 +57,7 @@ public class Loan {
     private String billingFrequency;
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
     @Column(name="settled_at")
     private Instant settledAt;

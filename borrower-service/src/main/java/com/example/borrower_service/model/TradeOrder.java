@@ -42,13 +42,13 @@ public class TradeOrder {
     private BigDecimal limitPrice;
 
     @Column(name="reserved_cash",nullable=false,precision=24,scale=6)
-    private BigDecimal reservedCash;
+    private BigDecimal reservedCash = BigDecimal.ZERO;
 
     @Column(name="status",nullable=false,length=30)
     private String status;
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
     @Column(name="filled_at")
     private Instant filledAt;

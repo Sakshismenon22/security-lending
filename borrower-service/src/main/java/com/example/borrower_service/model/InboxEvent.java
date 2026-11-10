@@ -20,6 +20,6 @@ public class InboxEvent {
     private String eventId;
 
     @Column(name="received_at",nullable=false)
-    private Instant receivedAt;
+    private Instant receivedAt = Instant.now();
 
 }
