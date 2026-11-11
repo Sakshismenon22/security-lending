@@ -24,4 +24,6 @@ public interface SecurityDataRepository
     );
 
     List<SecurityData> findBySecurityIdOrderByTradedDateTimestampAsc(Integer securityId);
+
+    Optional<SecurityData> findBySecurityIdOrderByTradedDateTimestampDesc(Integer securityId);
 }
