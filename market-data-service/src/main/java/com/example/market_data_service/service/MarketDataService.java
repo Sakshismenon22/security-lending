@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -57,6 +58,8 @@ public class MarketDataService {
     private final YahooCandleMapper yahooCandleMapper;
 
     private final SimpMessagingTemplate messagingTemplate;
+
+    private final TransactionTemplate transactionTemplate;
 
     /*
      * Returns all historical candles for one symbol and exchange.
@@ -112,7 +115,6 @@ public class MarketDataService {
     /*
      * Processes all securities stored in security_master.
      */
-    @Transactional
     public void processAllSecurities() {
         List<SecurityMaster> securities =
                 securityMasterRepository.findAll(org.springframework.data.domain.Sort.by("id"));
@@ -124,7 +126,7 @@ public class MarketDataService {
 
         for (SecurityMaster security : securities) {
             try {
-                processSecurity(security);
+                transactionTemplate.executeWithoutResult(status -> processSecurity(security));
             } catch (Exception exception) {
                 log.error(
                         "Failed to process symbol={}",
@@ -143,7 +145,7 @@ public class MarketDataService {
      * The current minute is deliberately excluded from the
      * current-price update because it is still forming.
      */
-    @Transactional
+    @Transactional(value = Transactional.TxType.REQUIRES_NEW)
     public void processSecurity(
             SecurityMaster security
     ) {

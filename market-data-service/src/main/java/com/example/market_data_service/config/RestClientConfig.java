@@ -11,12 +11,21 @@ import org.apache.hc.core5.ssl.TrustStrategy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 import javax.net.ssl.SSLContext;
 import org.apache.hc.core5.ssl.SSLContexts;
 
 @Configuration
 public class RestClientConfig {
+
+    @Bean
+    public TransactionTemplate transactionTemplate(
+            PlatformTransactionManager transactionManager
+    ) {
+        return new TransactionTemplate(transactionManager);
+    }
 
     @Bean
     public RestClient yahooRestClient() throws Exception {
