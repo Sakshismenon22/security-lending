@@ -1,0 +1,40 @@
+Seq # 
+Message Name 
+FIX Type 
+Interaction Sequence & Business Description 
+1 
+Request For Security 
+AF 
+Custodian -> Borrower: Custodian initiates a 
+availability/loan request (AF) specifying required 
+security symbol and quantity. 
+2 
+Collateral Inquiry 
+BB 
+Borrower -> Custodian: Borrower sends Collateral 
+Inquiry (BB) to request required collateral haircut and 
+eligible collateral types. 
+3 
+Collateral Report 
+BA 
+Custodian -> Borrower: Custodian returns Collateral 
+Report (BA) detailing eligible assets, margins, and 
+valuation requirements. 
+4 
+Trade Capture Report 
+AE 
+Borrower -> Custodian: Borrower submits Trade 
+Capture Report (AE) containing agreed loan quantity, 
+fee rate, and settlement date. 
+5 
+Trade Confirmation 
+35=AK 
+Custodian -> Borrower: Custodian verifies MSLA limits 
+and issues Trade Confirmation (AK) locking the loan 
+contract. 
+6 
+Security Status 
+f 
+Borrower -> Custodian: Borrower broadcasts Security 
+Status (f) updating loan execution status (e.g., 
+Allocated, On-Loan, Recalled).
