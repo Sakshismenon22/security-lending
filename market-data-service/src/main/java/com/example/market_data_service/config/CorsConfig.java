@@ -13,16 +13,15 @@ public class CorsConfig
             CorsRegistry registry
     ) {
         registry.addMapping("/**")
-                .allowedOrigins(
-                        "http://localhost:5173"
-                )
+                .allowedOriginPatterns("*")
                 .allowedMethods(
-                "GET",
-                "POST",
-                "PUT",
-                "DELETE",
-                "OPTIONS"
-        )
-                .allowedHeaders("*");
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "DELETE",
+                        "OPTIONS"
+                )
+                .allowedHeaders("*")
+                .allowCredentials(true);
     }
 }

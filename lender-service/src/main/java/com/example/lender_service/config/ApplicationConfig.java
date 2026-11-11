@@ -42,8 +42,9 @@ public class ApplicationConfig implements WebMvcConfigurer {
   public void addCorsMappings(CorsRegistry registry) {
     registry
         .addMapping("/api/**")
-        .allowedOrigins(origin)
-        .allowedMethods("GET", "POST", "PATCH", "OPTIONS")
-        .allowedHeaders("Content-Type", "Idempotency-Key");
+        .allowedOriginPatterns("*")
+        .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+        .allowedHeaders("*")
+        .allowCredentials(true);
   }
 }

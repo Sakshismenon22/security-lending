@@ -19,6 +19,10 @@ public class ApplicationConfig implements WebMvcConfigurer {
         return RestClient.builder().baseUrl(url).requestFactory(factory).build();
     }
     @Override public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**").allowedOrigins(frontend).allowedMethods("GET","POST","PUT","PATCH","DELETE","OPTIONS").allowedHeaders("Content-Type","Idempotency-Key");
+        registry.addMapping("/api/**")
+                .allowedOriginPatterns("*")
+                .allowedMethods("GET","POST","PUT","PATCH","DELETE","OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true);
     }
 }
