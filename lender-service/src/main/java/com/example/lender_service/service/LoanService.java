@@ -130,6 +130,15 @@ public class LoanService {
       if (l.getOutstandingQuantity() == 0) {
         l.setStatus("CLOSED");
         l.setClosedAt(clock.instant());
+        for (var p : positions.findByLoanId(l.getId())) {
+          if (Set.of("POSTED", "RELEASE_REQUESTED").contains(p.getStatus())) {
+            if ("POSTED".equals(p.getStatus())) {
+              p.setStatus("RELEASE_REQUESTED");
+              events.local(org, "COLLATERAL_RELEASE_REQUESTED", p.getId(), Map.of("position", p));
+            }
+            collateral.release(org, p.getId(), reference, true);
+          }
+        }
       }
       var p = inventory.position(org, l.getSecurityId());
       p.setLoanedQuantity(p.getLoanedQuantity() - r.getQuantity());

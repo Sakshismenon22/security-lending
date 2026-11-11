@@ -488,6 +488,14 @@ class BorrowerWorkflowTests {
         assertEquals(0, bd("123.456789").compareTo(money(account(org), "blocked")));
         apply(org, "PAYMENT_CONFIRMED", request, 1, Map.of("amount", "123.456789"));
         assertEquals("PAID", db.owned(LendingFee.class, org, fee).get("status"));
+        assertTrue(
+                db.rows(OutboxEvent.class, eq("organizationId", org), eq("eventType", "FEE_PAYMENT_RECEIVED"))
+                        .stream()
+                        .anyMatch(
+                                row ->
+                                        Objects.equals(
+                                                String.valueOf(n(row, "aggregateId")),
+                                                String.valueOf(fee))));
         String path = "/api/v1/organizations/" + org + "/loans/" + loan;
         mvc.perform(get(path + "/fee-accruals"))
                 .andExpect(status().isOk())
@@ -495,6 +503,78 @@ class BorrowerWorkflowTests {
         mvc.perform(get(path + "/fees"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].status").value("PAID"));
+    }
+
+    @Test
+    void fullLoanReturnAutomaticallyPaysFeesAndRequestsCollateralRelease() throws Exception {
+        long org = org(), security = security("100");
+        fund(org, "20000");
+        long loanId = loan(org, security, agreement(org, security), 10);
+        long fee = sequence.incrementAndGet();
+        apply(
+                org,
+                "FEE_BILL_ISSUED",
+                fee,
+                1,
+                Map.of(
+                        "loanId",
+                        loanId,
+                        "periodStart",
+                        "2026-11-01",
+                        "periodEnd",
+                        "2026-11-30",
+                        "rate",
+                        "0.03",
+                        "amount",
+                        "123.456789",
+                        "dueDate",
+                        "2026-12-01"));
+        var positions =
+                db.rows(CollateralPosition.class, eq("organizationId", org), eq("loanId", loanId));
+        assertFalse(positions.isEmpty());
+        assertEquals("RELEASE_REQUESTED", positions.get(0).get("status"));
+        assertEquals("PAID", db.owned(LendingFee.class, org, fee).get("status"));
+        assertTrue(
+                db.rows(
+                                OutboxEvent.class,
+                                eq("organizationId", org),
+                                eq("eventType", "COLLATERAL_RELEASE_REQUESTED"))
+                        .stream()
+                        .anyMatch(
+                                row ->
+                                        Objects.equals(
+                                                String.valueOf(n(row, "aggregateId")),
+                                                String.valueOf(n(positions.get(0), "id")))));
+    }
+
+    @Test
+    void returnSettlementClosesLoanAndRequestsCollateralReleaseForPostedPositions() {
+        long org = org(), security = security("100");
+        fund(org, "20000");
+        long loanId = loan(org, security, agreement(org, security), 10);
+        var position = db.rows(CollateralPosition.class, eq("organizationId", org), eq("loanId", loanId)).get(0);
+        apply(org, "COLLATERAL_PLEDGED", n(position, "id"), 1, Map.of());
+        long returnId = db.create(LoanReturn::new, entity -> {
+            entity.setOrganizationId(org);
+            entity.setLoanId(loanId);
+            entity.setQuantity(10L);
+            entity.setOwnedQuantity(10L);
+            entity.setBorrowedQuantity(0L);
+            entity.setStatus("PENDING");
+            entity.setOwnedCost(BigDecimal.ZERO);
+        });
+        db.edit(Loan.class, loanId, entity -> {
+            entity.setStatus("RETURN_PENDING");
+            entity.setOutstandingQuantity(10L);
+        });
+
+        apply(org, "RETURN_SETTLED", returnId, 1, Map.of("reference", "return-1"));
+
+        assertEquals("CLOSED", db.owned(Loan.class, org, loanId).get("status"));
+        assertTrue(
+                db.rows(OutboxEvent.class, eq("organizationId", org), eq("eventType", "COLLATERAL_RELEASE_REQUESTED"))
+                        .stream()
+                        .anyMatch(row -> Objects.equals(String.valueOf(n(row, "aggregateId")), String.valueOf(n(position, "id")))));
     }
 
     @Test

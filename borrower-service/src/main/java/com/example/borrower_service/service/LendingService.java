@@ -293,10 +293,15 @@ public class LendingService {
                         Long.class,
                         eq("loanId", loanId),
                         eq("status", "PENDING"));
+        long outstanding = n(loan, "outstanding_quantity");
         require(
-                r.quantity() <= n(loan, "outstanding_quantity") - pending,
+                r.quantity() <= outstanding - pending,
                 "Return exceeds uncommitted outstanding loan quantity");
-        settleOutstandingFees(org, loanId, "RETURN_" + loanId + "_" + r.quantity());
+        boolean fullReturn = r.quantity() == outstanding - pending;
+        if (fullReturn) {
+            settleOutstandingFees(org, loanId, "RETURN_" + loanId + "_" + r.quantity());
+            autoReleaseCollateral(org, loanId);
+        }
         long security = n(loan, "security_id");
         db.holding(org, security);
         var h =
@@ -370,6 +375,28 @@ public class LendingService {
                         entity.setStatus("PAID");
                         entity.setPaidAt(Instant.now());
                     });
+        }
+    }
+
+    private void autoReleaseCollateral(long org, long loanId) {
+        for (var position :
+                db.rows(
+                        CollateralPosition.class,
+                        eq("organizationId", org),
+                        eq("loanId", loanId),
+                        eq("status", "POSTED"))) {
+            long positionId = n(position, "id");
+            db.edit(
+                    CollateralPosition.class,
+                    positionId,
+                    entity -> {
+                        entity.setStatus("RELEASE_REQUESTED");
+                    });
+            events.write(
+                    org,
+                    "COLLATERAL_RELEASE_REQUESTED",
+                    positionId,
+                    Map.of("loanId", loanId));
         }
     }
 

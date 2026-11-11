@@ -84,24 +84,26 @@ class RebateLifecycleServiceTest {
   void dailyBalancesAreIndependentOfSettlementSchedule(String frequency, int count, String amount) {
     agreement.setRebateSettlementFrequency(frequency);
     var result = rebates.process(7);
-    assertEquals(LocalDate.parse("2026-11-01"), result.processedThrough());
-    assertEquals(3, result.daysRecorded());
+    assertEquals(LocalDate.parse("2026-11-02"), result.processedThrough());
+    assertEquals(4, result.daysRecorded());
     assertEquals(count, result.settlementsQueued());
     assertEquals(0, new BigDecimal(amount).compareTo(result.queuedSettlementAmount()));
-    assertEquals(List.of(new BigDecimal("10.000000"), new BigDecimal("20.000000"), new BigDecimal("10.000000")),
+    assertEquals(List.of(new BigDecimal("10.000000"), new BigDecimal("20.000000"), new BigDecimal("10.000000"), new BigDecimal("10.000000")),
         daily.stream().map(RebateDay::getAmount).toList());
-    assertEquals(3 + count * 2, events.size());
+    assertEquals(4 + count * 2, events.size());
     assertEquals(0, rebates.process(7).daysRecorded());
-    assertEquals(3 + count * 2, events.size());
+    assertEquals(4 + count * 2, events.size());
   }
 
   @Test
   void defaultScheduleSettlesOnceOnClosureUsingCashHeldAtTermination() {
     assertEquals("AT_CLOSE", agreement.getRebateSettlementFrequency());
-    assertEquals(0, rebates.process(7).settlementsQueued());
+    var prior = rebates.process(7);
+    assertEquals(0, prior.settlementsQueued());
+    assertEquals(4, prior.daysRecorded());
     loan.setClosedAt(Instant.parse("2026-11-02T08:00:00Z"));
     var closed = rebates.process(7);
-    assertEquals(1, closed.daysRecorded());
+    assertEquals(0, closed.daysRecorded());
     assertEquals(1, closed.settlementsQueued());
     assertEquals(0, new BigDecimal("50").compareTo(closed.queuedSettlementAmount()));
     var bill = events.get(events.size() - 2);
@@ -115,26 +117,34 @@ class RebateLifecycleServiceTest {
   }
 
   @Test
+  void processIncludesTodayWhenRebateDueRunCoversCurrentDate() {
+    loan.setSettledAt(Instant.parse("2026-11-02T08:00:00Z"));
+    agreement.setRebateSettlementFrequency("DAILY");
+    var result = rebates.process(7);
+    assertEquals(LocalDate.parse("2026-11-02"), result.processedThrough());
+    assertEquals(1, result.daysRecorded());
+    assertEquals(1, result.settlementsQueued());
+    assertEquals(new BigDecimal("10.000000"), result.queuedSettlementAmount());
+  }
+
+  @Test
   void demoAccrualRecordsTodaysCashOnceAndKeepsTheNormalSettlementSchedule() {
     loan.setSettledAt(Instant.parse("2026-11-02T08:00:00Z"));
     agreement.setRebateSettlementFrequency("DAILY");
-    assertNull(rebates.process(7).processedThrough());
+    var prior = rebates.process(7);
+    assertEquals(LocalDate.parse("2026-11-02"), prior.processedThrough());
+    assertEquals(1, prior.daysRecorded());
+    assertEquals(1, prior.settlementsQueued());
     var today = rebates.accrueToday(7);
-    assertTrue(today.created());
-    assertEquals(LocalDate.parse("2026-11-02"), today.accrualDate());
-    assertEquals(new BigDecimal("36500"), today.cashBalance());
-    assertEquals(new BigDecimal("10.000000"), today.amount());
-    assertFalse(rebates.accrueToday(7).created());
-    assertEquals(0, rebates.process(7).settlementsQueued());
-    assertEquals(List.of("ACCRUAL_REPORTED"), events.stream().map(e -> e.path("type").asText()).toList());
+    assertFalse(today.created());
+    assertEquals(List.of("ACCRUAL_REPORTED", "REBATE_ACCRUED", "REBATE_PAID"), events.stream().map(e -> e.path("type").asText()).toList());
 
     Instant closedAt = Instant.parse("2026-11-02T10:15:00Z");
     when(clock.instant()).thenReturn(closedAt);
     loan.setClosedAt(closedAt);
     var closed = rebates.process(7);
     assertEquals(0, closed.daysRecorded());
-    assertEquals(1, closed.settlementsQueued());
-    assertEquals(today.amount(), closed.queuedSettlementAmount());
+    assertEquals(0, closed.settlementsQueued());
     assertEquals(0, rebates.process(7).settlementsQueued());
   }
 

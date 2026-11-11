@@ -141,14 +141,28 @@ public class PaymentService {
                     },
                     eq("organizationId", org));
             if (!confirmed) accounts.changeCash(org, value, "PAYMENT_REFUNDED", String.valueOf(id));
-            if (confirmed && "FEE".equals(request.get("type")))
+            if (confirmed && "FEE".equals(request.get("type"))) {
+                var feeId = n(request, "fee_id");
                 db.edit(
                         LendingFee.class,
-                        n(request, "fee_id"),
+                        feeId,
                         entity -> {
                             entity.setStatus("PAID");
                             entity.setPaidAt(Instant.now());
                         });
+                var fee = db.owned(LendingFee.class, org, feeId);
+                events.write(
+                        org,
+                        "FEE_PAYMENT_RECEIVED",
+                        feeId,
+                        Map.of(
+                                "loanId",
+                                n(fee, "loan_id"),
+                                "amount",
+                                value,
+                                "borrowerPaymentRequestId",
+                                id));
+            }
         }
         db.edit(
                 PaymentRequest.class,

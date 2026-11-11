@@ -42,7 +42,7 @@ public class RebateLifecycleService {
     var agreement = agreements.findById(loan.getMslaId()).orElseThrow();
     Instant now = clock.instant();
     LocalDate closedOn = loan.getClosedAt() == null ? null : businessDate(loan.getClosedAt());
-    LocalDate through = closedOn == null ? businessDate(now).minusDays(1) : closedOn;
+    LocalDate through = closedOn == null ? businessDate(now) : closedOn;
     LocalDate first = loan.getRebateProcessedThrough() == null
         ? businessDate(loan.getSettledAt()) : loan.getRebateProcessedThrough().plusDays(1);
     if (agreement.getRebateRate().signum() == 0 || first.isAfter(through)) {

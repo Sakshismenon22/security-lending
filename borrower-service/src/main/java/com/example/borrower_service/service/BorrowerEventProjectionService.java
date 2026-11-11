@@ -328,6 +328,34 @@ public class BorrowerEventProjectionService {
                 });
     }
 
+    private void settleOutstandingFees(long org, long loanId, String reference) {
+        var fees =
+                db.rows(
+                        LendingFee.class,
+                        eq("organizationId", org),
+                        eq("loanId", loanId),
+                        eq("status", "DUE"));
+        if (fees.isEmpty()) {
+            return;
+        }
+        BigDecimal totalDue =
+                fees.stream().map(f -> money(f, "fee_amount")).reduce(BigDecimal.ZERO, BigDecimal::add);
+        var account = db.matchingRow(TraderAccount.class, eq("organizationId", org));
+        require(
+                money(account, "available").compareTo(totalDue) >= 0,
+                "Do not have sufficient fund to pay fees");
+        accounts.changeCash(org, totalDue.negate(), "LOAN_CLOSE_FEE_SETTLED", reference);
+        for (var fee : fees) {
+            db.edit(
+                    LendingFee.class,
+                    n(fee, "id"),
+                    entity -> {
+                        entity.setStatus("PAID");
+                        entity.setPaidAt(Instant.now());
+                    });
+        }
+    }
+
     private void loanRejected(long org, long id) {
         var loan = db.owned(Loan.class, org, id);
         require(
@@ -367,7 +395,7 @@ public class BorrowerEventProjectionService {
                         entity.setStatus("SETTLED");
                         entity.setSettledAt(Instant.now());
                     });
-            if (remaining == 0)
+            if (remaining == 0) {
                 db.edit(
                         Loan.class,
                         n(loan, "id"),
@@ -375,6 +403,15 @@ public class BorrowerEventProjectionService {
                             entity.setStatus("CLOSED");
                             entity.setClosedAt(Instant.now());
                         });
+                settleOutstandingFees(org, n(loan, "id"), "LOAN_CLOSE_" + id);
+                for (var position :
+                        db.rows(
+                                CollateralPosition.class,
+                                eq("loanId", n(loan, "id")),
+                                eq("status", "POSTED"))) {
+                    collateral.requestRelease(org, n(position, "id"));
+                }
+            }
         } else {
             var h =
                     db.matchingRow(

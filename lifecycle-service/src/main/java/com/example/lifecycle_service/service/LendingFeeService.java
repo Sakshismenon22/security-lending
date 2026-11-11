@@ -60,7 +60,7 @@ public class LendingFeeService {
     var agreement = agreements.findById(loan.getMslaId()).orElseThrow();
     Instant now = clock.instant();
     LocalDate closed = loan.getClosedAt() == null ? null : date(loan.getClosedAt());
-    LocalDate through = closed == null ? date(now).minusDays(1) : closed;
+    LocalDate through = closed == null ? date(now) : closed;
     LocalDate first = cursor == null ? date(loan.getSettledAt()) : cursor.plusDays(1);
     if (agreement.getFeeRate().signum() == 0 || first.isAfter(through)) {
       if (closed != null) loan.setFeeFinalized(true);
