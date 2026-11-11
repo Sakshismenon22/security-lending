@@ -26,6 +26,10 @@ public class PaymentRequest {
     @Column(name="fee_id")
     private Long feeId;
 
+    /** The return that reserved this fee payment, when settlement is tied to a loan return. */
+    @Column(name="loan_return_id")
+    private Long loanReturnId;
+
     @Column(name="type",nullable=false,length=30)
     private String type;
 

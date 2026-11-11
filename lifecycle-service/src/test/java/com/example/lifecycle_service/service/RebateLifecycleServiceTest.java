@@ -148,6 +148,22 @@ class RebateLifecycleServiceTest {
     assertEquals(0, rebates.process(7).settlementsQueued());
   }
 
+  @Test
+  void sameDayDemoAccrualSettlesAtCloseDespiteTheProcessedCursor() {
+    loan.setSettledAt(Instant.parse("2026-11-02T08:00:00Z"));
+    agreement.setRebateSettlementFrequency("AT_CLOSE");
+    rebates.accrueToday(7);
+    loan.setRebateProcessedThrough(LocalDate.parse("2026-11-02"));
+    loan.setClosedAt(Instant.parse("2026-11-02T10:00:00Z"));
+
+    var closed = rebates.process(7);
+
+    assertEquals(0, closed.daysRecorded());
+    assertEquals(1, closed.settlementsQueued());
+    assertEquals(List.of("ACCRUAL_REPORTED", "REBATE_ACCRUED", "REBATE_PAID"),
+        events.stream().map(event -> event.path("type").asText()).toList());
+  }
+
   private CashCollateralChange change(String at, String type) {
     return new CashCollateralChange(Instant.parse(at), type, new BigDecimal("36500"));
   }

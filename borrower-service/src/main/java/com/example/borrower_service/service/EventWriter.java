@@ -27,7 +27,9 @@ public class EventWriter {
         payload.put("referenceId", reference);
         payload.put("occurredAt", Instant.now().toString());
         payload.put("data", data);
-        if (type.endsWith("_REQUESTED") || type.equals("AGREEMENT_PROPOSED")) {
+        if (type.endsWith("_REQUESTED")
+                || type.equals("AGREEMENT_PROPOSED")
+                || type.equals("FEE_PAYMENT_RECEIVED")) {
             payload.put(
                     "destination",
                     Set.of("DEPOSIT_REQUESTED", "WITHDRAWAL_REQUESTED", "FEE_REQUESTED")
@@ -48,6 +50,13 @@ public class EventWriter {
                                         db.owned(Reservation.class, org, id), "msla_id");
                 case "LOAN_REQUESTED", "COLLATERAL_PLEDGE_REQUESTED" ->
                         mslaId = BorrowerRepository.n(db.owned(Loan.class, org, id), "msla_id");
+                case "FEE_PAYMENT_RECEIVED" -> {
+                    var fee = db.owned(LendingFee.class, org, id);
+                    mslaId =
+                            BorrowerRepository.n(
+                                    db.owned(Loan.class, org, BorrowerRepository.n(fee, "loan_id")),
+                                    "msla_id");
+                }
                 case "RETURN_REQUESTED", "COLLATERAL_RELEASE_REQUESTED" -> {
                     Class<?> table =
                             type.equals("RETURN_REQUESTED")

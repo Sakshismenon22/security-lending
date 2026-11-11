@@ -341,8 +341,6 @@ class BorrowerWorkflowTests {
         assertEquals(10, n(db.owned(Loan.class, org, loan), "outstanding_quantity"));
         apply(org, "RETURN_SETTLED", ret, 1, Map.of());
         assertEquals("CLOSED", db.owned(Loan.class, org, loan).get("status"));
-        collateral.requestRelease(org, position);
-        assertEquals(0, bd("2000").compareTo(money(account(org), "pledged")));
         apply(org, "COLLATERAL_RELEASED", position, 2, Map.of());
         assertEquals(0, money(account(org), "pledged").signum());
         assertEquals(0, bd("10100").compareTo(money(account(org), "available")));
@@ -396,7 +394,7 @@ class BorrowerWorkflowTests {
     @Test
     void loanReturnRejectsWhenOutstandingFeeBillExceedsAvailableCash() {
         long org = org(), security = security("100");
-        fund(org, "500");
+        fund(org, "2500");
         long loan = loan(org, security, agreement(org, 0), 10), fee = sequence.incrementAndGet();
         long position = n(db.rows(CollateralPosition.class, eq("loanId", loan)).get(0), "id");
         apply(org, "COLLATERAL_PLEDGED", position, 1, Map.of());
@@ -425,7 +423,7 @@ class BorrowerWorkflowTests {
         assertEquals("DUE", db.owned(LendingFee.class, org, fee).get("status"));
     }
 
-    void loanReturnAutomaticallyPaysDueFeesFromAvailableCash() {
+    void loanReturnBlocksDueFeesUntilTheLenderSettlesIt() {
         long org = org(), security = security("100");
         fund(org, "1000");
         long loan = loan(org, security, agreement(org, 0), 10), fee = sequence.incrementAndGet();
@@ -451,8 +449,9 @@ class BorrowerWorkflowTests {
                         "dueDate",
                         "2026-12-01"));
         long ret = n(lending.requestReturn(org, loan, new ReturnRequest(10)), "id");
-        assertEquals("PAID", db.owned(LendingFee.class, org, fee).get("status"));
+        assertEquals("PAYMENT_PENDING", db.owned(LendingFee.class, org, fee).get("status"));
         assertEquals(0, bd("750").compareTo(money(account(org), "available")));
+        assertEquals(0, bd("250").compareTo(money(account(org), "blocked")));
         assertEquals("PENDING", db.owned(LoanReturn.class, org, ret).get("status"));
     }
 
@@ -494,7 +493,7 @@ class BorrowerWorkflowTests {
                         .anyMatch(
                                 row ->
                                         Objects.equals(
-                                                String.valueOf(n(row, "aggregateId")),
+                                                String.valueOf(row.get("aggregate_id")),
                                                 String.valueOf(fee))));
         String path = "/api/v1/organizations/" + org + "/loans/" + loan;
         mvc.perform(get(path + "/fee-accruals"))
@@ -506,7 +505,7 @@ class BorrowerWorkflowTests {
     }
 
     @Test
-    void fullLoanReturnAutomaticallyPaysFeesAndRequestsCollateralRelease() throws Exception {
+    void fullLoanReturnReservesFeesThenSettlesThemAndReleasesCollateral() throws Exception {
         long org = org(), security = security("100");
         fund(org, "20000");
         long loanId = loan(org, security, agreement(org, security), 10);
@@ -529,26 +528,25 @@ class BorrowerWorkflowTests {
                         "123.456789",
                         "dueDate",
                         "2026-12-01"));
+        var position =
+                db.rows(CollateralPosition.class, eq("organizationId", org), eq("loanId", loanId)).get(0);
+        apply(org, "COLLATERAL_PLEDGED", n(position, "id"), 1, Map.of());
+        apply(org, "LOAN_SETTLED", loanId, 1, Map.of());
+        long returnId = n(lending.requestReturn(org, loanId, new ReturnRequest(10)), "id");
         var positions =
                 db.rows(CollateralPosition.class, eq("organizationId", org), eq("loanId", loanId));
         assertFalse(positions.isEmpty());
-        assertEquals("RELEASE_REQUESTED", positions.get(0).get("status"));
-        assertEquals("PAID", db.owned(LendingFee.class, org, fee).get("status"));
+        assertEquals("POSTED", positions.get(0).get("status"));
+        assertEquals("PAYMENT_PENDING", db.owned(LendingFee.class, org, fee).get("status"));
+        apply(org, "RETURN_SETTLED", returnId, 1, Map.of("reference", "return-1"));
         assertTrue(
-                db.rows(
-                                OutboxEvent.class,
-                                eq("organizationId", org),
-                                eq("eventType", "COLLATERAL_RELEASE_REQUESTED"))
+                db.rows(OutboxEvent.class, eq("organizationId", org), eq("eventType", "FEE_PAYMENT_RECEIVED"))
                         .stream()
-                        .anyMatch(
-                                row ->
-                                        Objects.equals(
-                                                String.valueOf(n(row, "aggregateId")),
-                                                String.valueOf(n(positions.get(0), "id")))));
+                        .anyMatch(row -> Objects.equals(String.valueOf(row.get("aggregate_id")), String.valueOf(fee))));
     }
 
     @Test
-    void returnSettlementClosesLoanAndRequestsCollateralReleaseForPostedPositions() {
+    void returnSettlementClosesLoanAndAcceptsTheLenderCollateralReleaseConfirmation() {
         long org = org(), security = security("100");
         fund(org, "20000");
         long loanId = loan(org, security, agreement(org, security), 10);
@@ -569,12 +567,10 @@ class BorrowerWorkflowTests {
         });
 
         apply(org, "RETURN_SETTLED", returnId, 1, Map.of("reference", "return-1"));
+        apply(org, "COLLATERAL_RELEASED", n(position, "id"), 2, Map.of("reference", "release-1"));
 
         assertEquals("CLOSED", db.owned(Loan.class, org, loanId).get("status"));
-        assertTrue(
-                db.rows(OutboxEvent.class, eq("organizationId", org), eq("eventType", "COLLATERAL_RELEASE_REQUESTED"))
-                        .stream()
-                        .anyMatch(row -> Objects.equals(String.valueOf(n(row, "aggregateId")), String.valueOf(n(position, "id")))));
+        assertEquals("RELEASED", db.owned(CollateralPosition.class, org, n(position, "id")).get("status"));
     }
 
     @Test

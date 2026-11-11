@@ -45,11 +45,12 @@ public class RebateLifecycleService {
     LocalDate through = closedOn == null ? businessDate(now) : closedOn;
     LocalDate first = loan.getRebateProcessedThrough() == null
         ? businessDate(loan.getSettledAt()) : loan.getRebateProcessedThrough().plusDays(1);
-    if (agreement.getRebateRate().signum() == 0 || first.isAfter(through)) {
-      return new RebateRunResult(loanId, loan.getRebateProcessedThrough(), 0, 0, BigDecimal.ZERO);
+    // Closing on the same day as a manual accrual leaves first after through. Existing unsettled
+    // rows still have to be evaluated for an AT_CLOSE settlement.
+    int recorded = 0;
+    if (agreement.getRebateRate().signum() > 0 && !first.isAfter(through)) {
+      recorded = accrueDays(loan, agreement, first, through, now);
     }
-
-    int recorded = accrueDays(loan, agreement, first, through, now);
     var frequency = RebateSchedule.valueOf(agreement.getRebateSettlementFrequency());
     var due = new TreeMap<LocalDate, List<RebateDay>>();
     for (var day : days.findByLoanIdAndSettlementReferenceIdIsNullOrderByAccrualDateAsc(loanId)) {
@@ -68,7 +69,7 @@ public class RebateLifecycleService {
         total = total.add(amount);
       }
     }
-    loan.setRebateProcessedThrough(through);
+    if (!first.isAfter(through)) loan.setRebateProcessedThrough(through);
     return new RebateRunResult(loanId, through, recorded, settlements, total);
   }
 

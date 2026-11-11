@@ -252,7 +252,9 @@ public class CollateralService {
         require(
                 rejectedLoan
                         ? "PLEDGE_PENDING".equals(p.get("status"))
-                        : "RELEASE_REQUESTED".equals(p.get("status")),
+                        // A full return lets the lender release collateral immediately. Its
+                        // confirmation can therefore arrive before a borrower release request.
+                        : Set.of("RELEASE_REQUESTED", "POSTED").contains(p.get("status")),
                 "No pending pledge or release request exists");
         require(!"RELEASED".equals(p.get("status")), "Collateral already released");
         var loan = db.owned(Loan.class, org, loanId);
