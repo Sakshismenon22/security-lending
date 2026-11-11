@@ -90,7 +90,7 @@ The borrower locks organization state, deduplicates event IDs, and ignores a ver
 | `PAYMENT_CONFIRMED`, `PAYMENT_REJECTED` | Borrower payment-request ID | amount, exactly matching the request |
 | `HOLDING_IMPORTED` | Security master ID | ownedQuantity, borrowedQuantity, averageCost |
 
-Loan settlement makes stock available; collateral settlement has its own event. Return settlement reduces loan quantity but does **not** update external recall fulfillment. The lifecycle owner must report that separately.
+Loan settlement makes stock available, and collateral settlement has its own event. The borrower applies `RETURN_SETTLED` to the loan and `RECALL_UPDATED` to recall fulfillment. The lender queues both confirmations when a settled return satisfies an outstanding recall.
 
 A rejected loan frees only locally pending collateral allocations. Already confirmed collateral requires an explicit release confirmation. Reservation restoration/expiry comes from its owner through a reservation event, not a borrower-side timer. `HOLDING_IMPORTED` is an authoritative custody snapshot and must include all borrower positions at its coordinated version; it cannot reduce quantities below outstanding local pledges/order locks.
 

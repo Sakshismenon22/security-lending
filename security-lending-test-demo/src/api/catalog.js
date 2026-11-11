@@ -164,7 +164,18 @@ export const actions = [
     "/deposits",
     { amount: 1000000, clientRequestId: "$unique" },
     {
-      note: "Deposit stays pending until its payment owner confirms it. No local funding confirmation endpoint exists.",
+      note: "A pending deposit waits for an active administrator to approve it locally before cash becomes available.",
+    },
+  ),
+  b(
+    "deposit-approve",
+    "Setup",
+    "Approve pending deposit",
+    "/deposits/{id}/approve",
+    { userId: 0 },
+    {
+      requiresAdmin: true,
+      note: "Only the currently selected admin user can approve a pending deposit request.",
     },
   ),
   b(
@@ -182,6 +193,7 @@ export const actions = [
       rebateRate: 0.01,
       coverageRatio: 1.05,
       billingFrequency: "MONTHLY",
+      rebateSettlementFrequency: "",
       dayBasis: 365,
       recallAllowed: true,
       marginHours: 24,
@@ -192,7 +204,8 @@ export const actions = [
       ],
     },
     {
-      note: "Rates are decimals: 0.03 = 3%. Coverage ratio 1.05 = 105%. A 10% haircut is 0.10. Use the lender public reference ID, not its local organization ID.",
+      choices: { rebateSettlementFrequency: ["DAILY", "WEEKLY", "MONTHLY", "AT_CLOSE"] },
+      note: "Rates are decimals: 0.03 = 3%. Use the lender public reference ID. Leaving the rebate settlement frequency blank pays the daily cash rebate accruals at loan termination.",
     },
   ),
   l(
@@ -372,6 +385,29 @@ export const actions = [
     "/margin-calls/{id}/collateral",
     allocation,
   ),
+  op(
+    "margin-call-manual",
+    "Margin & recalls",
+    "Send manual margin call",
+    "lender",
+    "POST",
+    "/api/v1/lifecycle/loans/{id}/margin-calls",
+    { amount: 250 },
+    {
+      global: true,
+      note: "Demo-only trigger for the lifecycle service. The scheduled job still checks coverage automatically at 3:15 PM and only creates a call when the policy is breached.",
+    },
+  ),
+  l(
+    "margin-call-confirm",
+    "Margin & recalls",
+    "Confirm lender margin call",
+    "/margin-calls/{id}/confirm",
+    { reference: "$unique" },
+    {
+      note: "Explicit lender acknowledgement for a lifecycle-generated margin call. This emits the borrower-facing MARGIN_CALL_UPDATED confirmation used by the borrower UI.",
+    },
+  ),
   l(
     "recall-request",
     "Margin & recalls",
@@ -379,7 +415,7 @@ export const actions = [
     "/loans/{id}/recall-requests",
     { quantity: 50, reason: "Portfolio sale", clientRequestId: "$unique" },
     {
-      note: "Queues a request to the lifecycle owner. The recall is not issued locally.",
+      note: "Use the lender loan ID. Lifecycle issues the recall and sends it to the borrower. Refresh View recalls to see it.",
     },
   ),
   b(
@@ -388,6 +424,7 @@ export const actions = [
     "Respond to recall with return",
     "/recalls/{id}/returns",
     { quantity: 50, recallId: null },
+    { note: "Use the borrower recall ID from View recalls. The lender settles the return under Loans & returns using the lender return ID." },
   ),
   b(
     "fee-payment",
@@ -407,8 +444,69 @@ export const actions = [
     "/rebates/{id}/payment-requests",
     { clientRequestId: "$unique" },
     {
-      note: "Daily accrual and payment execution belong to the lifecycle/payment owner.",
+      note: "Use this for legacy externally reported rebates. MSLA-scheduled cash rebates settle automatically.",
     },
+  ),
+  l(
+    "fee-run",
+    "Billing & payments",
+    "Run due lending fees for a loan",
+    "/api/v1/lifecycle/loans/{id}/fees/run",
+    undefined,
+    {
+      global: true,
+      note: "Use the lender loan ID. Records completed days and issues bills according to the MSLA.",
+    },
+  ),
+  l(
+    "fee-accrue-today",
+    "Billing & payments",
+    "Record today's demo lending fee",
+    "/api/v1/lifecycle/loans/{id}/fees/demo/accrue-today",
+    undefined,
+    {
+      global: true,
+      note: "Use a settled, open lender loan ID. Records one daily fee using the outstanding shares and price at the time of the call.",
+    },
+  ),
+  op("borrower-loan-fee-accruals", "Billing & payments", "View daily lending fees for a loan",
+    "borrower", "GET", "/loans/{id}/fee-accruals", undefined,
+    { paged: true, note: "Use the borrower loan ID." }),
+  op("borrower-loan-fees", "Billing & payments", "View lending fee bills for a loan",
+    "borrower", "GET", "/loans/{id}/fees", undefined,
+    { paged: true, note: "Use the borrower loan ID. Fee bills appear when the MSLA billing period ends." }),
+  l(
+    "rebate-run",
+    "Billing & payments",
+    "Run due cash rebates for a loan",
+    "/api/v1/lifecycle/loans/{id}/rebates/run",
+    undefined,
+    {
+      global: true,
+      note: "Use the lender loan ID. Lifecycle records completed days and queues any due demo payments. Refresh the per-loan history after delivery.",
+    },
+  ),
+  l(
+    "rebate-accrue-today",
+    "Billing & payments",
+    "Record today's demo rebate accrual",
+    "/api/v1/lifecycle/loans/{id}/rebates/demo/accrue-today",
+    undefined,
+    {
+      global: true,
+      note: "Use the lender loan ID for a settled, open loan with confirmed cash collateral. This records today's accrual using the cash balance at the time of the call. Payment follows the MSLA schedule.",
+    },
+  ),
+  ...["borrower", "lender"].flatMap((side) =>
+    [
+      ["rebate-accruals", "View daily rebate accruals for a loan"],
+      ["rebate-settlements", "View rebate settlement periods for a loan"],
+      ["rebate-payments", "View rebate payments for a loan"],
+    ].map(([resource, label]) =>
+      op(`${side}-loan-${resource}`, "Billing & payments", label, side, "GET",
+        `/loans/{id}/${resource}`, undefined,
+        { paged: true, note: `Use the ${side} loan ID.` }),
+    ),
   ),
   b("withdrawal", "Billing & payments", "Request withdrawal", "/withdrawals", {
     amount: 1000,
@@ -662,12 +760,12 @@ export const workflow = [
   ],
   [
     "Margin & recalls",
-    "Lender requests recall; lifecycle issues it; borrower requests return; lender records return settlement.",
+    "Request recall on the lender, then respond using the borrower recall ID. Settle the return using the lender return ID and refresh both recall views to see fulfillment.",
     "Owner required",
   ],
   [
     "Billing & payments",
-    "Lifecycle accrues fees/rebates; borrower requests fee payment; lender requests rebate payment; verify owner confirmations.",
+    "Run lending fees or cash rebates using the lender loan ID. Check daily lending fees and bills using the borrower loan ID. Request lending fee payment when a bill is available.",
     "Owner required",
   ],
   [

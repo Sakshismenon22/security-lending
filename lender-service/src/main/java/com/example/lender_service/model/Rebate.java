@@ -55,4 +55,13 @@ public class Rebate implements LifecycleProjection {
 
   @Column(name = "payment_date", nullable = false)
   private LocalDate paymentDate;
+
+  @Column(name = "period_start")
+  private LocalDate periodStart;
+
+  @Column(name = "period_end")
+  private LocalDate periodEnd;
+
+  @Column(name = "settlement_frequency", length = 20)
+  private String settlementFrequency;
 }

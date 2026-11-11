@@ -11,6 +11,12 @@ import org.springframework.http.*;
 @RequiredArgsConstructor
 public class BillingController {
     private final PaymentService payments;private final BorrowerReadService read;private final PortfolioService portfolio;
+    @GetMapping("/loans/{loanId}/{resource:rebate-accruals|rebate-settlements|rebate-payments|fee-accruals|fees}")
+    public ApiResponse<?> loanBilling(@PathVariable long org, @PathVariable long loanId,
+            @PathVariable String resource, @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return ApiResponse.ok(read.loanBilling(org, loanId, resource, page, size));
+    }
     @GetMapping("/fees") public ApiResponse<?> fees(@PathVariable long org,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size) {return ApiResponse.ok(read.list(org,"lending_fee",page,size));}
     @PostMapping("/fees/{id}/payments") public ApiResponse<?> pay(@PathVariable long org,@PathVariable long id,@RequestHeader("Idempotency-Key") String key) {return ApiResponse.ok(payments.payFee(org,id,key));}
     @GetMapping("/rebates") public ApiResponse<?> rebates(@PathVariable long org,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size) {return ApiResponse.ok(read.list(org,"rebate",page,size));}

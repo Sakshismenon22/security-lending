@@ -33,6 +33,13 @@ public class ReadController {
     return ApiResponse.ok(read.dashboard(org));
   }
 
+  @GetMapping("/loans/{loanId}/{resource:rebate-accruals|rebate-settlements|rebate-payments}")
+  public ApiResponse<?> loanRebates(
+      @PathVariable long org, @PathVariable long loanId, @PathVariable String resource,
+      @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
+    return ApiResponse.ok(read.loanRebates(org, loanId, resource, page, size));
+  }
+
   @GetMapping("/account")
   public ApiResponse<?> account(@PathVariable long org) {
     return ApiResponse.ok(read.account(org));

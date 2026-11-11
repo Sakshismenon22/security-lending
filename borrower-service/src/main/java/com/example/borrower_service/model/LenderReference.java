@@ -16,7 +16,6 @@ import java.time.LocalDate;
 @NoArgsConstructor
 public class LenderReference {
     @Id
-    @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id",nullable=false)
     private Long id;
 

@@ -16,7 +16,6 @@ import java.time.LocalDate;
 @NoArgsConstructor
 public class LoanDefault {
     @Id
-    @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id",nullable=false)
     private Long id;
 
@@ -39,6 +38,6 @@ public class LoanDefault {
     private String status;
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
 }

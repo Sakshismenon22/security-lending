@@ -16,7 +16,6 @@ import java.time.LocalDate;
 @NoArgsConstructor
 public class Rebate {
     @Id
-    @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id",nullable=false)
     private Long id;
 
@@ -44,4 +43,12 @@ public class Rebate {
     @Column(name="status",nullable=false,length=30)
     private String status;
 
+    @Column(name = "period_start")
+    private LocalDate periodStart;
+
+    @Column(name = "period_end")
+    private LocalDate periodEnd;
+
+    @Column(name = "settlement_frequency", length = 20)
+    private String settlementFrequency;
 }

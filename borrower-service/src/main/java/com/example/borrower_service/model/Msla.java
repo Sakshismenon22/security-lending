@@ -53,6 +53,9 @@ public class Msla {
     @Column(name="billing_frequency",nullable=false,length=20)
     private String billingFrequency;
 
+    @Column(name = "rebate_settlement_frequency", nullable = false, length = 20)
+    private String rebateSettlementFrequency = "AT_CLOSE";
+
     @Column(name="day_basis",nullable=false)
     private Integer dayBasis;
 
@@ -66,6 +69,6 @@ public class Msla {
     private Integer recallHours;
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
 }

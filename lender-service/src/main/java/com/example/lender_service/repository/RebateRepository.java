@@ -12,4 +12,6 @@ public interface RebateRepository extends JpaRepository<Rebate, Long> {
 
   Optional<Rebate> findByOrganizationIdAndOwnerReferenceId(
       Long organizationId, Long ownerReferenceId);
+
+  Page<Rebate> findByOrganizationIdAndLoanId(Long organizationId, Long loanId, Pageable pageable);
 }

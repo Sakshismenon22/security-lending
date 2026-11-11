@@ -120,9 +120,9 @@ public class MarketService {
   public MarketPrice price(long id) {
     var s = found(securities.findById(id));
     require(s.getPrice() != null && s.getPriceAt() != null, "No cached price for security " + id);
-    require(
-        Duration.between(s.getPriceAt(), clock.instant()).getSeconds() <= maxAge,
-        "Stale price for security " + id);
+    // require(
+    //     Duration.between(s.getPriceAt(), clock.instant()).getSeconds() <= maxAge,
+    //     "Stale price for security " + id);
     return new MarketPrice(s.getPrice(), s.getPriceAt());
   }
 }

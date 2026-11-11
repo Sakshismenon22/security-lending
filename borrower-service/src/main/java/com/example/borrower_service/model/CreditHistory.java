@@ -51,6 +51,6 @@ public class CreditHistory {
     private BigDecimal availableAfter;
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
 }

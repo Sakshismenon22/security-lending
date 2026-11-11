@@ -7,7 +7,8 @@ export async function sendRequest({
   signal,
 }) {
   const started = performance.now();
-  const response = await fetch(`/bridge/${side}${path}`, {
+  const targetSide = path.startsWith("/api/v1/lifecycle") ? "lifecycle" : side;
+  const response = await fetch(`/bridge/${targetSide}${path}`, {
     method,
     headers: {
       Accept: "application/json",

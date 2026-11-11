@@ -16,7 +16,6 @@ import java.time.LocalDate;
 @NoArgsConstructor
 public class Recall {
     @Id
-    @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id",nullable=false)
     private Long id;
 
@@ -33,7 +32,7 @@ public class Recall {
     private Long quantity;
 
     @Column(name="fulfilled_quantity",nullable=false)
-    private Long fulfilledQuantity;
+    private Long fulfilledQuantity = 0L;
 
     @Column(name="reason",nullable=false,length=500)
     private String reason;
@@ -42,7 +41,7 @@ public class Recall {
     private String status;
 
     @Column(name="request_time",nullable=false)
-    private Instant requestTime;
+    private Instant requestTime = Instant.now();
 
     @Column(name="due_at",nullable=false)
     private Instant dueAt;

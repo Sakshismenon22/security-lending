@@ -94,6 +94,20 @@ public class ReadService {
         haircuts.findByMslaId(id));
   }
 
+  public Object loanRebates(long org, long loanId, String resource, int page, int size) {
+    found(loan.findByIdAndOrganizationId(loanId, org));
+    if (page < 0 || size < 1 || size > 200)
+      throw new IllegalArgumentException("page must be nonnegative; size must be 1..200");
+    var paging = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+    return switch (resource) {
+      case "rebate-accruals" ->
+          PageResponse.from(dailyAccrual.findByOrganizationIdAndLoanIdAndAccrualType(org, loanId, "REBATE", paging));
+      case "rebate-settlements" -> PageResponse.from(rebate.findByOrganizationIdAndLoanId(org, loanId, paging));
+      case "rebate-payments" -> PageResponse.from(rebatePayment.findByOrganizationIdAndLoanId(org, loanId, paging));
+      default -> throw new IllegalArgumentException("Unknown rebate resource");
+    };
+  }
+
   public Object loan(long org, long id) {
     var l = found(loan.findByIdAndOrganizationId(id, org));
     var result = new LinkedHashMap<String, Object>();

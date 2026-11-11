@@ -30,7 +30,7 @@ public class User {
     private String email;
 
     @Column(name="active",nullable=false)
-    private Boolean active;
+    private Boolean active = true;
 
     @Column(name="role_id")
     private Long roleId;

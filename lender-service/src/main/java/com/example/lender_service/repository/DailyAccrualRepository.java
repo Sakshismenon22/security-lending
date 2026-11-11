@@ -12,4 +12,6 @@ public interface DailyAccrualRepository extends JpaRepository<DailyAccrual, Long
 
   Optional<DailyAccrual> findByOrganizationIdAndOwnerReferenceId(
       Long organizationId, Long ownerReferenceId);
+
+  Page<DailyAccrual> findByOrganizationIdAndLoanIdAndAccrualType(Long organizationId, Long loanId, String accrualType, Pageable pageable);
 }

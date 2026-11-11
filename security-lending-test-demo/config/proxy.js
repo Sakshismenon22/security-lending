@@ -2,6 +2,7 @@ export function createProxy(env = {}) {
   const ports = {
     borrower: 8081,
     lender: 8084,
+    lifecycle: 8085,
     borrowerAdapter: 8082,
     lenderAdapter: 8083,
     market: 8080,

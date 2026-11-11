@@ -14,4 +14,6 @@ public interface LoanReturnRepository extends JpaRepository<LoanReturn, Long> {
       Long connectionId, Long borrowerReturnId);
 
   List<LoanReturn> findByLoanId(Long loanId);
+
+  List<LoanReturn> findByLoanIdAndRecallIdAndStatus(Long loanId, Long recallId, String status);
 }

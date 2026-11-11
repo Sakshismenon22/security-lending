@@ -48,6 +48,6 @@ public class TradeHistory {
     private Instant priceAt;
 
     @Column(name="executed_at",nullable=false)
-    private Instant executedAt;
+    private Instant executedAt = Instant.now();
 
 }

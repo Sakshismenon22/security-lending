@@ -30,7 +30,7 @@ public class RebatePayment {
     private Long rebateId;
 
     @Column(name="payment_date",nullable=false)
-    private Instant paymentDate;
+    private Instant paymentDate = Instant.now();
 
     @Column(name="amount",nullable=false,precision=24,scale=6)
     private BigDecimal amount;

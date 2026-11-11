@@ -20,7 +20,7 @@ public class LifecycleRequestService {
   private final MslaRepository agreements;
   private final RebateRepository rebates;
   private final LoanDefaultRepository defaults;
-  private final RecallRepository recalls;
+  private final RecallService recalls;
   private final LifecycleRequestRepository requests;
   private final TenantService tenants;
   private final EventService events;
@@ -30,18 +30,14 @@ public class LifecycleRequestService {
   public LifecycleRequest recall(long org, long loanId, RecallRequest r) {
     tenants.lock(org);
     var loan = found(loans.findByIdAndOrganizationId(loanId, org));
+    var retry = requests.findByOrganizationIdAndClientRequestId(org, r.clientRequestId());
+    if (retry.isPresent())
+      return same(retry.get(), "RECALL_REQUESTED", json.write(r), loan.getId());
     require("ACTIVE".equals(loan.getStatus()), "Recall requires an active loan");
     require(
         found(agreements.findById(loan.getMslaId())).getRecallAllowed(),
         "MSLA does not permit recall");
-    long open =
-        recalls.findByOrganizationId(org, Pageable.unpaged()).getContent().stream()
-            .filter(
-                x ->
-                    x.getLoanId() == loanId
-                        && Set.of("OPEN", "PARTIALLY_FULFILLED", "OVERDUE").contains(x.getStatus()))
-            .mapToLong(x -> x.getQuantity() - x.getFulfilledQuantity())
-            .sum();
+    long open = recalls.outstanding(loanId);
     long requested =
         requests.findByOrganizationId(org, Pageable.unpaged()).getContent().stream()
             .filter(
@@ -51,9 +47,6 @@ public class LifecycleRequestService {
                         && Set.of("PENDING", "ACCEPTED").contains(x.getStatus()))
             .mapToLong(x -> json.parse(x.getPayload(), RecallRequest.class).quantity())
             .sum();
-    var retry = requests.findByOrganizationIdAndClientRequestId(org, r.clientRequestId());
-    if (retry.isPresent())
-      return same(retry.get(), "RECALL_REQUESTED", json.write(r), loan.getId());
     require(
         r.quantity() <= loan.getOutstandingQuantity() - open - requested,
         "Recall exceeds uncommitted outstanding quantity");
@@ -63,6 +56,7 @@ public class LifecycleRequestService {
   public LifecycleRequest rebatePayment(long org, long id, LifecycleActionRequest r) {
     tenants.lock(org);
     var rebate = found(rebates.findByIdAndOrganizationId(id, org));
+    require(rebate.getSettlementFrequency() == null, "This rebate settles automatically under its MSLA");
     require("ACCRUED".equals(rebate.getStatus()), "Rebate is not awaiting payment");
     var loan = found(loans.findById(rebate.getLoanId()));
     return create(

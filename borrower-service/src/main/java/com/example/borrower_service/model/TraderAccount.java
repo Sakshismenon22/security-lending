@@ -20,12 +20,12 @@ public class TraderAccount {
     private Long organizationId;
 
     @Column(name="available",nullable=false,precision=24,scale=6)
-    private BigDecimal available;
+    private BigDecimal available = BigDecimal.ZERO;
 
     @Column(name="blocked",nullable=false,precision=24,scale=6)
-    private BigDecimal blocked;
+    private BigDecimal blocked = BigDecimal.ZERO;
 
     @Column(name="pledged",nullable=false,precision=24,scale=6)
-    private BigDecimal pledged;
+    private BigDecimal pledged = BigDecimal.ZERO;
 
 }

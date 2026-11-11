@@ -41,12 +41,12 @@ public class LoanReturn {
     private String status;
 
     @Column(name="requested_at",nullable=false)
-    private Instant requestedAt;
+    private Instant requestedAt = Instant.now();
 
     @Column(name="settled_at")
     private Instant settledAt;
 
     @Column(name="owned_cost",nullable=false,precision=24,scale=6)
-    private BigDecimal ownedCost;
+    private BigDecimal ownedCost = BigDecimal.ZERO;
 
 }

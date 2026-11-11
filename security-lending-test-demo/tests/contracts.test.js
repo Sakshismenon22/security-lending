@@ -59,6 +59,8 @@ test("request defaults preserve financial decimals, null security IDs, and uniqu
   const d = defaults(a, new Date("2026-11-09T12:00:00Z"));
   assert.equal(d.coverageRatio, 1.05);
   assert.equal(d.feeRate, 0.03);
+  assert.equal(d.rebateSettlementFrequency, "");
+  assert.deepEqual(a.choices.rebateSettlementFrequency, ["DAILY", "WEEKLY", "MONTHLY", "AT_CLOSE"]);
   assert.equal(d.collateralRules[0].securityId, null);
   assert.equal(d.effectiveDate, "2026-11-09");
   assert.notEqual(d.number, defaults(a).number);
@@ -66,6 +68,21 @@ test("request defaults preserve financial decimals, null security IDs, and uniqu
     defaults(actions.find((a) => a.id === "loan")).collateral[0].assetType,
     "CASH",
   );
+});
+test("rebate history uses the local loan ID and the run action targets lifecycle", () => {
+  for (const side of ["borrower", "lender"]) {
+    for (const resource of ["rebate-accruals", "rebate-settlements", "rebate-payments"]) {
+      const action = actions.find((a) => a.id === `${side}-loan-${resource}`);
+      assert.equal(requestPath(action, 5, 12, 0, 20),
+        `/api/v1/organizations/5/loans/12/${resource}?page=0&size=20`);
+    }
+  }
+  const run = actions.find((a) => a.id === "rebate-run");
+  assert.equal(requestPath(run, 5, 12), "/api/v1/lifecycle/loans/12/rebates/run");
+  const accrueToday = actions.find((a) => a.id === "rebate-accrue-today");
+  assert.equal(accrueToday.method, "POST");
+  assert.equal(requestPath(accrueToday, "", 12),
+    "/api/v1/lifecycle/loans/12/rebates/demo/accrue-today");
 });
 test("read pagination and API envelopes are handled", () => {
   const a = actions.find(
@@ -81,6 +98,19 @@ test("read pagination and API envelopes are handled", () => {
   );
   assert.deepEqual(rowsOf({ data: [{ id: 4 }] }), [{ id: 4 }]);
   assert.deepEqual(rowsOf({ data: { id: 4 } }), []);
+});
+test("lending fee calculations use lifecycle and borrower history uses borrower loan IDs", () => {
+  for (const [id, suffix] of [["fee-run", "run"], ["fee-accrue-today", "demo/accrue-today"]]) {
+    const action = actions.find((a) => a.id === id);
+    assert.equal(action.method, "POST");
+    assert.equal(requestPath(action, "", 12), `/api/v1/lifecycle/loans/12/fees/${suffix}`);
+  }
+  for (const resource of ["fee-accruals", "fees"]) {
+    const action = actions.find((a) => a.id === `borrower-loan-${resource}`);
+    assert.equal(action.side, "borrower");
+    assert.equal(requestPath(action, 5, 34, 0, 20),
+      `/api/v1/organizations/5/loans/34/${resource}?page=0&size=20`);
+  }
 });
 test("HTTP errors remain failures and fee idempotency keys reach the proxy", async () => {
   const original = globalThis.fetch;

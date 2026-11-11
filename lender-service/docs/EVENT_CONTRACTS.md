@@ -124,6 +124,7 @@ Here `organizationId` and `data.loanId` identify local lender records. For repor
 | VALUATION_REPORTED | Owner snapshot ID; loanId, loanMarketValue, requiredCollateral, recognizedCollateral, coverageRatio, shortfall |
 | MARGIN_CALL_UPDATED | Owner call ID; loanId, externalId, amount, fulfilledAmount, status, reason, dueAt |
 | RECALL_UPDATED | Owner recall ID; loanId, externalId, quantity, fulfilledQuantity, status, reason, dueAt |
+| RECALL_DEADLINE_REACHED | Owner recall ID; expectedDueAt. The lender rechecks the current deadline and outstanding quantity before marking it OVERDUE. |
 | FEE_BILL_ISSUED | Owner bill ID; loanId, amount, rate, periodStart, periodEnd, dueDate |
 | ACCRUAL_REPORTED | Owner daily entry ID; loanId, date, type (FEE/REBATE), amount, baseValue, rate |
 | REBATE_ACCRUED | Owner rebate ID; loanId, amount, rate, date, paymentDate |
@@ -134,6 +135,8 @@ Here `organizationId` and `data.loanId` identify local lender records. For repor
 | LOAN_STATUS_UPDATED | Local loan ID; status=DEFAULTED. It is an explicit owner decision, not locally inferred from a deadline |
 
 For reports fulfilling a user-initiated owner request, include `data.lifecycleRequestId`. The lender checks its loan and marks the request complete. This prevents a pending recall request from being counted again once the owner-created recall exists. An ACCEPTED request still counts as pending until that correlated report arrives or it is rejected.
+
+Lifecycle consumes `RECALL_REQUESTED` and queues the issuance report in the shared lender outbox. In the local demo it uses the lifecycle request ID as the owner recall reference. Lender return settlement updates recall fulfillment in the same transaction and queues a versioned `RECALL_UPDATED` confirmation. The borrower receives the confirmation through the existing FIX route.
 
 The lender stores owner-calculated amounts without recalculating them. It translates `data.loanId` to the borrower loan ID when forwarding a report, preserves owner reference IDs, assigns the appropriate outgoing version, and adds borrower routing. Rebate payment updates the local payment view/ledger and forwards REBATE_PAID. Fee payment updates the local bill/ledger and forwards PAYMENT_CONFIRMED for the specified borrower payment request.
 

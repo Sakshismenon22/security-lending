@@ -1,5 +1,7 @@
 package com.example.borrower_service.service;
 
+import com.example.borrower_service.model.Organization;
+import com.example.borrower_service.model.Loan;
 import com.example.borrower_service.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +15,22 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @Transactional(readOnly=true)
 public class BorrowerReadService {
+    public Object loanBilling(long org, long loanId, String resource, int page, int size) {
+        db.owned(Loan.class, org, loanId);
+        if (page < 0 || size < 1 || size > 200)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "page must be nonnegative and size between 1 and 200");
+        var paging = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+        return switch (resource) {
+            case "rebate-accruals" -> feeAccrualViewRepository.findByOrganizationIdAndLoanIdAndType(org, loanId, "REBATE", paging);
+            case "rebate-settlements" -> rebateRepository.findByOrganizationIdAndLoanId(org, loanId, paging);
+            case "rebate-payments" -> rebatePaymentRepository.findByOrganizationIdAndLoanId(org, loanId, paging);
+            case "fee-accruals" -> feeAccrualViewRepository.findByOrganizationIdAndLoanIdAndType(
+                    org, loanId, "FEE", paging.withSort(Sort.by(Sort.Direction.DESC, "accrualDate", "id")));
+            case "fees" -> lendingFeeRepository.findByOrganizationIdAndLoanId(
+                    org, loanId, paging.withSort(Sort.by(Sort.Direction.DESC, "periodEnd", "id")));
+            default -> throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown billing resource");
+        };
+    }
     private final BorrowerRepository db;
     private final UserRepository usersRepository;
     private final TraderAccountRepository traderAccountRepository;
@@ -45,7 +63,7 @@ public class BorrowerReadService {
     private final FeeAccrualViewRepository feeAccrualViewRepository;
     public Object list(long org,String resource) {return list(org,resource,0,50);}
     public Object list(long org,String resource,int page,int size) {
-        db.one("select id from organization where id=?",org);
+        db.find(Organization.class, org);
         if(page<0 || size<1 || size>200)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"page must be nonnegative and size between 1 and 200");
         var pageable=PageRequest.of(page,size,Sort.by(Sort.Direction.DESC,"id"));
         return switch(resource) {

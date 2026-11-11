@@ -39,7 +39,7 @@ public class PaymentRequest {
     private String status;
 
     @Column(name="created_at",nullable=false)
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 
     @Column(name="confirmed_at")
     private Instant confirmedAt;
