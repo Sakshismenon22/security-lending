@@ -394,6 +394,69 @@ class BorrowerWorkflowTests {
     }
 
     @Test
+    void loanReturnRejectsWhenOutstandingFeeBillExceedsAvailableCash() {
+        long org = org(), security = security("100");
+        fund(org, "500");
+        long loan = loan(org, security, agreement(org, 0), 10), fee = sequence.incrementAndGet();
+        long position = n(db.rows(CollateralPosition.class, eq("loanId", loan)).get(0), "id");
+        apply(org, "COLLATERAL_PLEDGED", position, 1, Map.of());
+        apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+        apply(
+                org,
+                "FEE_BILL_ISSUED",
+                fee,
+                1,
+                Map.of(
+                        "loanId",
+                        loan,
+                        "periodStart",
+                        "2026-11-01",
+                        "periodEnd",
+                        "2026-11-30",
+                        "rate",
+                        "0.03",
+                        "amount",
+                        "600",
+                        "dueDate",
+                        "2026-12-01"));
+        assertThrows(
+                ResponseStatusException.class,
+                () -> lending.requestReturn(org, loan, new ReturnRequest(10)));
+        assertEquals("DUE", db.owned(LendingFee.class, org, fee).get("status"));
+    }
+
+    void loanReturnAutomaticallyPaysDueFeesFromAvailableCash() {
+        long org = org(), security = security("100");
+        fund(org, "1000");
+        long loan = loan(org, security, agreement(org, 0), 10), fee = sequence.incrementAndGet();
+        long position = n(db.rows(CollateralPosition.class, eq("loanId", loan)).get(0), "id");
+        apply(org, "COLLATERAL_PLEDGED", position, 1, Map.of());
+        apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+        apply(
+                org,
+                "FEE_BILL_ISSUED",
+                fee,
+                1,
+                Map.of(
+                        "loanId",
+                        loan,
+                        "periodStart",
+                        "2026-11-01",
+                        "periodEnd",
+                        "2026-11-30",
+                        "rate",
+                        "0.03",
+                        "amount",
+                        "250",
+                        "dueDate",
+                        "2026-12-01"));
+        long ret = n(lending.requestReturn(org, loan, new ReturnRequest(10)), "id");
+        assertEquals("PAID", db.owned(LendingFee.class, org, fee).get("status"));
+        assertEquals(0, bd("750").compareTo(money(account(org), "available")));
+        assertEquals("PENDING", db.owned(LoanReturn.class, org, ret).get("status"));
+    }
+
+    @Test
     void externalFeeBillsArePaidOnceWithoutCalculatingFees() throws Exception {
         long org = org(), security = security("100");
         fund(org, "10000");
