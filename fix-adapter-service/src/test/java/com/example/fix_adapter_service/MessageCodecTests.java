@@ -35,6 +35,17 @@ class MessageCodecTests {
         assertEquals(1000,JSON.readTree(target.envelope().payload()).get("referenceId").longValue());
         assertEquals("123.456789",JSON.readTree(target.envelope().payload()).get("data").get("price").asText());
     }
+    @Test void commandIncludesDisplayOnlyFixBusinessMessage() {
+        var borrower=properties(AdapterSide.BORROWER);var result=new EnvelopeService(borrower,new RouteService(borrower),JSON).outbound(command("fix-view-1")).orElseThrow();
+        var view=JSON.readTree(result.envelope().payload()).get("fixMsg");
+        assertTrue(view.get("displayOnly").booleanValue());
+        assertEquals("AF",view.get("businessFixType").asText());
+        assertEquals("U1",view.get("transportFixType").asText());
+        assertTrue(view.get("raw").asText().startsWith("8=FIX.4.4|9="));
+        assertTrue(view.get("raw").asText().contains("35=AF|"));
+        assertTrue(view.get("raw").asText().endsWith("|"));
+        assertEquals(100,view.get("values").get("quantity").intValue());
+    }
     @Test void confirmationStripsOnlyLocalBorrowerRoutingMetadata() {
         var p=properties(AdapterSide.LENDER);var result=new EnvelopeService(p,new RouteService(p),JSON).outbound(confirmation("confirm-1")).orElseThrow();
         assertFalse(JSON.readTree(result.envelope().payload()).has("borrowerExternalId"));assertEquals(MessageKind.CONFIRMATION,result.envelope().kind());

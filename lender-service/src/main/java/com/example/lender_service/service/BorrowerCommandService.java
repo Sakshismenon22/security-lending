@@ -5,6 +5,7 @@ import static com.example.lender_service.service.Checks.*;
 import com.example.lender_service.dto.*;
 import com.example.lender_service.model.*;
 import com.example.lender_service.repository.*;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,9 @@ public class BorrowerCommandService {
   private final LoanRepository loans;
   private final CollateralPositionRepository positions;
   private final LoanReturnRepository returns;
+  private final LendingFeeRepository fees;
+  private final LenderAccountRepository accounts;
+  private final LenderAccountLedgerRepository ledger;
   private final SecurityMasterRepository securities;
   private final TenantService tenants;
   private final AgreementService agreementService;
@@ -85,6 +89,7 @@ public class BorrowerCommandService {
             organization.getId(), "COLLATERAL_RELEASE_REQUESTED", p.getId(), Map.of("position", p));
       }
       case "RETURN_REQUESTED" -> loanReturn(connection, command);
+      case "FEE_PAYMENT_RECEIVED" -> feePayment(organization, connection, command);
       default ->
           throw new IllegalArgumentException("Unsupported borrower command " + command.type());
     }
@@ -359,5 +364,40 @@ public class BorrowerCommandService {
         "LOAN_RETURN_RECEIVED",
         x.getId(),
         Map.of("return", x, "loan", loan));
+  }
+
+  /**
+   * The borrower sends this only after a lender-settled return. The funds were blocked when the
+   * return was requested, so accepting the command clears the lender's owner-issued bill and
+   * completes the borrower cash settlement through a versioned confirmation.
+   */
+  private void feePayment(Organization organization, BorrowerConnection c, BorrowerCommand command) {
+    var payment = json.data(command.data(), FeePaymentCommand.class);
+    var loan = found(loans.findByConnectionIdAndBorrowerLoanId(c.getId(), payment.loanId()));
+    sameAgreement(loan.getMslaId(), c, command);
+    var fee =
+        found(fees.findByOrganizationIdAndOwnerReferenceId(organization.getId(), command.referenceId()));
+    require(
+        fee.getConnectionId().equals(c.getId())
+            && fee.getLoanId().equals(loan.getId())
+            && "DUE".equals(fee.getStatus())
+            && payment.amount().compareTo(fee.getAmount()) == 0,
+        "Fee payment does not match an unpaid lender bill");
+    fee.setStatus("PAID");
+    var account = found(accounts.findByOrganizationId(organization.getId()));
+    account.setFeeReceived(account.getFeeReceived().add(payment.amount()));
+    var entry = new LenderAccountLedger();
+    entry.setOrganizationId(organization.getId());
+    entry.setType("FEE_PAYMENT_RECEIVED");
+    entry.setAmount(payment.amount());
+    entry.setReference(command.eventId());
+    entry.setCreatedAt(clock.instant());
+    ledger.save(entry);
+    events.confirm(
+        c,
+        "PAYMENT_CONFIRMED",
+        "payment_request",
+        payment.borrowerPaymentRequestId(),
+        Map.of("amount", payment.amount()));
   }
 }

@@ -54,20 +54,20 @@ public class LendingFeeService {
   public LendingFeeRunResult process(long loanId) {
     var loan = lockLoan(loanId);
     var cursor = loan.getFeeProcessedThrough();
-    if (loan.getSettledAt() == null || loan.isFeeFinalized()) {
+    if (loan.getSettledAt() == null) {
       return new LendingFeeRunResult(loanId, cursor, 0, 0, BigDecimal.ZERO);
     }
     var agreement = agreements.findById(loan.getMslaId()).orElseThrow();
     Instant now = clock.instant();
     LocalDate closed = loan.getClosedAt() == null ? null : date(loan.getClosedAt());
-    LocalDate through = closed == null ? date(now).minusDays(1) : closed;
+    LocalDate through = closed == null ? date(now) : closed;
     LocalDate first = cursor == null ? date(loan.getSettledAt()) : cursor.plusDays(1);
-    if (agreement.getFeeRate().signum() == 0 || first.isAfter(through)) {
-      if (closed != null) loan.setFeeFinalized(true);
-      return new LendingFeeRunResult(loanId, cursor, 0, 0, BigDecimal.ZERO);
+    // A demo accrual can already have advanced the cursor to the close date. Do not return
+    // early in that case because an existing same-day accrual can still be unbilled.
+    int count = 0;
+    if (agreement.getFeeRate().signum() > 0 && !first.isAfter(through)) {
+      count = accrueDays(loan, agreement, first, through, now);
     }
-
-    int count = accrueDays(loan, agreement, first, through, now);
     var due = new TreeMap<LocalDate, List<LendingFeeDay>>();
     for (var day : days.findByLoanIdAndBilledFalseOrderByAccrualDateAsc(loanId)) {
       if (day.getAccrualDate().isAfter(through)) continue;
@@ -86,7 +86,7 @@ public class LendingFeeService {
         total = total.add(amount);
       }
     }
-    loan.setFeeProcessedThrough(through);
+    if (!first.isAfter(through)) loan.setFeeProcessedThrough(through);
     if (closed != null) loan.setFeeFinalized(true);
     return new LendingFeeRunResult(loanId, through, count, bills, total);
   }

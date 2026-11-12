@@ -88,10 +88,10 @@ class LendingFeeServiceTest {
         .thenAnswer(call -> records.stream().filter(row -> !row.isBilled()).toList());
 
     var first = fees.process(7);
-    assertEquals(3, first.daysRecorded());
+    assertEquals(4, first.daysRecorded());
     assertEquals(count, first.billsQueued());
     assertEquals(0, new BigDecimal(amount).compareTo(first.billedAmount()));
-    assertEquals(List.of("1.000000", "1.200000", "1.200000"),
+    assertEquals(List.of("1.000000", "1.200000", "1.200000", "1.200000"),
         records.stream().map(row -> row.getAmount().toPlainString()).toList());
     assertEquals("FEE", events.get(0).path("data").path("type").asText());
     assertEquals(0, fees.process(7).daysRecorded());
@@ -108,6 +108,24 @@ class LendingFeeServiceTest {
   }
 
   @Test
+  void dueProcessingIncludesTodayWhenTheLoopIsRunForCurrentDate() {
+    loan.setSettledAt(Instant.parse("2026-11-02T06:00:00Z"));
+    agreement.setBillingFrequency("MONTHLY");
+    var marks = new TreeMap<Instant, BigDecimal>();
+    marks.put(Instant.parse("2026-11-02T09:00:00Z"), new BigDecimal("200"));
+    when(market.history(eq(security), any(), eq(false))).thenReturn(marks);
+    when(days.findByLoanIdAndBilledFalseOrderByAccrualDateAsc(7L))
+        .thenReturn(List.of());
+
+    var result = fees.process(7);
+
+    assertEquals(LocalDate.parse("2026-11-02"), result.processedThrough());
+    assertEquals(1, result.daysRecorded());
+    assertEquals(0, result.billsQueued());
+    assertEquals(BigDecimal.ZERO, result.billedAmount());
+  }
+
+  @Test
   void demoUsesCurrentQuantityAndDoesNotAccrueTwice() {
     var marks = new TreeMap<Instant, BigDecimal>();
     marks.put(Instant.parse("2026-11-02T09:00:00Z"), new BigDecimal("200"));
@@ -119,5 +137,28 @@ class LendingFeeServiceTest {
     assertFalse(fees.accrueToday(7).created());
     assertEquals(1, events.size());
     assertNull(loan.getFeeProcessedThrough());
+  }
+
+  @Test
+  void sameDayDemoAccrualIsBilledWhenTheLoanCloses() {
+    loan.setSettledAt(Instant.parse("2026-11-02T06:00:00Z"));
+    agreement.setBillingFrequency("MONTHLY");
+    var marks = new TreeMap<Instant, BigDecimal>();
+    marks.put(Instant.parse("2026-11-02T09:00:00Z"), new BigDecimal("200"));
+    when(market.history(eq(security), any(), eq(true))).thenReturn(marks);
+    when(days.findByLoanIdAndBilledFalseOrderByAccrualDateAsc(7L))
+        .thenAnswer(call -> records.stream().filter(row -> !row.isBilled()).toList());
+
+    fees.accrueToday(7);
+    loan.setFeeProcessedThrough(LocalDate.parse("2026-11-02"));
+    loan.setClosedAt(Instant.parse("2026-11-02T10:00:00Z"));
+    loan.setFeeFinalized(true);
+
+    var closed = fees.process(7);
+
+    assertEquals(0, closed.daysRecorded());
+    assertEquals(1, closed.billsQueued());
+    assertTrue(records.get(0).isBilled());
+    assertEquals("FEE_BILL_ISSUED", events.get(events.size() - 1).path("type").asText());
   }
 }

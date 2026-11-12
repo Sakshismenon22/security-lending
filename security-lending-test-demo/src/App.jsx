@@ -61,7 +61,14 @@ export default function App() {
     [tab, setTab] = useState("actions"),
     [search, setSearch] = useState(""),
     [inspected, setInspected] = useState(null),
-    [confirm, setConfirm] = useState(false);
+    [confirm, setConfirm] = useState(false),
+    [quickWorkflow, setQuickWorkflow] = useState({
+      agreementId: "",
+      reservationId: "",
+      securityId: "1",
+      quantity: "100",
+      collateralCashAmount: "150000",
+    });
   const org = context[side + "Org"],
     selectedUserId = context[side + "User"],
     selectedUser = (users[side] || []).find(
@@ -321,6 +328,266 @@ export default function App() {
     }
     setBusy(false);
     setTab("history");
+  }
+
+  async function workflowRequest(label, request) {
+    const response = await sendRequest(request);
+    remember(response);
+    if (!response.ok) throw Error(`${label} failed.`);
+    return response;
+  }
+
+  async function waitForWorkflowRow(side, path, match, label) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const response = await sendRequest({ side, path });
+      if (response.ok) {
+        const row = rowsOf(response.payload).find(match);
+        if (row) return row;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 600));
+    }
+    throw Error(`${label} did not arrive within 12 seconds. Confirm Kafka, both FIX adapters, and both services are running, then retry.`);
+  }
+
+  async function runCompleteLoanWorkflow() {
+    setBusy(true);
+    setError("");
+    try {
+      const borrowerOrg = Number(context.borrowerOrg);
+      const lenderOrg = Number(context.lenderOrg);
+      const securityId = Number(quickWorkflow.securityId);
+      const quantity = Number(quickWorkflow.quantity);
+      const collateralCashAmount = Number(quickWorkflow.collateralCashAmount);
+      if (!borrowerOrg || !lenderOrg)
+        throw Error("Select both borrower and lender organization IDs first.");
+      if (![securityId, quantity, collateralCashAmount].every(Number.isFinite) || quantity <= 0 || collateralCashAmount <= 0)
+        throw Error("Security ID, quantity, and collateral cash must be positive numbers.");
+
+      const agreements = await workflowRequest("Loading borrower agreements", {
+        side: "borrower",
+        path: `/api/v1/organizations/${borrowerOrg}/agreements`,
+      });
+      const requestedAgreementId = Number(quickWorkflow.agreementId);
+      const agreement = rowsOf(agreements.payload).find(
+        (row) =>
+          Number(row.id) === requestedAgreementId ||
+          (!requestedAgreementId && String(row.status || "").toUpperCase() === "ACTIVE"),
+      );
+      if (!agreement || String(agreement.status || "").toUpperCase() !== "ACTIVE")
+        throw Error("An active borrower MSLA is required. Approve and wait for the MSLA before running this workflow.");
+
+      const locateResponse = await workflowRequest("Borrower locate request", {
+        side: "borrower",
+        path: `/api/v1/organizations/${borrowerOrg}/locates`,
+        method: "POST",
+        body: { agreementId: Number(agreement.id), securityId, quantity, expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() },
+      });
+      const borrowerLocateId = Number(unwrap(locateResponse.payload)?.id);
+      const lenderLocate = await waitForWorkflowRow("lender", `/api/v1/organizations/${lenderOrg}/locates`, (row) => Number(row.borrowerLocateId) === borrowerLocateId, "Lender locate");
+      await workflowRequest("Lender locate approval", {
+        side: "lender",
+        path: `/api/v1/organizations/${lenderOrg}/locates/${lenderLocate.id}/approve`,
+        method: "POST",
+        body: { quantity, reason: "Complete demo workflow" },
+      });
+      await waitForWorkflowRow("borrower", `/api/v1/organizations/${borrowerOrg}/locates`, (row) => Number(row.id) === borrowerLocateId && ["APPROVED", "PARTIALLY_APPROVED"].includes(String(row.status || "").toUpperCase()), "Borrower locate approval");
+
+      const reservationResponse = await workflowRequest("Borrower reservation request", {
+        side: "borrower",
+        path: `/api/v1/organizations/${borrowerOrg}/locates/${borrowerLocateId}/reserve`,
+        method: "POST",
+        body: { quantity },
+      });
+      const borrowerReservationId = Number(unwrap(reservationResponse.payload)?.id);
+      const lenderReservation = await waitForWorkflowRow("lender", `/api/v1/organizations/${lenderOrg}/reservations`, (row) => Number(row.borrowerReservationId) === borrowerReservationId, "Lender reservation");
+      await workflowRequest("Lender reservation approval", {
+        side: "lender",
+        path: `/api/v1/organizations/${lenderOrg}/reservations/${lenderReservation.id}/approve`,
+        method: "POST",
+        body: { quantity, reason: "Complete demo workflow" },
+      });
+      await waitForWorkflowRow("borrower", `/api/v1/organizations/${borrowerOrg}/reservations`, (row) => Number(row.id) === borrowerReservationId && String(row.status || "").toUpperCase() === "ACTIVE", "Borrower active reservation");
+
+      const loanResponse = await workflowRequest("Borrower loan request", {
+        side: "borrower",
+        path: `/api/v1/organizations/${borrowerOrg}/loans`,
+        method: "POST",
+        body: { reservationId: borrowerReservationId, quantity, collateral: [{ assetType: "CASH", securityId: null, quantity: 0, cashAmount: collateralCashAmount, marginCallId: null }] },
+      });
+      const borrowerLoanId = Number(unwrap(loanResponse.payload)?.id);
+      const lenderLoan = await waitForWorkflowRow("lender", `/api/v1/organizations/${lenderOrg}/loans`, (row) => Number(row.borrowerLoanId) === borrowerLoanId, "Lender loan");
+      await workflowRequest("Lender loan approval", {
+        side: "lender",
+        path: `/api/v1/organizations/${lenderOrg}/loans/${lenderLoan.id}/approve`,
+        method: "POST",
+        body: {},
+      });
+      const lenderCollateral = await waitForWorkflowRow("lender", `/api/v1/organizations/${lenderOrg}/collateral`, (row) => Number(row.loanId) === Number(lenderLoan.id) && String(row.status || "").toUpperCase() === "PLEDGE_PENDING", "Lender collateral pledge");
+      await workflowRequest("Lender collateral confirmation", {
+        side: "lender",
+        path: `/api/v1/organizations/${lenderOrg}/collateral/${lenderCollateral.id}/confirm`,
+        method: "POST",
+        body: { reference: `DEMO-PLEDGE-${Date.now()}` },
+      });
+      const settled = await workflowRequest("Lender loan settlement", {
+        side: "lender",
+        path: `/api/v1/organizations/${lenderOrg}/loans/${lenderLoan.id}/settle`,
+        method: "POST",
+        body: { reference: `DEMO-LOAN-${Date.now()}` },
+      });
+      await waitForWorkflowRow("borrower", `/api/v1/organizations/${borrowerOrg}/loans`, (row) => Number(row.id) === borrowerLoanId && String(row.status || "").toUpperCase() === "ACTIVE", "Borrower settled loan");
+      setQuickWorkflow((old) => ({ ...old, reservationId: String(borrowerReservationId) }));
+      setResourceId(String(borrowerLoanId));
+      setResult(settled);
+      setTab("history");
+    } catch (ex) {
+      setError(ex.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function runQuickLoanWorkflow() {
+    setBusy(true);
+    setError("");
+    try {
+      const borrowerOrg = Number(context.borrowerOrg);
+      const lenderOrg = Number(context.lenderOrg);
+      if (!borrowerOrg || !lenderOrg)
+        throw Error("Select both borrower and lender organization IDs first.");
+
+      const securityId = Number(quickWorkflow.securityId || 1);
+      const requestedQuantity = Number(quickWorkflow.quantity || 100);
+      const collateralCashAmount = Number(
+        quickWorkflow.collateralCashAmount || 150000,
+      );
+
+      const reservationResponse = await sendRequest({
+        side: "borrower",
+        path: `/api/v1/organizations/${borrowerOrg}/reservations`,
+      });
+      if (!reservationResponse.ok)
+        throw Error("Could not load borrower reservations for the loan workflow.");
+
+      const reservations = rowsOf(reservationResponse.payload);
+      const manualReservationId = quickWorkflow.reservationId
+        ? Number(quickWorkflow.reservationId)
+        : null;
+      const reservation =
+        (manualReservationId !== null
+          ? reservations.find((row) => Number(row.id) === manualReservationId)
+          : null) ||
+        reservations.find(
+          (row) =>
+            Number(row.securityId) === securityId &&
+            Number(row.quantity) > 0 &&
+            !["REJECTED", "EXPIRED"].includes(
+              String(row.status || "").toUpperCase(),
+            ),
+        ) ||
+        reservations.find(
+          (row) =>
+            Number(row.quantity) > 0 &&
+            !["REJECTED", "EXPIRED"].includes(
+              String(row.status || "").toUpperCase(),
+            ),
+        );
+      if (!reservation)
+        throw Error(
+          manualReservationId !== null
+            ? `Reservation ${manualReservationId} was not found or is not usable.`
+            : `No usable reservation for security ${securityId} was found. Complete the reservation step first.`,
+        );
+
+      const loanBody = {
+        reservationId: Number(reservation.id),
+        quantity: Number(requestedQuantity || reservation.quantity || 100),
+        collateral: [
+          {
+            assetType: "CASH",
+            securityId: null,
+            quantity: 0,
+            cashAmount: collateralCashAmount,
+            marginCallId: null,
+          },
+        ],
+      };
+      const loanResponse = await sendRequest({
+        side: "borrower",
+        path: `/api/v1/organizations/${borrowerOrg}/loans`,
+        method: "POST",
+        body: loanBody,
+      });
+      remember(loanResponse);
+      if (!loanResponse.ok)
+        throw Error("Borrower loan request failed.");
+
+      const borrowerLoanId = Number(unwrap(loanResponse.payload)?.id ?? unwrap(loanResponse.payload)?.loanId);
+      if (!Number.isFinite(borrowerLoanId))
+        throw Error("Borrower loan response did not include a usable local loan ID.");
+
+      const lenderLoansResponse = await sendRequest({
+        side: "lender",
+        path: `/api/v1/organizations/${lenderOrg}/loans`,
+      });
+      if (!lenderLoansResponse.ok)
+        throw Error("Could not load lender loans to find the newly created loan.");
+
+      const lenderLoan = rowsOf(lenderLoansResponse.payload).find(
+        (row) => Number(row.borrowerLoanId) === borrowerLoanId,
+      );
+      if (!lenderLoan)
+        throw Error("The borrower loan exists, but the lender has not yet projected it. Wait for the event to arrive and retry.");
+
+      const approveResponse = await sendRequest({
+        side: "lender",
+        path: `/api/v1/organizations/${lenderOrg}/loans/${lenderLoan.id}/approve`,
+        method: "POST",
+        body: {},
+      });
+      remember(approveResponse);
+      if (!approveResponse.ok)
+        throw Error("Lender approval failed.");
+
+      const collateralResponse = await sendRequest({
+        side: "lender",
+        path: `/api/v1/organizations/${lenderOrg}/collateral`,
+      });
+      if (!collateralResponse.ok)
+        throw Error("Could not read lender collateral to find the pending pledge.");
+      const collateralPosition = rowsOf(collateralResponse.payload).find(
+        (row) => Number(row.loanId) === Number(lenderLoan.id) && ["PLEDGE_PENDING", "POSTED"].includes(String(row.status || "").toUpperCase()),
+      );
+      if (!collateralPosition)
+        throw Error("No pending lender collateral position was found for the approved loan.");
+
+      const confirmResponse = await sendRequest({
+        side: "lender",
+        path: `/api/v1/organizations/${lenderOrg}/collateral/${collateralPosition.id}/confirm`,
+        method: "POST",
+        body: { reference: `AUTO-LOAN-${Date.now()}` },
+      });
+      remember(confirmResponse);
+      if (!confirmResponse.ok)
+        throw Error("Lender collateral receipt confirmation failed.");
+
+      const settlementResponse = await sendRequest({
+        side: "lender",
+        path: `/api/v1/organizations/${lenderOrg}/loans/${lenderLoan.id}/settle`,
+        method: "POST",
+        body: { reference: `AUTO-SETTLE-${Date.now()}` },
+      });
+      remember(settlementResponse);
+      if (!settlementResponse.ok)
+        throw Error("Lender loan settlement failed.");
+
+      setResult(settlementResponse);
+      setResourceId(String(lenderLoan.id));
+      setError("");
+    } catch (ex) {
+      setError(ex.message);
+    } finally {
+      setBusy(false);
+    }
   }
   let preview;
   try {
@@ -691,6 +958,104 @@ export default function App() {
                 )}
               </section>
               <div className="test-detail">
+                {side === "borrower" && category === "Loans & returns" && (
+                  <section className="panel request-panel">
+                    <div className="panel-title">
+                      <div>
+                        <h2>Loan workflow automation</h2>
+                        <small>Locate, reserve, loan, collateral, and settlement</small>
+                      </div>
+                    </div>
+                    <div className="form-grid">
+                      <label>
+                        Active MSLA ID
+                        <input
+                          type="number"
+                          value={quickWorkflow.agreementId}
+                          onChange={(e) =>
+                            setQuickWorkflow((old) => ({
+                              ...old,
+                              agreementId: e.target.value,
+                            }))
+                          }
+                          placeholder="optional active agreement"
+                        />
+                      </label>
+                      <label>
+                        Reserve ID
+                        <input
+                          type="number"
+                          value={quickWorkflow.reservationId}
+                          onChange={(e) =>
+                            setQuickWorkflow((old) => ({
+                              ...old,
+                              reservationId: e.target.value,
+                            }))
+                          }
+                          placeholder="optional"
+                        />
+                      </label>
+                      <label>
+                        Security ID
+                        <input
+                          type="number"
+                          value={quickWorkflow.securityId}
+                          onChange={(e) =>
+                            setQuickWorkflow((old) => ({
+                              ...old,
+                              securityId: e.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        Quantity
+                        <input
+                          type="number"
+                          value={quickWorkflow.quantity}
+                          onChange={(e) =>
+                            setQuickWorkflow((old) => ({
+                              ...old,
+                              quantity: e.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        Collateral cash
+                        <input
+                          type="number"
+                          value={quickWorkflow.collateralCashAmount}
+                          onChange={(e) =>
+                            setQuickWorkflow((old) => ({
+                              ...old,
+                              collateralCashAmount: e.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className="request-actions">
+                      <span>Requires an active MSLA, lender inventory, and borrower cash</span>
+                      <button
+                        type="button"
+                        className="button quick-flow"
+                        disabled={busy}
+                        onClick={runCompleteLoanWorkflow}
+                      >
+                        Complete locate-to-loan workflow
+                      </button>
+                      <button
+                        type="button"
+                        className="button quick-flow"
+                        disabled={busy}
+                        onClick={runQuickLoanWorkflow}
+                      >
+                        Use existing reservation only
+                      </button>
+                    </div>
+                  </section>
+                )}
                 {operation ? (
                   <section className="panel request-panel">
                     <div className="panel-title">

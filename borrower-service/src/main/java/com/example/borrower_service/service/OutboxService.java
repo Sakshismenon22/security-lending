@@ -74,6 +74,11 @@ public class OutboxService {
     }
 
     private boolean isCommand(String type) {
-        return type.endsWith("_REQUESTED") || type.equals("AGREEMENT_PROPOSED");
+        // A fee payment is a borrower-to-lender settlement instruction, even though its
+        // lifecycle name does not end in _REQUESTED.  It must therefore pass through the
+        // borrower FIX adapter on borrower.commands.v1, not the local events stream.
+        return type.endsWith("_REQUESTED")
+                || type.equals("AGREEMENT_PROPOSED")
+                || type.equals("FEE_PAYMENT_RECEIVED");
     }
 }

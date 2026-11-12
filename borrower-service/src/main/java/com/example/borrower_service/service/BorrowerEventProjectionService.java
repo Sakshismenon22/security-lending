@@ -367,7 +367,7 @@ public class BorrowerEventProjectionService {
                         entity.setStatus("SETTLED");
                         entity.setSettledAt(Instant.now());
                     });
-            if (remaining == 0)
+            if (remaining == 0) {
                 db.edit(
                         Loan.class,
                         n(loan, "id"),
@@ -375,7 +375,10 @@ public class BorrowerEventProjectionService {
                             entity.setStatus("CLOSED");
                             entity.setClosedAt(Instant.now());
                         });
+                payments.submitBlockedReturnFees(org, id);
+            }
         } else {
+            payments.releaseBlockedReturnFees(org, id);
             var h =
                     db.matchingRow(
                             Holding.class,
@@ -442,6 +445,10 @@ public class BorrowerEventProjectionService {
                     entity.setDueDate(dateValue(d, "dueDate"));
                     entity.setStatus("DUE");
                 });
+        // The final owner-calculated bill can arrive after the return is closed. Reserve its cash
+        // and send the receipt straight back to the lender instead of leaving it due forever.
+        if ("CLOSED".equals(db.owned(Loan.class, org, number(d, "loanId")).get("status")))
+            payments.autoSettleClosedLoanFee(org, id);
     }
 
     private void accrual(BorrowerEvent e) {

@@ -21,7 +21,7 @@ public class LendingService {
     private final EventWriter events;
     private final MarketService market;
     private final CollateralService collateral;
-    private final DirectoryService accounts;
+    private final PaymentService payments;
     private final Clock clock;
 
     public LendingService(
@@ -29,13 +29,13 @@ public class LendingService {
             EventWriter events,
             MarketService market,
             CollateralService collateral,
-            DirectoryService accounts,
+            PaymentService payments,
             Clock clock) {
         this.db = db;
         this.events = events;
         this.market = market;
         this.collateral = collateral;
-        this.accounts = accounts;
+        this.payments = payments;
         this.clock = clock;
     }
 
@@ -293,10 +293,10 @@ public class LendingService {
                         Long.class,
                         eq("loanId", loanId),
                         eq("status", "PENDING"));
+        long outstanding = n(loan, "outstanding_quantity");
         require(
-                r.quantity() <= n(loan, "outstanding_quantity") - pending,
+                r.quantity() <= outstanding - pending,
                 "Return exceeds uncommitted outstanding loan quantity");
-        settleOutstandingFees(org, loanId, "RETURN_" + loanId + "_" + r.quantity());
         long security = n(loan, "security_id");
         db.holding(org, security);
         var h =
@@ -329,6 +329,9 @@ public class LendingService {
                             entity.setOwnedCost(money(h, "average_cost"));
                             entity.setRecallId(r.recallId());
                         });
+        // Fees are only reserved here. They remain blocked until lender settlement, or are
+        // released if the return is rejected.
+        payments.blockDueFeesForReturn(org, loanId, id);
         db.edit(
                 Loan.class,
                 loanId,
@@ -347,30 +350,6 @@ public class LendingService {
                         "recallId",
                         r.recallId() == null ? 0 : r.recallId()));
         return db.owned(LoanReturn.class, org, id);
-    }
-
-    private void settleOutstandingFees(long org, long loanId, String reference) {
-        var fees =
-                db.rows(LendingFee.class, eq("organizationId", org), eq("loanId", loanId), eq("status", "DUE"));
-        if (fees.isEmpty()) {
-            return;
-        }
-        BigDecimal totalDue =
-                fees.stream().map(f -> money(f, "fee_amount")).reduce(BigDecimal.ZERO, BigDecimal::add);
-        var account = db.matchingRow(TraderAccount.class, eq("organizationId", org));
-        require(
-                money(account, "available").compareTo(totalDue) >= 0,
-                "Do not have sufficient fund to pay fees");
-        accounts.changeCash(org, totalDue.negate(), "LOAN_RETURN_FEE_SETTLED", reference);
-        for (var fee : fees) {
-            db.edit(
-                    LendingFee.class,
-                    n(fee, "id"),
-                    entity -> {
-                        entity.setStatus("PAID");
-                        entity.setPaidAt(Instant.now());
-                    });
-        }
     }
 
     public Map<String, Object> respondToRecall(long org, long recallId, ReturnRequest r) {

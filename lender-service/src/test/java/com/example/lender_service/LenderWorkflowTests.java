@@ -340,6 +340,20 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void fullReturnAutomaticallyReleasesPostedCollateral() {
+    var o = organization();
+    var c = connection(o);
+    long s = security("100");
+    var loan = activeLoan(o, c, s, true);
+    var p = positions.findByLoanId(loan.getId()).get(0);
+    command(o, "RETURN_REQUESTED", 500, 10, new ReturnCommand(300, 100, 0));
+    var r = returns.findByConnectionIdAndBorrowerReturnId(c.getId(), 500L).orElseThrow();
+    loanService.returnDecision(o.getId(), r.getId(), true, "FULL-RETURN");
+    assertEquals("CLOSED", loans.findById(loan.getId()).orElseThrow().getStatus());
+    assertEquals("RELEASED", positions.findById(p.getId()).orElseThrow().getStatus());
+  }
+
+  @Test
   void collateralReleaseWaitsForRequestAndCannotUndercollateralizeAnActiveLoan() {
     var o = organization();
     var c = connection(o);
