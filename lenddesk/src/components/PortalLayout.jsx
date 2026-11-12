@@ -25,6 +25,6 @@ export default function PortalLayout() {
 
   return <main className={`app-shell ${compactSidebar ? 'sidebar-compact' : ''}`}>
     <Sidebar compact={compactSidebar} onToggleCompact={() => setCompactSidebar(value => !value)} />
-    <section className="workspace"><Topbar onSearch={setSearchTerm} />{mode === 'live' && <div className="live-banner">LIVE API · Lender service · Organization {organizationId}</div>}{mode === 'live' && resource ? <LiveResourcePage title={resource[0]} resource={resource[1]} /> : <Outlet context={{ searchTerm, dataMode: mode }} />}</section>
+    <section className="workspace"><Topbar onSearch={setSearchTerm} />{mode === 'live' && <div className="live-banner">LIVE API · Lender service · Organization {organizationId}</div>}{mode === 'live' && resource && pathname.split('/').filter(Boolean)[0] !== 'margin-calls' ? <LiveResourcePage title={resource[0]} resource={resource[1]} /> : <Outlet context={{ searchTerm, dataMode: mode }} />}</section>
   </main>
 }
