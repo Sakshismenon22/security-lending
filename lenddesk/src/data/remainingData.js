@@ -1,4 +1,5 @@
 export const marginCallConfig = {
+  resource: 'margin-calls',
   title: 'Margin Calls', metrics: [['Open calls', '3'], ['Collateral deficit', '$4.28M'], ['Due before 16:00', '2'], ['Overdue', '1']], action: 'Issue margin call', footer: 'Margin calls are produced by Lifecycle Service after daily collateral-ratio evaluation.',
   tabs: [['All calls', '6'], ['Open', '3'], ['Overdue', '1'], ['Closed', '2']],
   columns: [['Call ID', 'id'], ['Loan ID', 'loan'], ['Borrower', 'borrower'], ['Security', 'security'], ['Deficit', 'amount'], ['Required by', 'due'], ['Response', 'response'], ['Status', 'status']],
@@ -10,6 +11,7 @@ export const marginCallConfig = {
 }
 
 export const recallConfig = {
+  resource: 'recalls',
   title: 'Recalls', metrics: [['Open recalls', '2'], ['Shares recalled', '80,000'], ['Due today', '50,000'], ['At risk', '1']], action: 'Create recall', footer: 'Recall returns become return instructions once the borrower responds and commits quantity.',
   tabs: [['All recalls', '8'], ['Open', '2'], ['Due today', '2'], ['Completed', '6']],
   columns: [['Recall ID', 'id'], ['Loan ID', 'loan'], ['Borrower', 'borrower'], ['Security', 'security'], ['Quantity', 'quantity'], ['Notice date', 'notice'], ['Return due', 'due'], ['Return ID', 'returnId'], ['Status', 'status']],
@@ -21,6 +23,7 @@ export const recallConfig = {
 }
 
 export const feeRebateConfig = {
+  resource: 'accruals',
   title: 'Fees & Rebates', metrics: [['Fee accrued today', '$42,891'], ['Cash rebate accrued', '$18,420'], ['Due settlements', '6'], ['Net receivable', '$24,471']], action: 'Run daily accruals', footer: 'Daily accruals are calculated by Lifecycle Service using current loan market value and MSLA rates.',
   tabs: [['All accruals', '684'], ['Fees', '342'], ['Rebates', '342'], ['Due settlement', '6']],
   columns: [['Accrual ID', 'id'], ['Loan ID', 'loan'], ['Borrower', 'borrower'], ['Type', 'type'], ['Rate', 'rate'], ['Accrued today', 'amount'], ['Accrued total', 'total'], ['Settlement rule', 'rule'], ['Next settlement', 'due'], ['Status', 'status']],
@@ -32,6 +35,7 @@ export const feeRebateConfig = {
 }
 
 export const ledgerConfig = {
+  resource: 'ledger',
   title: 'Settlement Ledger', metrics: [['Entries today', '142'], ['Cash movement', '$64.28M'], ['Pending entries', '5'], ['Balanced', '100%']], action: 'Export ledger', footer: 'Ledger entries are posted when a lifecycle settlement leg is confirmed by its receiving party.',
   tabs: [['All entries', '142'], ['Cash', '86'], ['Securities', '42'], ['Pending', '5']],
   columns: [['Ledger ID', 'id'], ['Posted UTC', 'posted'], ['Reference', 'loan'], ['Counterparty', 'borrower'], ['Entry type', 'type'], ['Debit account', 'debit'], ['Credit account', 'credit'], ['Amount / quantity', 'amount'], ['State', 'status']],
@@ -43,6 +47,7 @@ export const ledgerConfig = {
 }
 
 export const fixMonitorConfig = {
+  resource: 'audit',
   title: 'FIX Monitor', metrics: [['Messages today', '142,890'], ['Inbound', '68,441'], ['Outbound', '74,449'], ['Gateway latency', '4.2 ms']], action: 'Open FIX settings', footer: 'Raw FIX is displayed with | delimiters for readability; the transport uses SOH separators.',
   tabs: [['All messages', '142,890'], ['Inbound', '68,441'], ['Outbound', '74,449'], ['Exceptions', '3']],
   columns: [['Sequence', 'id'], ['UTC time', 'posted'], ['Direction', 'type'], ['Message type', 'loan'], ['Sender', 'borrower'], ['Target', 'debit'], ['Business reference', 'credit'], ['Latency', 'amount'], ['State', 'status']],
@@ -54,6 +59,7 @@ export const fixMonitorConfig = {
 }
 
 export const auditConfig = {
+  resource: 'audit',
   title: 'Audit & Notifications', metrics: [['Events today', '1,284'], ['Unread alerts', '4'], ['Acknowledged', '18'], ['Retention', '7 years']], action: 'Export audit trail', footer: 'All lender actions and system events are retained with actor, timestamp, source and business reference.',
   tabs: [['All events', '1,284'], ['Notifications', '24'], ['User actions', '186'], ['System events', '1,074']],
   columns: [['Event ID', 'id'], ['UTC time', 'posted'], ['Category', 'type'], ['Actor / source', 'borrower'], ['Action', 'loan'], ['Reference', 'credit'], ['Severity', 'amount'], ['Notification state', 'status']],
@@ -65,6 +71,7 @@ export const auditConfig = {
 }
 
 export const administrationConfig = {
+  resource: 'users',
   title: 'Administration', metrics: [['Organizations', '1'], ['Active users', '14'], ['FIX sessions', '2'], ['Services healthy', '7/7']], action: 'Add user', footer: 'Administration controls access, organizations, operational calendars, configuration and service connectivity.',
   tabs: [['Users', '14'], ['Organizations', '1'], ['Service connectivity', '7'], ['Configurations', '18']],
   columns: [['User / configuration', 'id'], ['Organization', 'loan'], ['Role / type', 'type'], ['Email / endpoint', 'borrower'], ['Scope', 'credit'], ['Last activity', 'posted'], ['State', 'status']],
