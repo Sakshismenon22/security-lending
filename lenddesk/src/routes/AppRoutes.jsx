@@ -9,9 +9,18 @@ import LoansPage from '../pages/LoansPage'
 import CollateralPage from '../pages/CollateralPage'
 import ReturnsPage from '../pages/ReturnsPage'
 import ValuationsPage from '../pages/ValuationsPage'
+import MarginCallsPage from '../pages/MarginCallsPage'
+import RecallsPage from '../pages/RecallsPage'
+import FeesRebatesPage from '../pages/FeesRebatesPage'
+import LedgerPage from '../pages/LedgerPage'
+import FixMonitorPage from '../pages/FixMonitorPage'
+import AuditNotificationsPage from '../pages/AuditNotificationsPage'
+import AdministrationPage from '../pages/AdministrationPage'
+import AgreementDetailPage from '../pages/AgreementDetailPage'
+import LoanDetailPage from '../pages/LoanDetailPage'
 import OverviewPage from '../pages/OverviewPage'
 import PlaceholderPage from '../pages/PlaceholderPage'
 
 export default function AppRoutes() {
-  return <BrowserRouter><Routes><Route element={<PortalLayout />}><Route index element={<OverviewPage />} /><Route path="agreements" element={<AgreementsPage />} /><Route path="borrowers" element={<BorrowersPage />} /><Route path="inventory" element={<InventoryPage />} /><Route path="locates" element={<LocatesPage />} /><Route path="reservations" element={<ReservationsPage />} /><Route path="loans" element={<LoansPage />} /><Route path="collateral" element={<CollateralPage />} /><Route path="returns" element={<ReturnsPage />} /><Route path="valuations" element={<ValuationsPage />} /><Route path="*" element={<PlaceholderPage />} /></Route></Routes></BrowserRouter>
+  return <BrowserRouter><Routes><Route element={<PortalLayout />}><Route index element={<OverviewPage />} /><Route path="agreements" element={<AgreementsPage />} /><Route path="agreements/:agreementId" element={<AgreementDetailPage />} /><Route path="borrowers" element={<BorrowersPage />} /><Route path="inventory" element={<InventoryPage />} /><Route path="locates" element={<LocatesPage />} /><Route path="reservations" element={<ReservationsPage />} /><Route path="loans" element={<LoansPage />} /><Route path="loans/:loanId" element={<LoanDetailPage />} /><Route path="collateral" element={<CollateralPage />} /><Route path="returns" element={<ReturnsPage />} /><Route path="valuations" element={<ValuationsPage />} /><Route path="margin-calls" element={<MarginCallsPage />} /><Route path="recalls" element={<RecallsPage />} /><Route path="fees-rebates" element={<FeesRebatesPage />} /><Route path="ledger" element={<LedgerPage />} /><Route path="fix-monitor" element={<FixMonitorPage />} /><Route path="audit-notifications" element={<AuditNotificationsPage />} /><Route path="administration" element={<AdministrationPage />} /><Route path="*" element={<PlaceholderPage />} /></Route></Routes></BrowserRouter>
 }
