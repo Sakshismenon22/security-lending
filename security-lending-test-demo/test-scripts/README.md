@@ -1,6 +1,6 @@
 # Lender API test scripts
 
-One standalone Axios script is provided for every lender-side endpoint/action in `security-lending-test-demo/src/api/catalog.js`, including lifecycle operations initiated from the Lender side and the Lender FIX adapter endpoints. The scripts call the real services directly; they do not depend on the React demo UI or its Vite proxy.
+One standalone Axios script is provided for every lender-side endpoint/action in `security-lending-test-demo/src/api/catalog.js`, including lifecycle operations initiated from the Lender side, the Lender FIX adapter endpoints, and the market/lifecycle health checks used by the demo UI. The scripts call the real services directly; they do not depend on the React demo UI or its Vite proxy.
 
 ## Install and configure
 
@@ -17,6 +17,7 @@ Edit `.env` and set the lender organization/resource IDs returned by your servic
 | Lender service | http://127.0.0.1:8084 |
 | Lifecycle service | http://127.0.0.1:8085 |
 | Lender FIX adapter | http://127.0.0.1:8083 |
+| Market data | http://127.0.0.1:8080 |
 
 Organization-scoped lender requests use `/api/v1/organizations/{LENDER_ORG_ID}`. Lifecycle and FIX adapter requests use their service-specific global paths. Paginated GET scripts use `PAGE` and `PAGE_SIZE`.
 
