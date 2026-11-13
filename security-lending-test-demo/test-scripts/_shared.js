@@ -14,6 +14,7 @@ const serviceUrls = {
   lender: process.env.LENDER_API_URL || "http://127.0.0.1:8084",
   lifecycle: process.env.LIFECYCLE_API_URL || "http://127.0.0.1:8085",
   lenderAdapter: process.env.LENDER_FIX_API_URL || "http://127.0.0.1:8083",
+  market: process.env.MARKET_DATA_API_URL || "http://127.0.0.1:8080",
 };
 const resolveBody = (v) => Array.isArray(v) ? v.map(resolveBody) : v && typeof v === "object"
   ? Object.fromEntries(Object.entries(v).map(([k,x])=>[k,resolveBody(x)]))
