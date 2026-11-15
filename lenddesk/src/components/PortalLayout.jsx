@@ -7,7 +7,7 @@ import { useDataSource } from '../hooks/useDataSource'
 export default function PortalLayout() {
   const [searchTerm, setSearchTerm] = useState('')
   const [compactSidebar, setCompactSidebar] = useState(() => localStorage.getItem('lenddesk-sidebar') === 'compact')
-  const { mode, organizationId } = useDataSource()
+  const { mode } = useDataSource()
 
   useEffect(() => {
     localStorage.setItem('lenddesk-sidebar', compactSidebar ? 'compact' : 'expanded')
@@ -17,7 +17,6 @@ export default function PortalLayout() {
     <Sidebar compact={compactSidebar} onToggleCompact={() => setCompactSidebar(value => !value)} />
     <section className="workspace">
       <Topbar onSearch={setSearchTerm} />
-      {mode === 'live' && <div className="live-banner">LIVE API · Lender service · Organization {organizationId}</div>}
       <Outlet context={{ searchTerm, dataMode: mode }} />
     </section>
   </main>

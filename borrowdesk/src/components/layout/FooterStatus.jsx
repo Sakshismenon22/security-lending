@@ -1,0 +1,1 @@
+export default function FooterStatus(){return <footer className="footer-status"><span><i/> Borrower service · API data loaded per endpoint</span><span><i/> FIX session status not exposed by borrower API</span></footer>}

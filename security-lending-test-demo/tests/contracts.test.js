@@ -54,9 +54,11 @@ test("borrower and lender IDs remain local and invalid IDs are refused", () => {
     "/api/v1/organizations",
   );
 });
-test("request defaults preserve financial decimals, null security IDs, and unique keys", () => {
-  const a = actions.find((a) => a.id === "agreement-propose");
+test("lender agreement-offer defaults preserve financial decimals, null security IDs, and unique keys", () => {
+  const a = actions.find((a) => a.id === "agreement-send");
   const d = defaults(a, new Date("2026-11-09T12:00:00Z"));
+  assert.equal(a.side, "lender");
+  assert.equal(d.connectionId, 1);
   assert.equal(d.coverageRatio, 1.05);
   assert.equal(d.feeRate, 0.03);
   assert.equal(d.rebateSettlementFrequency, "");

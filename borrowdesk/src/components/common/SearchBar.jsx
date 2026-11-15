@@ -1,0 +1,1 @@
+import{Search}from'lucide-react';export default function SearchBar({value,onChange,placeholder='Search records...'}){return <label className="search-control"><Search size={14}/><input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}/></label>}

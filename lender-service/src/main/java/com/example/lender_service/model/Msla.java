@@ -25,7 +25,7 @@ public class Msla {
   @Column(name = "connection_id", nullable = false)
   private Long connectionId;
 
-  @Column(name = "borrower_msla_id", nullable = false)
+  @Column(name = "borrower_msla_id")
   private Long borrowerMslaId;
 
   @Column(name = "number", nullable = false, length = 100)

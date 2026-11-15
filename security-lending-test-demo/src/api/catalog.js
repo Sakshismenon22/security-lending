@@ -178,13 +178,13 @@ export const actions = [
       note: "Only the currently selected admin user can approve a pending deposit request.",
     },
   ),
-  b(
-    "agreement-propose",
+  l(
+    "agreement-send",
     "Agreements",
-    "Propose MSLA",
+    "Send MSLA offer to borrower",
     "/agreements",
     {
-      lenderId: 1000001,
+      connectionId: 1,
       number: "$unique",
       effectiveDate: "$today",
       expiryDate: "$year",
@@ -205,19 +205,20 @@ export const actions = [
     },
     {
       choices: { rebateSettlementFrequency: ["DAILY", "WEEKLY", "MONTHLY", "AT_CLOSE"] },
-      note: "Rates are decimals: 0.03 = 3%. Use the lender public reference ID. Leaving the rebate settlement frequency blank pays the daily cash rebate accruals at loan termination.",
+      note: "The lender authors and sends the terms to one borrower connection. Rates are decimals: 0.03 = 3%. Leaving rebate settlement frequency blank pays daily cash rebate accruals at loan termination.",
     },
   ),
-  l(
-    "agreement-approve",
+  b(
+    "agreement-accept",
     "Agreements",
-    "Approve MSLA",
-    "/agreements/{id}/approve",
+    "Accept lender MSLA offer",
+    "/agreements/{id}/accept",
+    {},
   ),
-  l(
+  b(
     "agreement-reject",
     "Agreements",
-    "Reject MSLA",
+    "Reject lender MSLA offer",
     "/agreements/{id}/reject",
     { reason: "Demo rejection" },
   ),
@@ -743,7 +744,7 @@ export const workflow = [
   ],
   [
     "Agreements",
-    "Propose the MSLA on the borrower, approve it on the lender, then verify borrower ACTIVE status.",
+    "Send the MSLA offer from the lender. On the borrower, accept or reject the received offer, then verify ACTIVE or REJECTED status on both sides.",
     "Async",
   ],
   [

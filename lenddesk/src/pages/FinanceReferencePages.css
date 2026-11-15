@@ -43,6 +43,9 @@
 .ledger-journal > header h2 { font-size: 17px; letter-spacing: -.4px; margin: 2px 0; }
 .ledger-journal > header small { margin-left: auto; font-size: 11px; }
 .ledger-detail-grid { display: grid; grid-template-columns: .94fr 1.06fr; gap: 18px; }
+.live-ledger-tabs { display: flex; gap: 0; padding: 7px 12px 0; }
+.live-ledger-tabs button { border: 1px solid #d9cfff; border-right: 0; background: #faf7ff; color: #151044; padding: 6px 15px; font-size: 12px; font-weight: 650; }
+.live-ledger-tabs button:first-child { border-radius: 6px 0 0 6px; }.live-ledger-tabs button:last-child { border-right: 1px solid #d9cfff; border-radius: 0 6px 6px 0; }.live-ledger-tabs button.active { background: #6250e9; border-color: #6250e9; color: #fff; }.live-ledger-detail-table { padding: 0 0 2px; }
 .ledger-detail-grid .ref-detail-card td, .ledger-detail-grid .ref-detail-card th { padding: 3px 8px; text-align: left; height: 25px; }
 .ledger-detail-grid .ref-detail-card:first-child tbody tr:last-child { background: #eee8ff; font-weight: 700; }
 .ledger-journal > .ref-detail-card td, .ledger-journal > .ref-detail-card th { text-align: left; height: 22px; padding-top: 1px; padding-bottom: 1px; }

@@ -60,7 +60,8 @@ function LiveEditor({ kind, data, organizationId }) {
     isRecall = kind === 'recall',
     dialog = useRef(null),
     mounted = useRef(true),
-    retry = useRef(null)
+    retry = useRef(null),
+    settlementReferences = useRef(new Map())
   const [quantity, setQuantity] = useState(
       Math.min(l.recallAvailableQuantity, 30000),
     ),
@@ -69,7 +70,6 @@ function LiveEditor({ kind, data, organizationId }) {
       utcInput(Date.now() + (l.marginHours || 24) * 3600000),
     ),
     [reason, setReason] = useState(''),
-    [reference, setReference] = useState(''),
     [action, setAction] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
@@ -99,6 +99,16 @@ function LiveEditor({ kind, data, organizationId }) {
     setError('')
     dialog.current.showModal()
   }
+  function automaticSettlementReference() {
+    const key = `${l.id}:${action}`
+    if (!settlementReferences.current.has(key)) {
+      const operation = action === 'settle' ? 'SECURITY-DELIVERY' : action.startsWith('collateralConfirm:') ? 'COLLATERAL-RECEIPT' : 'RETURN-RECEIPT'
+      const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '')
+      const suffix = globalThis.crypto?.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10)
+      settlementReferences.current.set(key, `LENDDESK-${operation}-${l.id}-${timestamp}-${suffix}`)
+    }
+    return settlementReferences.current.get(key)
+  }
   async function submit() {
     if (busy) return
     setBusy(true)
@@ -122,13 +132,17 @@ function LiveEditor({ kind, data, organizationId }) {
         ? `/returns/${action.split(':')[1]}/settle`
         : action.startsWith('returnReject:')
           ? `/returns/${action.split(':')[1]}/reject`
+          : action.startsWith('collateralConfirm:')
+            ? `/collateral/${action.split(':')[1]}/confirm`
+            : action.startsWith('collateralReject:')
+              ? `/collateral/${action.split(':')[1]}/reject`
           : `/loans/${l.id}/${action}`
       body =
-        action === 'reject' || action.startsWith('returnReject:')
+        action === 'reject' || action.startsWith('returnReject:') || action.startsWith('collateralReject:')
           ? { reason: reason.trim() }
           : action === 'approve'
             ? {}
-            : { reference: reference.trim() }
+            : { reference: automaticSettlementReference() }
     }
     try {
       const result = await lenderPost(
@@ -165,7 +179,7 @@ function LiveEditor({ kind, data, organizationId }) {
         <h1>
           {title} · {loanId(l.id)}
         </h1>
-        <span className="wf-demo-tag">LIVE API</span>
+        
       </header>
       <div className="wf-context">
         <span>
@@ -301,9 +315,11 @@ function LiveEditor({ kind, data, organizationId }) {
                           )}
                           {l.status === 'APPROVED_PENDING_SETTLEMENT' && (
                             <option value="settle">
-                              Confirm loan settlement
+                              Confirm securities transfer to borrower
                             </option>
                           )}
+                          {data.collateral.filter((c) => c.status === 'PLEDGE_PENDING').map((c) => <option key={`confirm-${c.id}`} value={`collateralConfirm:${c.id}`}>Confirm collateral receipt {c.id}</option>)}
+                          {data.collateral.filter((c) => c.status === 'PLEDGE_PENDING').map((c) => <option key={`reject-collateral-${c.id}`} value={`collateralReject:${c.id}`}>Reject collateral pledge {c.id}</option>)}
                           {data.returns
                             .filter((r) => r.status === 'PENDING')
                             .map((r) => (
@@ -324,19 +340,6 @@ function LiveEditor({ kind, data, organizationId }) {
                             ))}
                         </select>
                       </label>
-                      {(action === 'settle' ||
-                        action.startsWith('return:')) && (
-                        <label>
-                          Settlement reference
-                          <input
-                            aria-label="Settlement reference"
-                            required
-                            maxLength={160}
-                            value={reference}
-                            onChange={(e) => setReference(e.target.value)}
-                          />
-                        </label>
-                      )}
                       <div className="al-live-actions">
                         {l.status === 'ACTIVE' && (
                           <Link to={`/margin-calls/${loanId(l.id)}/issue`}>
@@ -368,9 +371,7 @@ function LiveEditor({ kind, data, organizationId }) {
                     </label>
                   )}
                   <p>
-                    Issuing a recall or margin call does not move securities or
-                    release collateral. Requests use the existing lifecycle and
-                    borrower confirmation channels.
+                    LendDesk automatically assigns an internal audit reference for settlement actions. Confirm collateral only after a custody receipt is verified. Confirming the securities transfer records the lender-to-borrower settlement, moves reserved inventory to on-loan inventory, and activates the loan; it does not itself perform a custodian transfer.
                   </p>
                 </Card>
                 <Card
@@ -519,7 +520,7 @@ function LiveEditor({ kind, data, organizationId }) {
                   : display(action)}
             </p>
             {reason && <p>{reason}</p>}
-            {reference && <p>Settlement reference: {reference}</p>}
+            {(action === 'settle' || action.startsWith('return:') || action.startsWith('collateralConfirm:')) && <p>An internal settlement audit reference will be assigned automatically.</p>}
             <p>This submits a real backend operation.</p>
             {action.startsWith('return:') && (
               <p>

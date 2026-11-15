@@ -52,6 +52,8 @@ class ReadServiceInventoryTest {
   @Mock private LoanReturnRepository loanReturn;
   @Mock private CollateralHistoryRepository collateralHistory;
   @Mock private LoanDefaultRepository loanDefault;
+  @Mock private InboxEventRepository inboxEvent;
+  @Mock private OutboxEventRepository outboxEvent;
 
   @Test
   void inventorySummariesReturnsSecurityLevelAvailabilityData() {
@@ -110,7 +112,9 @@ class ReadServiceInventoryTest {
             locateRequest,
             loanReturn,
             collateralHistory,
-            loanDefault);
+            loanDefault,
+            inboxEvent,
+            outboxEvent);
 
     var result = service.inventorySummaries(org, 0, 20);
 

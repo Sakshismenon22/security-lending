@@ -23,6 +23,40 @@ public class LendDeskQueryController {
   @GetMapping("/dashboard")
   public ApiResponse<?> dashboard(@PathVariable long org) { return ApiResponse.ok(read.dashboard(org)); }
 
+  @GetMapping("/returns/overview")
+  public ApiResponse<?> returnOverview(
+      @PathVariable long org,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "200") int size) {
+    return ApiResponse.ok(read.returnSummaries(org, page, size));
+  }
+
+  @GetMapping("/margin-calls/overview")
+  public ApiResponse<?> marginCallOverview(
+      @PathVariable long org,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "200") int size) {
+    return ApiResponse.ok(read.marginCallSummaries(org, page, size));
+  }
+
+  @GetMapping("/recalls/overview")
+  public ApiResponse<?> recallOverview(
+      @PathVariable long org,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "200") int size) {
+    return ApiResponse.ok(read.recallSummaries(org, page, size));
+  }
+
+  @GetMapping("/fix-monitor/overview")
+  public ApiResponse<?> fixMonitor(@PathVariable long org, @RequestParam(defaultValue = "200") int size) {
+    return ApiResponse.ok(read.fixMonitor(org, size));
+  }
+
+  @GetMapping("/borrowers/{id}")
+  public ApiResponse<?> borrower(@PathVariable long org, @PathVariable long id) {
+    return ApiResponse.ok(read.borrower(org, id));
+  }
+
   @GetMapping("/{resource:users|borrowers|inventory|inventory-history|agreements|locates|reservations|loans|collateral|collateral-history|returns|lifecycle-requests|valuations|margin-calls|recalls|fees|rebates|accruals|defaults|buy-ins|rebate-payments|ledger|notifications|audit}")
   public ApiResponse<?> list(@PathVariable long org, @PathVariable String resource, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "200") int size) {
     return ApiResponse.ok(read.list(org, resource, page, size));

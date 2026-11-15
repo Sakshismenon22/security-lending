@@ -1,5 +1,6 @@
 package com.example.lender_service.service;
 
+import com.example.lender_service.dto.AgreementOfferRequest;
 import com.example.lender_service.model.*;
 import com.example.lender_service.repository.*;
 import java.time.Clock;
@@ -56,6 +57,46 @@ public class EventService {
         String.valueOf(connection.getBorrowerOrganizationId()),
         payload);
     audit(connection.getOrganizationId(), type, String.valueOf(borrowerReference));
+  }
+
+  /**
+   * An offer has no borrower-local MSLA id yet, so it is sent with the lender-local id. The
+   * borrower creates its projection from this message and returns its id only when it responds.
+   */
+  public void offer(
+      BorrowerConnection connection, Organization lender, Msla agreement, AgreementOfferRequest request) {
+    var payload = new LinkedHashMap<String, Object>();
+    payload.put("eventId", UUID.randomUUID().toString());
+    payload.put("type", "AGREEMENT_OFFERED");
+    payload.put("organizationId", connection.getBorrowerOrganizationId());
+    payload.put("referenceId", agreement.getId());
+    payload.put("version", 1L);
+    payload.put("occurredAt", clock.instant());
+    payload.put("borrowerExternalId", connection.getExternalId());
+    var data = new LinkedHashMap<String, Object>();
+    data.put("lenderReferenceId", lender.getPublicReferenceId());
+    data.put("lenderExternalId", lender.getExternalId());
+    data.put("number", request.number());
+    data.put("effectiveDate", request.effectiveDate());
+    data.put("expiryDate", request.expiryDate());
+    data.put("creditLimit", request.creditLimit());
+    data.put("feeRate", request.feeRate());
+    data.put("rebateRate", request.rebateRate());
+    data.put("coverageRatio", request.coverageRatio());
+    data.put("billingFrequency", request.billingFrequency());
+    data.put("rebateSettlementFrequency", request.rebateSettlementFrequency());
+    data.put("dayBasis", request.dayBasis());
+    data.put("recallAllowed", request.recallAllowed());
+    data.put("marginHours", request.marginHours());
+    data.put("recallHours", request.recallHours());
+    data.put("collateralRules", request.collateralRules());
+    payload.put("data", data);
+    store(
+        connection.getOrganizationId(),
+        "lender.confirmations.v1",
+        String.valueOf(connection.getBorrowerOrganizationId()),
+        payload);
+    audit(connection.getOrganizationId(), "AGREEMENT_OFFERED", String.valueOf(agreement.getId()));
   }
 
   public void local(long org, String type, long reference, Object data) {

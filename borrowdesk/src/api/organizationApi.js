@@ -1,0 +1,1 @@
+import{get,orgUrl}from'./apiClient';export const organizationApi={organizations:()=>get('/api/v1/organizations'),organization:id=>get('/api/v1/organizations/'+id),roles:()=>get('/api/v1/organizations/roles'),users:()=>get(orgUrl('/users')),audit:()=>get(orgUrl('/audit'))}

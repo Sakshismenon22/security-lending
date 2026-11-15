@@ -65,6 +65,7 @@ public class BorrowerCommandService {
     }
     switch (command.type()) {
       case "AGREEMENT_PROPOSED" -> proposal(organization, connection, command);
+      case "AGREEMENT_ACCEPTED", "AGREEMENT_REJECTED" -> agreementDecision(organization, connection, command);
       case "LOCATE_REQUESTED" -> locate(connection, command);
       case "RESERVATION_REQUESTED" -> reserve(connection, command);
       case "RESERVATION_RELEASE_REQUESTED" -> {
@@ -167,6 +168,22 @@ public class BorrowerCommandService {
     }
     events.local(
         c.getOrganizationId(), "AGREEMENT_PROPOSAL_RECEIVED", a.getId(), Map.of("agreement", a));
+  }
+
+  private void agreementDecision(
+      Organization organization, BorrowerConnection connection, BorrowerCommand command) {
+    var data = json.map(command.data());
+    Object lenderAgreement = data.get("lenderAgreementId");
+    require(lenderAgreement != null, "Agreement decision is missing lenderAgreementId");
+    long lenderAgreementId = new BigDecimal(lenderAgreement.toString()).longValueExact();
+    String reason = data.get("reason") == null ? "" : data.get("reason").toString();
+    agreementService.recordBorrowerDecision(
+        organization.getId(),
+        connection,
+        lenderAgreementId,
+        command.referenceId(),
+        "AGREEMENT_ACCEPTED".equals(command.type()),
+        reason);
   }
 
   private void locate(BorrowerConnection c, BorrowerCommand command) {

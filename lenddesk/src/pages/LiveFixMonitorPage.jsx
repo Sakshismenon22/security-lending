@@ -1,0 +1,22 @@
+import { useEffect, useMemo, useState } from 'react'
+import { lenderGet } from '../api/lendDeskApi'
+import { useDataSource } from '../hooks/useDataSource'
+import { Badge } from '../components/reference/ReferenceTable'
+import './ReferencePages.css'
+import './MonitorLivePages.css'
+
+const stamp = (value) => value ? new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value)).replace(',', '') : '—'
+const tone = (value) => /pending|error|failed/i.test(value) ? 'warn' : 'good'
+
+export default function LiveFixMonitorPage() {
+  const { organizationId, refreshKey, refresh } = useDataSource()
+  const [state, setState] = useState({ scope: '', data: null, error: '' })
+  const [tab, setTab] = useState('All messages')
+  const [selected, setSelected] = useState(null)
+  const scope = `${organizationId}:${refreshKey}`
+  useEffect(() => { const abort = new AbortController(); lenderGet(`/api/v1/organizations/${organizationId}/lenddesk/fix-monitor/overview?size=200`, abort.signal).then((data) => { if (!abort.signal.aborted) setState({ scope, data, error: '' }) }).catch((error) => { if (!abort.signal.aborted) setState({ scope, data: null, error: error.message }) }); return () => abort.abort() }, [organizationId, refreshKey, scope])
+  const messages = useMemo(() => state.scope === scope ? state.data?.messages ?? [] : [], [scope, state.data, state.scope])
+  const filtered = useMemo(() => messages.filter((item) => tab === 'All messages' || item.direction === (tab === 'Inbound' ? 'IN' : 'OUT')), [messages, tab])
+  const current = messages.find((item) => item.id === selected) ?? filtered[0]
+  return <section className="ref-page fix-live-page"><header className="monitor-heading"><div><h1>FIX Monitor </h1><p>Gateway event activity visible to lender operations. Raw FIX payload remains owned by the FIX adapter.</p></div><button className="ref-primary" type="button" onClick={refresh}>Refresh live data</button></header><section className="fix-gateway-strip"><span>● Gateway event bridge</span><span>Inbound {state.data?.inbound ?? 0}</span><span>Outbound {state.data?.outbound ?? 0}</span><span>Source: lender-service inbox/outbox</span></section><nav className="monitor-tabs" role="tablist">{['All messages', 'Inbound', 'Outbound'].map((item) => <button key={item} type="button" className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>)}</nav>{state.scope !== scope ? <p className="ref-empty">Loading gateway messages…</p> : state.error ? <p className="live-error">FIX monitor data unavailable: {state.error}</p> : <div className="fix-monitor-layout"><div className="ref-scroll"><table className="ref-main-table monitor-table"><thead><tr><th>UTC time</th><th>Dir</th><th>Event ID</th><th>Sender</th><th>Target</th><th>Business message</th><th>Reference</th><th>State</th></tr></thead><tbody>{filtered.map((item) => <tr key={item.id} className={current?.id === item.id ? 'ref-selected' : ''} onClick={() => setSelected(item.id)}><td>{stamp(item.createdAt)}</td><td><Badge tone={item.direction === 'IN' ? 'purple' : 'good'}>{item.direction}</Badge></td><td><button className="ref-id" type="button" onClick={() => setSelected(item.id)}>{item.eventId}</button></td><td>{item.sender}</td><td>{item.target}</td><td>{item.messageType}</td><td>{item.reference}</td><td><Badge tone={tone(item.state)}>{item.state}</Badge></td></tr>)}{!filtered.length && <tr><td colSpan="8" className="ref-empty">No gateway messages match this view.</td></tr>}</tbody></table></div><aside className="fix-inspector">{current ? <><header><b>Message detail · {current.eventId}</b><Badge tone={tone(current.state)}>{current.state}</Badge></header><nav className="fix-inspector-tabs"><span className="active">Event details</span><span>Raw FIX</span></nav><dl><div><dt>Direction</dt><dd>{current.direction}</dd></div><div><dt>Sender</dt><dd>{current.sender}</dd></div><div><dt>Target</dt><dd>{current.target}</dd></div><div><dt>Message</dt><dd>{current.messageType}</dd></div><div><dt>Reference</dt><dd>{current.reference}</dd></div><div><dt>Created UTC</dt><dd>{stamp(current.createdAt)}</dd></div></dl><p>{current.detail}</p><pre>Raw FIX is unavailable from lender-service. Inspect it in the FIX adapter monitor using event ID: {current.eventId}</pre></> : <p className="ref-empty">Select a gateway message to inspect it.</p>}</aside></div>}</section>
+}

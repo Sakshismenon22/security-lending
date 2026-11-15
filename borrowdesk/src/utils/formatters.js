@@ -1,0 +1,1 @@
+export const formatLabel=value=>String(value??'').replace(/([a-z])([A-Z])/g,'$1 $2').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase()).replace(/Id\b/g,'ID');export const formatValue=value=>value==null||value===''?'-':typeof value==='object'?(value.name||value.symbol||JSON.stringify(value)):String(value);export const toNumber=value=>Number(value||0);

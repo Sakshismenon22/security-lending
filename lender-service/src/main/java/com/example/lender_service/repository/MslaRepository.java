@@ -11,6 +11,8 @@ public interface MslaRepository extends JpaRepository<Msla, Long>, JpaSpecificat
   Optional<Msla> findByIdAndOrganizationId(Long id, Long organizationId);
 
   Optional<Msla> findByConnectionIdAndBorrowerMslaId(Long connectionId, Long borrowerMslaId);
+  Optional<Msla> findByIdAndOrganizationIdAndConnectionId(Long id, Long organizationId, Long connectionId);
+  List<Msla> findByOrganizationIdAndConnectionId(Long organizationId, Long connectionId);
   long countByOrganizationIdAndStatus(Long organizationId, String status);
 
   @Query("select distinct m.status from Msla m where m.organizationId = :org order by m.status")

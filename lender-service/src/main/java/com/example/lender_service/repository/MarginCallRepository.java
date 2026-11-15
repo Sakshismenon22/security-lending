@@ -13,5 +13,6 @@ public interface MarginCallRepository extends JpaRepository<MarginCall, Long> {
   Optional<MarginCall> findByOrganizationIdAndOwnerReferenceId(
       Long organizationId, Long ownerReferenceId);
   List<MarginCall> findByOrganizationIdAndLoanIdIn(Long organizationId, Collection<Long> loanIds);
+  List<MarginCall> findByOrganizationIdAndConnectionId(Long organizationId, Long connectionId);
 
 }

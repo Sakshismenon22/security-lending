@@ -24,6 +24,16 @@ export async function lenderPost(path, body, signal) {
   return unwrap(payload)
 }
 
+export async function lenderPatch(path, body, signal) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'PATCH', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body), signal,
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(payload?.detail ?? `Lender API returned ${response.status}`)
+  return unwrap(payload)
+}
+
 export const lendDeskApi = {
   dashboard: (organizationId, signal) => lenderGet(`/api/v1/organizations/${organizationId}/lenddesk/dashboard`, signal),
   list: (organizationId, resource, signal) => lenderGet(`/api/v1/organizations/${organizationId}/lenddesk/${resource}?page=0&size=200`, signal),

@@ -6,6 +6,8 @@ import { designBorrowers,borrowerMslas } from '../data/designBorrowers'
 import { designAgreements } from '../data/designAgreements'
 import './ReferencePages.css'
 import './FinanceReferencePages.css'
+import { useDataSource } from '../hooks/useDataSource'
+import LiveBorrowersPage from './LiveBorrowersPage'
 const columns=[['name','Borrower'],['lei','Legal entity ID'],['status','Status'],['mslas','Active MSLAs'],['loans','Active loans'],['exposure','On-loan exposure'],['ratio','Collateral ratio'],['marginCalls','Open margin calls'],['recalls','Open recalls'],['settlements','Pending settlements'],['activity','Last activity']]
 function BorrowerDetails({row}){
  if(row.name!=='Everest Capital')return <div className="ref-empty">No additional borrower details for {row.name} are included in the reference snapshot.</div>
@@ -19,6 +21,10 @@ function BorrowerDetails({row}){
  ]}/></div></div></div>
 }
 export default function BorrowersPage(){
+ const {mode}=useDataSource()
+ return mode==='live'?<LiveBorrowersPage/>:<DemoBorrowersPage/>
+}
+function DemoBorrowersPage(){
  const {searchTerm=''}=useOutletContext()
  const navigate=useNavigate()
  const [expanded,setExpanded]=useState(designBorrowers[0].id)

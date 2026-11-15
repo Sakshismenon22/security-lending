@@ -78,7 +78,8 @@ public class OutboxService {
         // lifecycle name does not end in _REQUESTED.  It must therefore pass through the
         // borrower FIX adapter on borrower.commands.v1, not the local events stream.
         return type.endsWith("_REQUESTED")
-                || type.equals("AGREEMENT_PROPOSED")
+                || type.equals("AGREEMENT_ACCEPTED")
+                || type.equals("AGREEMENT_REJECTED")
                 || type.equals("FEE_PAYMENT_RECEIVED");
     }
 }

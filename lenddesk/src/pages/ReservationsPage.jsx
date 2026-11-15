@@ -2,10 +2,18 @@ import { Fragment, useMemo, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import StatusBadge from '../components/StatusBadge'
 import { reservations } from '../data/reservationData'
+import { useDataSource } from '../hooks/useDataSource'
+import LiveReservationsPage from './LiveReservationsPage'
 
 const statusTone = (status) => ({ Active: 'good', 'Converted to loan': 'neutral', 'Expiring soon': 'warn', Expired: 'risk', Released: 'neutral' }[status] ?? 'neutral')
 
 export default function ReservationsPage() {
+  const { mode } = useDataSource()
+  if (mode === 'live') return <LiveReservationsPage />
+  return <DemoReservationsPage />
+}
+
+function DemoReservationsPage() {
   const { searchTerm } = useOutletContext()
   const navigate = useNavigate()
   const [tab, setTab] = useState('Active reservations')

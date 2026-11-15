@@ -1,6 +1,6 @@
 package com.example.lender_service.controller;
 
-import com.example.lender_service.dto.RejectionRequest;
+import com.example.lender_service.dto.AgreementOfferRequest;
 import com.example.lender_service.response.ApiResponse;
 import com.example.lender_service.service.*;
 import jakarta.validation.Valid;
@@ -14,19 +14,15 @@ public class AgreementController {
   private final AgreementService agreements;
   private final ReadService read;
 
+  @PostMapping
+  public ApiResponse<?> offer(
+      @PathVariable long org, @Valid @RequestBody AgreementOfferRequest request) {
+    return ApiResponse.ok(agreements.offer(org, request));
+  }
+
   @GetMapping("/{id}")
   public ApiResponse<?> detail(@PathVariable long org, @PathVariable long id) {
     return ApiResponse.ok(read.agreement(org, id));
   }
 
-  @PostMapping("/{id}/approve")
-  public ApiResponse<?> approve(@PathVariable long org, @PathVariable long id) {
-    return ApiResponse.ok(agreements.decide(org, id, true, "Approved"));
-  }
-
-  @PostMapping("/{id}/reject")
-  public ApiResponse<?> reject(
-      @PathVariable long org, @PathVariable long id, @Valid @RequestBody RejectionRequest r) {
-    return ApiResponse.ok(agreements.decide(org, id, false, r.reason()));
-  }
 }

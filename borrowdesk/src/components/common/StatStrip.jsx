@@ -1,0 +1,1 @@
+export default function StatStrip({items}){return <div className="stat-strip">{items.map(x=><div className="stat-cell" key={x.label}><span>{x.label}</span><b>{x.value}</b></div>)}</div>}

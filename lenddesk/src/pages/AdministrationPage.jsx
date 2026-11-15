@@ -1,3 +1,9 @@
 import OperationalRegisterPage from '../components/OperationalRegisterPage'
 import { administrationConfig } from '../data/remainingData'
-export default function AdministrationPage() { return <OperationalRegisterPage config={administrationConfig} /> }
+import { useDataSource } from '../hooks/useDataSource'
+import LiveAdministrationPage from './LiveAdministrationPage'
+
+export default function AdministrationPage() {
+  const { mode } = useDataSource()
+  return mode === 'live' ? <LiveAdministrationPage /> : <OperationalRegisterPage config={administrationConfig} />
+}

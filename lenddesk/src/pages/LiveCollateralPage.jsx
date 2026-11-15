@@ -55,7 +55,7 @@ export default function LiveCollateralPage() {
         <div>
           <h1>
             Collateral &amp; Valuations{' '}
-            <span className="ref-demo">LIVE API</span>
+            
           </h1>
           <p>
             Confirmed collateral, cached asset marks and settlement movements.

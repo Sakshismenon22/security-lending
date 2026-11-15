@@ -4,8 +4,12 @@ import static com.example.lender_service.service.Checks.*;
 
 import com.example.lender_service.dto.AgreementExpanded;
 import com.example.lender_service.dto.AgreementSummary;
+import com.example.lender_service.dto.FixMonitorEntry;
 import com.example.lender_service.dto.InventoryExpanded;
 import com.example.lender_service.dto.InventorySummary;
+import com.example.lender_service.dto.MarginCallSummary;
+import com.example.lender_service.dto.RecallSummary;
+import com.example.lender_service.dto.ReturnSummary;
 import com.example.lender_service.model.*;
 import com.example.lender_service.repository.*;
 import com.example.lender_service.response.PageResponse;
@@ -51,6 +55,8 @@ public class ReadService {
   private final LoanReturnRepository loanReturn;
   private final CollateralHistoryRepository collateralHistory;
   private final LoanDefaultRepository loanDefault;
+  private final InboxEventRepository inboxEvent;
+  private final OutboxEventRepository outboxEvent;
 
   public Object list(long org, String resource, int page, int size) {
     tenants.exists(org);
@@ -98,6 +104,219 @@ public class ReadService {
         json.tree(a.getTerms()),
         "collateralRules",
         haircuts.findByMslaId(id));
+  }
+
+  /** Compact connected-counterparty view used by the LendDesk borrower register. */
+  public Object borrower(long org, long connectionId) {
+    var connection = found(borrowerConnection.findByIdAndOrganizationId(connectionId, org));
+    var agreements = msla.findByOrganizationIdAndConnectionId(org, connectionId).stream()
+        .sorted(Comparator.comparing(Msla::getId).reversed()).map(this::toAgreementSummary).toList();
+    var loans = loan.findByOrganizationIdAndConnectionId(org, connectionId).stream()
+        .sorted(Comparator.comparing(Loan::getId).reversed()).toList();
+    var margins = marginCall.findByOrganizationIdAndConnectionId(org, connectionId).stream()
+        .sorted(Comparator.comparing(MarginCall::getCreatedAt).reversed()).toList();
+    var recalls = recall.findByOrganizationIdAndConnectionId(org, connectionId).stream()
+        .sorted(Comparator.comparing(Recall::getCreatedAt).reversed()).toList();
+    return Map.of(
+        "borrower", connection,
+        "agreements", agreements,
+        "loans", loans,
+        "marginCalls", margins,
+        "recalls", recalls);
+  }
+
+  public PageResponse<ReturnSummary> returnSummaries(long org, int page, int size) {
+    tenants.exists(org);
+    if (page < 0 || size < 1 || size > 200)
+      throw new IllegalArgumentException("page must be nonnegative; size must be 1..200");
+    var paging = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+    var result = loanReturn.findByOrganizationId(org, paging);
+    var content =
+        result.getContent().stream()
+            .map(
+                returned -> {
+                  var loanValue = loan.findById(returned.getLoanId()).orElse(null);
+                  var security =
+                      loanValue == null
+                          ? null
+                          : securities.findById(loanValue.getSecurityId()).orElse(null);
+                  var connection =
+                      loanValue == null
+                          ? null
+                          : borrowerConnection.findById(loanValue.getConnectionId()).orElse(null);
+                  var positions = collateralPosition.findByLoanId(returned.getLoanId());
+                  String collateralState =
+                      positions.isEmpty()
+                          ? "—"
+                          : positions.stream().anyMatch(p -> "RELEASE_REQUESTED".equals(p.getStatus()))
+                              ? "RELEASE_REQUESTED"
+                              : positions.stream().allMatch(p -> "RELEASED".equals(p.getStatus()))
+                                  ? "RELEASED"
+                                  : positions.get(0).getStatus();
+                  return new ReturnSummary(
+                      returned.getId(),
+                      returned.getLoanId(),
+                      returned.getRecallId(),
+                      returned.getBorrowerReturnId(),
+                      returned.getQuantity(),
+                      returned.getStatus(),
+                      returned.getSettlementReference(),
+                      returned.getCreatedAt(),
+                      returned.getSettledAt(),
+                      loanValue == null ? null : loanValue.getSecurityId(),
+                      security == null ? null : security.getSymbol(),
+                      security == null ? null : security.getName(),
+                      loanValue == null ? null : loanValue.getStatus(),
+                      loanValue == null ? null : loanValue.getClosedAt(),
+                      loanValue == null ? null : loanValue.getConnectionId(),
+                      connection == null ? null : connection.getName(),
+                      collateralState);
+                })
+            .toList();
+    return new PageResponse<>(
+        content,
+        result.getNumber(),
+        result.getSize(),
+        result.getTotalElements(),
+        result.getTotalPages());
+  }
+
+  public PageResponse<MarginCallSummary> marginCallSummaries(long org, int page, int size) {
+    tenants.exists(org);
+    if (page < 0 || size < 1 || size > 200)
+      throw new IllegalArgumentException("page must be nonnegative; size must be 1..200");
+    var paging = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+    var result = marginCall.findByOrganizationId(org, paging);
+    var content =
+        result.getContent().stream()
+            .map(
+                call -> {
+                  var loanValue = loan.findById(call.getLoanId()).orElse(null);
+                  var security =
+                      loanValue == null
+                          ? null
+                          : securities.findById(loanValue.getSecurityId()).orElse(null);
+                  var connection = borrowerConnection.findById(call.getConnectionId()).orElse(null);
+                  BigDecimal fulfilled = call.getFulfilledAmount() == null ? BigDecimal.ZERO : call.getFulfilledAmount();
+                  return new MarginCallSummary(
+                      call.getId(),
+                      call.getOwnerReferenceId(),
+                      call.getLoanId(),
+                      call.getConnectionId(),
+                      connection == null ? null : connection.getName(),
+                      loanValue == null ? null : loanValue.getSecurityId(),
+                      security == null ? null : security.getSymbol(),
+                      security == null ? null : security.getName(),
+                      call.getAmount(),
+                      fulfilled,
+                      call.getAmount().subtract(fulfilled).max(BigDecimal.ZERO),
+                      call.getDueAt(),
+                      call.getReason(),
+                      call.getStatus(),
+                      call.getCreatedAt());
+                })
+            .toList();
+    return new PageResponse<>(
+        content,
+        result.getNumber(),
+        result.getSize(),
+        result.getTotalElements(),
+        result.getTotalPages());
+  }
+
+  public PageResponse<RecallSummary> recallSummaries(long org, int page, int size) {
+    tenants.exists(org);
+    if (page < 0 || size < 1 || size > 200)
+      throw new IllegalArgumentException("page must be nonnegative; size must be 1..200");
+    var paging = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+    var result = recall.findByOrganizationId(org, paging);
+    var content =
+        result.getContent().stream()
+            .map(
+                value -> {
+                  var loanValue = loan.findById(value.getLoanId()).orElse(null);
+                  var security =
+                      loanValue == null
+                          ? null
+                          : securities.findById(loanValue.getSecurityId()).orElse(null);
+                  var connection = borrowerConnection.findById(value.getConnectionId()).orElse(null);
+                  long pending =
+                      loanReturn
+                          .findByLoanIdAndRecallIdAndStatus(
+                              value.getLoanId(), value.getOwnerReferenceId(), "PENDING")
+                          .stream()
+                          .mapToLong(LoanReturn::getQuantity)
+                          .sum();
+                  return new RecallSummary(
+                      value.getId(),
+                      value.getOwnerReferenceId(),
+                      value.getLoanId(),
+                      value.getConnectionId(),
+                      connection == null ? null : connection.getName(),
+                      loanValue == null ? null : loanValue.getSecurityId(),
+                      security == null ? null : security.getSymbol(),
+                      security == null ? null : security.getName(),
+                      value.getQuantity(),
+                      value.getFulfilledQuantity(),
+                      Math.max(0, value.getQuantity() - value.getFulfilledQuantity()),
+                      pending,
+                      value.getDueAt(),
+                      value.getReason(),
+                      value.getStatus(),
+                      value.getCreatedAt());
+                })
+            .toList();
+    return new PageResponse<>(
+        content,
+        result.getNumber(),
+        result.getSize(),
+        result.getTotalElements(),
+        result.getTotalPages());
+  }
+
+  public Map<String, Object> fixMonitor(long org, int size) {
+    tenants.exists(org);
+    if (size < 1 || size > 200) throw new IllegalArgumentException("size must be 1..200");
+    var paging = PageRequest.of(0, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+    var messages = new ArrayList<FixMonitorEntry>();
+    inboxEvent
+        .findByOrganizationId(org, paging)
+        .forEach(
+            event ->
+                messages.add(
+                    new FixMonitorEntry(
+                        "IN-" + event.getEventId(),
+                        event.getEventId(),
+                        "IN",
+                        event.getCreatedAt(),
+                        event.getSource(),
+                        "LENDER_SERVICE",
+                        "Borrower command",
+                        event.getEventId(),
+                        "PROCESSED",
+                        "Inbound event accepted by lender service")));
+    outboxEvent
+        .findByOrganizationId(org, paging)
+        .forEach(
+            event ->
+                messages.add(
+                    new FixMonitorEntry(
+                        "OUT-" + event.getId(),
+                        event.getEventId(),
+                        "OUT",
+                        event.getCreatedAt(),
+                        "LENDER_SERVICE",
+                        event.getTopic(),
+                        event.getTopic(),
+                        event.getPartitionKey(),
+                        Boolean.TRUE.equals(event.getPublished()) ? "PUBLISHED" : "PENDING",
+                        event.getLastError() == null ? "Outbound event queued for gateway delivery" : event.getLastError())));
+    messages.sort(Comparator.comparing(FixMonitorEntry::createdAt).reversed());
+    List<FixMonitorEntry> limited =
+        messages.size() > size ? new ArrayList<>(messages.subList(0, size)) : messages;
+    long inbound = limited.stream().filter(x -> "IN".equals(x.direction())).count();
+    long outbound = limited.size() - inbound;
+    return Map.of("messages", limited, "inbound", inbound, "outbound", outbound);
   }
 
   public Object agreementSummaries(long org, int page, int size) {
@@ -402,25 +621,36 @@ public class ReadService {
     tenants.exists(org);
     var stock = inventoryPosition.findByOrganizationId(org, Pageable.unpaged()).getContent();
     var allLoans = loan.findByOrganizationId(org, Pageable.unpaged()).getContent();
-    return Map.of(
-        "account",
-        account(org),
-        "totalQuantity",
-        stock.stream().mapToLong(InventoryPosition::getTotalQuantity).sum(),
-        "availableQuantity",
-        stock.stream().mapToLong(InventoryPosition::getAvailableQuantity).sum(),
-        "reservedQuantity",
-        stock.stream().mapToLong(InventoryPosition::getReservedQuantity).sum(),
-        "loanedQuantity",
-        stock.stream().mapToLong(InventoryPosition::getLoanedQuantity).sum(),
-        "activeLoans",
-        allLoans.stream().filter(l -> l.getStatus().equals("ACTIVE")).count(),
-        "pendingLoans",
-        allLoans.stream().filter(l -> l.getStatus().equals("PENDING_REVIEW")).count(),
+    var onLoanValue =
+        allLoans.stream()
+            .filter(l -> Set.of("ACTIVE", "RETURN_PENDING", "DEFAULTED").contains(l.getStatus()))
+            .map(l -> market.price(l.getSecurityId()).value().multiply(BigDecimal.valueOf(l.getOutstandingQuantity())))
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    long openMargins =
+        marginCall.findByOrganizationId(org, Pageable.unpaged()).getContent().stream()
+            .filter(value -> Set.of("OPEN", "PENDING", "PARTIALLY_FULFILLED", "OVERDUE").contains(value.getStatus()))
+            .count();
+    long openRecalls =
+        recall.findByOrganizationId(org, Pageable.unpaged()).getContent().stream()
+            .filter(value -> Set.of("OPEN", "PENDING", "PARTIALLY_FULFILLED", "OVERDUE").contains(value.getStatus()))
+            .count();
+    var dashboard = new LinkedHashMap<String, Object>();
+    dashboard.put("account", account(org));
+    dashboard.put("totalQuantity", stock.stream().mapToLong(InventoryPosition::getTotalQuantity).sum());
+    dashboard.put("availableQuantity", stock.stream().mapToLong(InventoryPosition::getAvailableQuantity).sum());
+    dashboard.put("reservedQuantity", stock.stream().mapToLong(InventoryPosition::getReservedQuantity).sum());
+    dashboard.put("loanedQuantity", stock.stream().mapToLong(InventoryPosition::getLoanedQuantity).sum());
+    dashboard.put("onLoanValue", onLoanValue);
+    dashboard.put("activeLoans", allLoans.stream().filter(l -> l.getStatus().equals("ACTIVE")).count());
+    dashboard.put("pendingLoans", allLoans.stream().filter(l -> l.getStatus().equals("PENDING_REVIEW")).count());
+    dashboard.put("openMarginCalls", openMargins);
+    dashboard.put("openRecalls", openRecalls);
+    dashboard.put(
         "recentNotifications",
         notification
             .findByOrganizationId(org, PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "id")))
             .getContent());
+    return dashboard;
   }
 
   @Transactional

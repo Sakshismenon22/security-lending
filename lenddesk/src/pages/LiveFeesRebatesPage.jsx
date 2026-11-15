@@ -63,7 +63,7 @@ export default function LiveFeesRebatesPage() {
       <header className="al-heading">
         <div>
           <h1>
-            Fees &amp; Rebates <span className="ref-demo">LIVE API</span>
+            Fees &amp; Rebates 
           </h1>
           <p>Recorded loan fees, cash rebates and outstanding settlements.</p>
         </div>

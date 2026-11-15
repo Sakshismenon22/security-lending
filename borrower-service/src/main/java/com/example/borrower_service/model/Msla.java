@@ -26,6 +26,10 @@ public class Msla {
     @Column(name="lender_id",nullable=false)
     private Long lenderId;
 
+    /** Lender-local agreement identifier received with the lender's offer. */
+    @Column(name="lender_msla_id")
+    private Long lenderMslaId;
+
     @Column(name="number",nullable=false,length=100)
     private String number;
 

@@ -66,9 +66,13 @@ public class BorrowerEventProjectionService {
         var d = event.data();
         switch (event.type()) {
             case "LENDER_REFERENCE_UPDATED" -> lender(id, d);
+            case "AGREEMENT_OFFERED" -> agreementOffer(org, id, d);
             case "AGREEMENT_ACCEPTED", "AGREEMENT_REJECTED" -> {
                 var a = db.owned(Msla.class, org, id);
-                require("PROPOSED".equals(a.get("status")), "Agreement is not awaiting a decision");
+                require(
+                        Set.of("OFFERED", "ACCEPTANCE_PENDING", "REJECTION_PENDING", "PROPOSED")
+                                .contains(a.get("status")),
+                        "Agreement is not awaiting a decision");
                 db.edit(
                         Msla.class,
                         id,
@@ -205,6 +209,7 @@ public class BorrowerEventProjectionService {
     }
 
     private String resource(String type) {
+        if (type.equals("AGREEMENT_OFFERED")) return "msla_offer";
         if (type.startsWith("AGREEMENT_")) return "msla";
         if (type.startsWith("LOCATE_")) return "locate_request";
         if (type.startsWith("RESERVATION_")) return "reservation";
@@ -233,6 +238,75 @@ public class BorrowerEventProjectionService {
                         entity.setName(text(d, "name"));
                         entity.setExternalId(text(d, "externalId"));
                     });
+    }
+
+    @SuppressWarnings("unchecked")
+    private void agreementOffer(long org, long lenderAgreementId, Map<String, Object> d) {
+        long lenderId = number(d, "lenderReferenceId");
+        db.row(LenderReference.class, lenderId);
+        require(
+                db.rows(
+                                Msla.class,
+                                eq("organizationId", org),
+                                eq("lenderId", lenderId),
+                                eq("lenderMslaId", lenderAgreementId))
+                        .isEmpty(),
+                "Agreement offer already exists");
+        require(
+                !dateValue(d, "expiryDate").isBefore(dateValue(d, "effectiveDate")),
+                "Agreement expires before its effective date");
+        int dayBasis = (int) number(d, "dayBasis");
+        require(dayBasis == 360 || dayBasis == 365, "Invalid agreement day basis");
+        Object rawRules = d.get("collateralRules");
+        require(rawRules instanceof List<?> && !((List<?>) rawRules).isEmpty(), "Missing collateral rules");
+        long agreementId =
+                db.create(
+                        Msla::new,
+                        entity -> {
+                            entity.setOrganizationId(org);
+                            entity.setLenderId(lenderId);
+                            entity.setLenderMslaId(lenderAgreementId);
+                            entity.setNumber(text(d, "number"));
+                            entity.setStatus("OFFERED");
+                            entity.setEffectiveDate(dateValue(d, "effectiveDate"));
+                            entity.setExpiryDate(dateValue(d, "expiryDate"));
+                            entity.setCreditLimit(decimal(d, "creditLimit"));
+                            entity.setFeeRate(decimal(d, "feeRate"));
+                            entity.setRebateRate(decimal(d, "rebateRate"));
+                            entity.setCoverageRatio(decimal(d, "coverageRatio"));
+                            entity.setBillingFrequency(text(d, "billingFrequency"));
+                            entity.setRebateSettlementFrequency(text(d, "rebateSettlementFrequency"));
+                            entity.setDayBasis(dayBasis);
+                            entity.setRecallAllowed(Boolean.parseBoolean(text(d, "recallAllowed")));
+                            entity.setMarginHours((int) number(d, "marginHours"));
+                            entity.setRecallHours((int) number(d, "recallHours"));
+                        });
+        var seen = new HashSet<String>();
+        for (Object rawRule : (List<?>) rawRules) {
+            require(rawRule instanceof Map<?, ?>, "Invalid collateral rule");
+            Map<String, Object> rule = (Map<String, Object>) rawRule;
+            String assetType = text(rule, "assetType");
+            Object rawSecurity = rule.get("securityId");
+            Long securityId = rawSecurity == null ? null : number(rule, "securityId");
+            BigDecimal haircut = decimal(rule, "haircut");
+            boolean cash = "CASH".equals(assetType);
+            require(
+                    (cash && securityId == null && haircut.signum() == 0)
+                            || (!cash && "SECURITY".equals(assetType) && securityId != null),
+                    "Invalid collateral eligibility rule");
+            require(seen.add(assetType + ":" + securityId), "Duplicate collateral rule");
+            if (!cash) db.row(SecurityMaster.class, securityId);
+            long assetId = n(db.matchingRow(Asset.class, eq("assetName", assetType)), "id");
+            db.create(
+                    CollateralHaircut::new,
+                    entity -> {
+                        entity.setMslaId(agreementId);
+                        entity.setAssetType(assetType);
+                        entity.setSecurityId(securityId);
+                        entity.setHaircut(haircut);
+                        entity.setAssetId(assetId);
+                    });
+        }
     }
 
     private void locate(long org, long id, String type, Map<String, Object> d) {

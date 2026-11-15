@@ -15,7 +15,8 @@ public class LendingController {
     private final LendingService lending;private final BorrowerReadService read;private final PortfolioService portfolio;private final LenderReferenceRepository lenders;
     @GetMapping("/lenders") public ApiResponse<?> lenders(@PathVariable long org) {return ApiResponse.ok(portfolio.lenders(org));}
     @GetMapping("/agreements") public ApiResponse<?> agreements(@PathVariable long org,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size) {return ApiResponse.ok(read.list(org,"msla",page,size));}
-    @PostMapping("/agreements") public ApiResponse<?> propose(@PathVariable long org,@Valid @RequestBody AgreementRequest r) {return ApiResponse.ok(lending.propose(org,r));}
+    @PostMapping("/agreements/{id}/accept") public ApiResponse<?> acceptAgreement(@PathVariable long org,@PathVariable long id,@Valid @RequestBody(required=false) AgreementDecisionRequest r) {return ApiResponse.ok(lending.decideAgreement(org,id,true,r));}
+    @PostMapping("/agreements/{id}/reject") public ApiResponse<?> rejectAgreement(@PathVariable long org,@PathVariable long id,@Valid @RequestBody AgreementDecisionRequest r) {return ApiResponse.ok(lending.decideAgreement(org,id,false,r));}
     @GetMapping("/agreements/{id}") public ApiResponse<?> agreement(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(portfolio.agreement(org,id));}
     @GetMapping("/locates") public ApiResponse<?> locates(@PathVariable long org,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size) {return ApiResponse.ok(read.list(org,"locate_request",page,size));}
     @PostMapping("/locates") public ApiResponse<?> locate(@PathVariable long org,@Valid @RequestBody LocateRequest r) {return ApiResponse.ok(lending.locate(org,r));}

@@ -1,0 +1,1 @@
+import{get,orgUrl}from'./apiClient';const b=orgUrl('');export const obligationApi={marginCalls:()=>get(b+'/margin-calls'),recalls:()=>get(b+'/recalls?page=0&size=200'),returns:()=>get(b+'/returns'),defaults:()=>get(b+'/defaults'),buyIns:()=>get(b+'/buy-ins')}

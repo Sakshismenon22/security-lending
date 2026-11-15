@@ -69,9 +69,60 @@
 .ref-event-icon { color: #3420ff; font-size: 20px; margin-right: 16px; vertical-align: middle; }
 .ref-modal-backdrop { position: fixed; inset: 0; z-index: 10; background: #19122e66; display: grid; place-items: center; padding: 20px; }
 .ref-modal { background: #fff; border-radius: 12px; padding: 24px; max-width: 450px; box-shadow: 0 20px 80px #21135f33; }
+.live-agreement-notice { margin: -4px 7px 10px; padding: 9px 12px; border: 1px solid #cfc5ff; border-radius: 7px; background: #f1eeff; color: #332394; font-size: 12px; font-weight: 600; }
+.agreement-offer-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px; background: #251b4e54; }
+.agreement-offer-dialog { width: min(930px, 100%); max-height: calc(100vh - 48px); overflow: auto; border: 1px solid #d8d0ff; border-radius: 12px; background: #fff; box-shadow: 0 28px 90px #21135f42; }
+.agreement-offer-dialog > header { display: flex; justify-content: space-between; align-items: flex-start; padding: 18px 20px 14px; border-bottom: 1px solid #e6dfff; background: #f9f7ff; }
+.agreement-offer-dialog header p { margin: 0 0 3px; color: #6856c7; font-size: 10px; font-weight: 800; letter-spacing: .7px; }
+.agreement-offer-dialog h2 { margin: 0; color: #171035; font-size: 20px; }
+.agreement-offer-close { width: 30px; height: 30px; border: 1px solid #d8d0ff; border-radius: 6px; background: #fff; color: #443779; font-size: 22px; line-height: 1; }
+.agreement-offer-intro { margin: 0; padding: 11px 20px; border-bottom: 1px solid #eee9ff; color: #5e5874; font-size: 12px; }
+.agreement-offer-dialog form { padding: 16px 20px 18px; }
+.agreement-offer-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
+.agreement-offer-grid label { display: grid; gap: 5px; color: #4a4563; font-size: 11px; font-weight: 700; }
+.agreement-offer-grid label small { color: #827b9e; font-weight: 500; }
+.agreement-offer-grid input, .agreement-offer-grid select { box-sizing: border-box; width: 100%; height: 34px; border: 1px solid #d8d0ee; border-radius: 6px; background: #fefeff; color: #17122d; padding: 0 9px; font-size: 12px; }
+.agreement-offer-grid .agreement-offer-check { grid-column: span 2; display: flex; align-items: center; gap: 8px; padding-top: 18px; }
+.agreement-offer-grid .agreement-offer-check input { width: 15px; height: 15px; }
+.agreement-offer-dialog footer { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #eee9ff; }
+.agreement-offer-dialog footer button:not(.ref-primary) { border: 1px solid #d8d0ee; border-radius: 7px; background: #fff; color: #463f61; padding: 8px 15px; font-weight: 650; }
+.agreement-offer-dialog button:disabled { cursor: not-allowed; opacity: .6; }
+.borrower-connect-dialog { width: min(530px, 100%); border: 1px solid #d8d0ff; border-radius: 12px; background: #fff; box-shadow: 0 28px 90px #21135f42; }
+.borrower-connect-dialog > header { display: flex; justify-content: space-between; align-items: flex-start; padding: 18px 20px 14px; border-bottom: 1px solid #e6dfff; background: #f9f7ff; }
+.borrower-connect-dialog header p { margin: 0 0 3px; color: #6856c7; font-size: 10px; font-weight: 800; letter-spacing: .7px; }
+.borrower-connect-dialog h2 { margin: 0; color: #171035; font-size: 20px; }
+.borrower-connect-dialog > p { margin: 0; padding: 12px 20px; color: #5e5874; font-size: 12px; line-height: 1.5; }
+.borrower-connect-dialog form { display: grid; gap: 13px; padding: 4px 20px 18px; }
+.borrower-connect-dialog label { display: grid; gap: 5px; color: #4a4563; font-size: 11px; font-weight: 700; }
+.borrower-connect-dialog input { box-sizing: border-box; width: 100%; height: 35px; border: 1px solid #d8d0ee; border-radius: 6px; background: #fefeff; color: #17122d; padding: 0 9px; font-size: 12px; }
+.admin-member-dialog select { box-sizing: border-box; width: 100%; height: 35px; border: 1px solid #d8d0ee; border-radius: 6px; background: #fefeff; color: #17122d; padding: 0 9px; font-size: 12px; }
+.admin-member-toggle { display: flex !important; align-items: center; gap: 8px; }
+.admin-member-toggle input { width: auto !important; height: auto !important; }
+.admin-tabs { margin-bottom: 10px; border: 1px solid #e2d9ff; border-radius: 9px; background: #f9f7ff; }
+.admin-member-table { min-width: 900px; }
+.admin-edit { border: 1px solid #cfc5ff; border-radius: 6px; background: #f4f1ff; color: #332394; padding: 5px 10px; font-weight: 700; font-size: 12px; }
+.admin-read-panel { border: 1px solid #e2d9ff; border-radius: 10px; background: #fbfaff; overflow: hidden; }
+.admin-read-panel h2 { margin: 0; padding: 12px 16px; border-bottom: 1px solid #e7e0fb; color: #171035; font-size: 16px; }
+.admin-read-panel > p { margin: 0; padding: 12px 16px; color: #625b78; font-size: 12px; line-height: 1.5; }
+.admin-read-panel dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.admin-read-panel dl > div { min-width: 0; padding: 12px 16px; border-top: 1px solid #e9e2fc; border-right: 1px solid #e9e2fc; }
+.admin-read-panel dt { margin-bottom: 4px; color: #766e91; font-size: 10px; font-weight: 750; letter-spacing: .3px; text-transform: uppercase; }
+.admin-read-panel dd { margin: 0; overflow: hidden; color: #211a3c; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.borrower-connect-dialog footer { display: flex; justify-content: flex-end; gap: 9px; margin-top: 5px; padding-top: 14px; border-top: 1px solid #eee9ff; }
+.borrower-connect-dialog footer button:not(.ref-primary) { border: 1px solid #d8d0ee; border-radius: 7px; background: #fff; color: #463f61; padding: 8px 15px; font-weight: 650; }
+.live-borrower-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 9px 16px 0; border: 1px solid #e1d9fb; border-radius: 8px; overflow: hidden; background: #fbfaff; }
+.live-borrower-strip > div { min-width: 0; padding: 9px 12px; border-right: 1px solid #e8e2fc; }
+.live-borrower-strip > div:last-child { border-right: 0; }
+.live-borrower-strip small { display: block; margin-bottom: 4px; color: #77708f; font-size: 9px; font-weight: 750; text-transform: uppercase; letter-spacing: .35px; }
+.live-borrower-strip strong { display: block; overflow: hidden; color: #24203b; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.live-borrower-tables { display: grid; grid-template-columns: 1.02fr 1fr 1.08fr; gap: 12px; padding: 9px 16px 0; }
 @media (max-width: 1600px) { .ref-filters { flex-wrap: wrap; gap: 12px; } .ref-summary-cards { gap: 10px; padding-left: 14px; } .ref-summary-cards > div { padding: 10px; gap: 8px; } .ref-summary-cards strong { font-size: 16px; } .ref-summary-cards > div > span { font-size: 24px; } }
 @media (max-width: 1200px) { .ref-collateral .ref-heading { flex-wrap: wrap; } .ref-summary-cards { width: 100%; flex-basis: 100%; border-left: 0; padding: 0; } }
 @media (max-width: 760px) { .ref-heading { flex-wrap: wrap; gap: 16px; padding: 18px 4px; } .ref-heading h1 { font-size: 24px; } .ref-active-count { font-size: 14px; padding-left: 14px; } .ref-heading > .ref-primary { margin-left: 0; } .ref-filters { align-items: stretch; flex-direction: column; } .ref-filters label { justify-content: space-between; } .ref-filters select, .ref-filters input, .ref-agreements .ref-filters label:first-child select, .ref-agreements .ref-filters label:nth-child(4) select, .ref-agreements .ref-filters input { width: 62%; } .ref-summary-cards { display: grid; grid-template-columns: 1fr 1fr; } .ref-summary-cards > div { gap: 6px; padding: 10px 7px; } .ref-summary-cards small { font-size: 9px; } .ref-summary-cards strong { font-size: 12px; } .ref-summary-cards > div > span { display: none; } .ref-clear { margin-left: 0; } .workspace:has(.ref-page) .topbar .org { min-width: 110px; font-size: 11px; } .workspace:has(.ref-page) .topbar .data-source { flex-shrink: 0; } }
+
+@media (max-width: 760px) { .agreement-offer-backdrop { padding: 10px; } .agreement-offer-grid { grid-template-columns: 1fr; } .agreement-offer-grid .agreement-offer-check { grid-column: auto; padding-top: 2px; } }
+@media (max-width: 980px) { .live-borrower-strip, .live-borrower-tables { grid-template-columns: 1fr 1fr; } .live-borrower-tables > :last-child { grid-column: span 2; } }
+@media (max-width: 600px) { .live-borrower-strip, .live-borrower-tables { grid-template-columns: 1fr; } .live-borrower-strip > div { border-right: 0; border-bottom: 1px solid #e8e2fc; } .live-borrower-tables > :last-child { grid-column: auto; } }
 
 @media (max-width: 760px) {
  .workspace:has(.live-agreements-page, .live-locates-page) .topbar { flex-wrap: wrap; height: auto; min-height: 63px; padding-top: 8px; padding-bottom: 8px; }

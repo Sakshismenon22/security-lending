@@ -54,7 +54,7 @@ export default function LiveValuationsPage() {
       <header className="al-heading">
         <div>
           <h1>
-            Daily Valuations <span className="ref-demo">LIVE API</span>
+            Daily Valuations 
           </h1>
           <p>
             Run loan valuations using cached security prices and confirmed

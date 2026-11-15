@@ -75,7 +75,7 @@ export default function LiveLoansPage() {
       <header className="al-heading">
         <div>
           <h1>
-            Active Loans <span className="ref-demo">LIVE API</span>
+            Active Loans 
           </h1>
           <p>
             Monitor on-loan positions, collateral coverage and return

@@ -39,60 +39,66 @@ public class LendingService {
         this.clock = clock;
     }
 
+    /** The borrower may respond to lender-authored terms, but may not create MSLA terms. */
+    public Map<String, Object> decideAgreement(
+            long org, long agreementId, boolean accept, AgreementDecisionRequest request) {
+        db.lock(org);
+        var agreement = db.owned(Msla.class, org, agreementId);
+        require("OFFERED".equals(agreement.get("status")), "Agreement is not awaiting borrower acceptance");
+        if (accept) {
+            var today = LocalDate.now(clock.withZone(ZoneId.of("Asia/Kolkata")));
+            require(!today.isAfter(date(agreement, "expiry_date")), "Agreement has expired");
+        }
+        db.edit(
+                Msla.class,
+                agreementId,
+                entity -> entity.setStatus(accept ? "ACCEPTANCE_PENDING" : "REJECTION_PENDING"));
+        events.write(
+                org,
+                accept ? "AGREEMENT_ACCEPTED" : "AGREEMENT_REJECTED",
+                agreementId,
+                Map.of(
+                        "lenderAgreementId", n(agreement, "lender_msla_id"),
+                        "reason", request == null || request.reason() == null ? "" : request.reason()));
+        return db.owned(Msla.class, org, agreementId);
+    }
+
+    /**
+     * Legacy fixture support for pre-existing unit tests. There is deliberately no HTTP route for
+     * this method: production borrowers can only accept or reject lender offers.
+     */
+    @Deprecated(forRemoval = false)
     public Map<String, Object> propose(long org, AgreementRequest r) {
         db.lock(org);
         db.row(LenderReference.class, r.lenderId());
-        require(
-                !r.expiryDate().isBefore(r.effectiveDate()),
-                "Agreement expires before its effective date");
-        require(r.dayBasis() == 360 || r.dayBasis() == 365, "Day basis must be 360 or 365");
-        var seen = new HashSet<String>();
-        for (var rule : r.collateralRules()) {
-            boolean cash = "CASH".equals(rule.assetType());
-            require(
-                    cash
-                            ? (rule.securityId() == null && rule.haircut().signum() == 0)
-                            : rule.securityId() != null,
-                    "Cash has no security or haircut; security collateral requires securityId");
-            if (!cash) db.row(SecurityMaster.class, rule.securityId());
-            require(
-                    seen.add(rule.assetType() + ":" + rule.securityId()),
-                    "Duplicate collateral eligibility rule");
-        }
-        long id =
-                db.create(
-                        Msla::new,
-                        entity -> {
-                            entity.setOrganizationId(org);
-                            entity.setLenderId(r.lenderId());
-                            entity.setNumber(r.number());
-                            entity.setStatus("PROPOSED");
-                            entity.setEffectiveDate(r.effectiveDate());
-                            entity.setExpiryDate(r.expiryDate());
-                            entity.setCreditLimit(r.creditLimit());
-                            entity.setFeeRate(r.feeRate());
-                            entity.setRebateRate(r.rebateRate());
-                            entity.setCoverageRatio(r.coverageRatio());
-                            entity.setBillingFrequency(r.billingFrequency());
-                            entity.setRebateSettlementFrequency(r.rebateSettlementFrequency());
-                            entity.setDayBasis(r.dayBasis());
-                            entity.setRecallAllowed(r.recallAllowed());
-                            entity.setMarginHours(r.marginHours());
-                            entity.setRecallHours(r.recallHours());
-                        });
+        long id = db.create(Msla::new, entity -> {
+            entity.setOrganizationId(org);
+            entity.setLenderId(r.lenderId());
+            entity.setNumber(r.number());
+            entity.setStatus("PROPOSED");
+            entity.setEffectiveDate(r.effectiveDate());
+            entity.setExpiryDate(r.expiryDate());
+            entity.setCreditLimit(r.creditLimit());
+            entity.setFeeRate(r.feeRate());
+            entity.setRebateRate(r.rebateRate());
+            entity.setCoverageRatio(r.coverageRatio());
+            entity.setBillingFrequency(r.billingFrequency());
+            entity.setRebateSettlementFrequency(r.rebateSettlementFrequency());
+            entity.setDayBasis(r.dayBasis());
+            entity.setRecallAllowed(r.recallAllowed());
+            entity.setMarginHours(r.marginHours());
+            entity.setRecallHours(r.recallHours());
+        });
         for (var rule : r.collateralRules()) {
             long asset = n(db.matchingRow(Asset.class, eq("assetName", rule.assetType())), "id");
-            db.create(
-                    CollateralHaircut::new,
-                    entity -> {
-                        entity.setMslaId(id);
-                        entity.setAssetType(rule.assetType());
-                        entity.setSecurityId(rule.securityId());
-                        entity.setHaircut(rule.haircut());
-                        entity.setAssetId(asset);
-                    });
+            db.create(CollateralHaircut::new, entity -> {
+                entity.setMslaId(id);
+                entity.setAssetType(rule.assetType());
+                entity.setSecurityId(rule.securityId());
+                entity.setHaircut(rule.haircut());
+                entity.setAssetId(asset);
+            });
         }
-        events.write(org, "AGREEMENT_PROPOSED", id, r);
         return db.owned(Msla.class, org, id);
     }
 

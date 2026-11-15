@@ -28,7 +28,8 @@ public class EventWriter {
         payload.put("occurredAt", Instant.now().toString());
         payload.put("data", data);
         if (type.endsWith("_REQUESTED")
-                || type.equals("AGREEMENT_PROPOSED")
+                || type.equals("AGREEMENT_ACCEPTED")
+                || type.equals("AGREEMENT_REJECTED")
                 || type.equals("FEE_PAYMENT_RECEIVED")) {
             payload.put(
                     "destination",
@@ -39,7 +40,7 @@ public class EventWriter {
             Long mslaId = null;
             long id = Long.parseLong(reference.toString());
             switch (type) {
-                case "AGREEMENT_PROPOSED" -> mslaId = id;
+                case "AGREEMENT_ACCEPTED", "AGREEMENT_REJECTED" -> mslaId = id;
                 case "LOCATE_REQUESTED" ->
                         mslaId =
                                 BorrowerRepository.n(

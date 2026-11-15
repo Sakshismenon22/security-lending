@@ -1,0 +1,1 @@
+ALTER TABLE msla ALTER COLUMN borrower_msla_id DROP NOT NULL;

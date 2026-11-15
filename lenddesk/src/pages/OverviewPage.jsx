@@ -2,10 +2,17 @@ import { useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import StatusBadge from '../components/StatusBadge'
 import { exceptions, fixRows, settlements, timeline } from '../data/overviewData'
+import { useDataSource } from '../hooks/useDataSource'
+import LiveOverviewPage from './LiveOverviewPage'
 
 const TableLink = ({ children }) => <a>{children}</a>
 
 export default function OverviewPage() {
+  const { mode } = useDataSource()
+  return mode === 'live' ? <LiveOverviewPage /> : <DemoOverviewPage />
+}
+
+function DemoOverviewPage() {
   const { searchTerm } = useOutletContext()
   const [priority, setPriority] = useState('All priorities')
   const [selected, setSelected] = useState('LOAN-000006')
