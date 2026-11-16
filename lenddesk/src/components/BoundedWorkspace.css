@@ -1,0 +1,16 @@
+.app-shell .workspace.bounded-workspace { height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.bounded-workspace > .topbar { flex: none; }
+.bounded-route { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.bounded-route > .heading { flex: none; }
+.overview-workspace .operations-panel { flex: 1.1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.overview-workspace .panel-title, .overview-workspace footer { flex: none; }
+.overview-workspace .paginated-table { flex: 1; }
+.overview-workspace .bottom-grid { flex: .9 1 0; min-height: 0; }
+.overview-workspace .bottom-grid > .panel { min-height: 0; display: flex; flex-direction: column; }
+.overview-workspace .bottom-grid ol { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.fees-workspace > section { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.fees-workspace .paginated-table { flex: 1; min-height: 0; overflow: hidden; }
+.fees-workspace .al-detail, .fees-workspace .finance-rebate-summary { flex: .55 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.fees-workspace .al-detail > h2, .fees-workspace .finance-rebate-summary > h2 { flex: none; }
+.fees-workspace :is(.ref-heading,.ref-metrics,.ref-filters,.al-heading,.al-metrics,.al-tabs,.al-filters,.fee-business-date) { flex: none; }
+@media(max-width:760px) { .table-pagination { gap: 4px; } .table-pagination label { display: none; } .overview-workspace .bottom-grid { grid-template-columns: 1fr; } }

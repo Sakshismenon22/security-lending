@@ -1,0 +1,8 @@
+.paginated-table { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+.paginated-table-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.paginated-table-scroll thead { position: sticky; top: 0; z-index: 2; background: #f3f0fc; }
+.table-pagination { flex: none; min-height: 38px; display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding: 5px 10px; border-top: 1px solid var(--border); background: white; color: var(--muted); font-size: 11px; }
+.table-pagination > span:first-child { margin-right: auto; }
+.table-pagination label { display: flex; gap: 4px; align-items: center; }
+.table-pagination button, .table-pagination select { min-height: 27px; border: 1px solid var(--border); border-radius: 4px; background: white; color: var(--primary); }
+.table-pagination button:disabled { opacity: .4; cursor: not-allowed; }

@@ -1,3 +1,4 @@
+import PaginatedTable from '../components/PaginatedTable'
 import { Fragment, useEffect, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { lenderGet } from '../api/lendDeskApi'
@@ -180,7 +181,7 @@ export default function LiveFeesRebatesPage() {
         </p>
       ) : (
         <>
-          <div className="al-table-scroll">
+          <PaginatedTable className="al-table-scroll" label="Fees and rebates">
             <table className="al-table">
               <thead>
                 <tr>
@@ -319,7 +320,7 @@ export default function LiveFeesRebatesPage() {
                 )}
               </tbody>
             </table>
-          </div>
+          </PaginatedTable>
           <p className="ref-empty">
             Fees use loan market values and MSLA rates. Rebates use confirmed
             cash collateral balances. Due processing keeps existing daily
@@ -328,7 +329,7 @@ export default function LiveFeesRebatesPage() {
           </p>
           <section className="al-detail">
             <h2>Recent accrual runs</h2>
-            <div className="al-table-scroll">
+            <PaginatedTable className="al-table-scroll" label="Fees and rebates">
               <table className="al-table">
                 <thead>
                   <tr>
@@ -365,7 +366,7 @@ export default function LiveFeesRebatesPage() {
                   )}
                 </tbody>
               </table>
-            </div>
+            </PaginatedTable>
           </section>
         </>
       )}
