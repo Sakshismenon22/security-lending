@@ -70,3 +70,32 @@
   .funding-page .funding-workspace { overflow:auto; }
   .funding-page .funding-detail-area { min-height:220px; }
 }
+
+/* One-click collapse for the lower transaction detail workspace. */
+.funding-page .funding-details-toggle {
+  height:29px;
+  padding:0 8px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  border:1px solid var(--border);
+  border-radius:4px;
+  background:var(--surface);
+  color:var(--ink);
+  font-size:11px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.funding-page .funding-details-toggle svg {
+  width:12px;
+  height:12px;
+}
+.funding-page .funding-workspace.details-minimized .funding-resizer,
+.funding-page .funding-workspace.details-minimized .funding-detail-area {
+  display:none;
+}
+.funding-page .funding-workspace.details-minimized .funding-table-panel {
+  flex:1 1 0 !important;
+  min-height:0;
+}
