@@ -29,6 +29,17 @@ public class LifecycleRequestService {
   private final MarginCallRepository marginCalls;
   private final Clock clock;
 
+  public Map<String, Boolean> marginGuardrail(long org) {
+    return Map.of("enabled", tenants.marginShortfallGuardEnabled(org));
+  }
+
+  public Map<String, Boolean> setMarginGuardrail(long org, boolean enabled) {
+    var organization = tenants.lock(org);
+    organization.setMarginShortfallGuardEnabled(enabled);
+    events.audit(org, "MARGIN_SHORTFALL_GUARDRAIL_CHANGED", "enabled=" + enabled);
+    return Map.of("enabled", enabled);
+  }
+
   public LifecycleRequest recall(long org, long loanId, RecallRequest r) {
     tenants.lock(org);
     var loan = found(loans.findByIdAndOrganizationId(loanId, org));
@@ -78,9 +89,13 @@ public class LifecycleRequestService {
         "A margin call request is already pending");
     var preview = collateral.preview(org, loanId, false, null);
     var shortfall = (java.math.BigDecimal) preview.get("shortfall");
-    require(shortfall.signum() > 0, "Loan has no collateral shortfall");
+    require(!tenants.marginShortfallGuardEnabled(org) || shortfall.signum() > 0,
+        "Loan has no collateral shortfall");
     require(
         r.amount().compareTo(shortfall) >= 0, "Requested amount must cover the current shortfall");
+    if (!tenants.marginShortfallGuardEnabled(org)) {
+      events.audit(org, "DEMO_MARGIN_CALL_REQUESTED", "loan=" + loanId + ", request=" + r.clientRequestId());
+    }
     return create(loan, "MARGIN_CALL_REQUESTED", r.clientRequestId(), r);
   }
 

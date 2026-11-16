@@ -28,4 +28,7 @@ public class Organization {
 
   @Column(name = "created_at", nullable = false)
   private Instant createdAt;
+
+  @Column(name = "margin_shortfall_guard_enabled", nullable = false)
+  private Boolean marginShortfallGuardEnabled = true;
 }

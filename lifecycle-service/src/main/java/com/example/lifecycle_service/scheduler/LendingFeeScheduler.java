@@ -20,9 +20,9 @@ public class LendingFeeScheduler {
   private final LoanRepository loans;
   private final LendingFeeService fees;
 
-  @Scheduled(fixedDelayString = "${lifecycle.fee-poll-ms:60000}")
+  @Scheduled(cron = "${lifecycle.fee-accrual-cron:0 15 15 * * *}", zone = "Asia/Kolkata")
   public void processDueFees() {
-    for (long loanId : loans.findFeeLoanIds(fees.lastCompletedDay())) {
+    for (long loanId : loans.findFeeLoanIds(fees.lastCompletedDay().plusDays(1))) {
       try {
         fees.process(loanId);
       } catch (RuntimeException exception) {

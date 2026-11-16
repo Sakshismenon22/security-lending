@@ -21,6 +21,10 @@ public class TenantService {
     found(organizations.findById(id));
   }
 
+  public boolean marginShortfallGuardEnabled(long id) {
+    return !Boolean.FALSE.equals(found(organizations.findById(id)).getMarginShortfallGuardEnabled());
+  }
+
   public BorrowerConnection connection(long org, long id) {
     var c = found(connections.findByIdAndOrganizationId(id, org));
     require(c.getActive(), "Borrower connection is inactive");

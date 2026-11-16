@@ -4,8 +4,8 @@ export const demoLoanContext = {
 }
 export const demoMarginCall = {
  ...demoLoanContext,type:'Collateral top-up',amount:452000,currency:'USD',issued:'2026-11-12T14:30',deadline:'2026-11-13T12:00',priority:'High',cause:'Market move',assignee:'James Doyle',
- currentCollateral:10300000,valuation:'12 Nov 2026 14:27 UTC',
- notes:'NVDA price moved to $128.00 (+6.7%), reducing coverage to 100.586% (below 105%). Request top-up of $452,000 in eligible collateral by 13 Nov 2026 12:00 UTC.',
+ currentCollateral:10300000,valuation:'12 Nov 2026 14:27 IST',
+ notes:'NVDA price moved to $128.00 (+6.7%), reducing coverage to 100.586% (below 105%). Request top-up of $452,000 in eligible collateral by 13 Nov 2026 12:00 IST.',
  included:['Cash (USD)','U.S. Treasury (UST)'],recipients:['Operations','Risk'],channel:'FIX + portal',
 }
 export const topUpCollateral = [
@@ -33,6 +33,6 @@ export const loanWorkflowEvents = [
 ]
 export const demoRecall = {
  ...demoLoanContext,type:'Partial',quantity:30000,reason:'Portfolio sale',issued:'2026-11-12T14:30',returnBy:'2026-11-13T16:00',notice:'1 business day',settlement:'DTC-A',owner:'Apex Prime Fund',
- message:'Please be advised that we are issuing a partial recall for 30,000 shares of NVDA (LOAN-000006) for a portfolio sale. Please return the securities by 13 Nov 2026 16:00 UTC via DTC-A.',
+ message:'Please be advised that we are issuing a partial recall for 30,000 shares of NVDA (LOAN-000006) for a portfolio sale. Please return the securities by 13 Nov 2026 16:00 IST via DTC-A.',
  notes:'Recall to source NVDA for planned sale on 16 Nov. Monitor for borrower acknowledgment and return.',
 }

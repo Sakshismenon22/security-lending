@@ -12,12 +12,12 @@ export function allocationErrors(rows,quantity,limits){
  return errors
 }
 export function validLeiFormat(value){return /^[A-Z0-9]{18}[0-9]{2}$/.test(value)}
-export function validUtc(value){return value && Number.isFinite(Date.parse(`${value.length===10?value+'T00:00':value}Z`))}
+export function validUtc(value){return value && Number.isFinite(Date.parse(`${value.length===10?value+'T00:00':value}+05:30`))}
 export function workflowErrors(kind,data,context={}){
  const errors=[]
  const required=keys=>{for(const key of keys)if(data[key]==null||String(data[key]).trim()==='')errors.push(`${key.replace(/([A-Z])/g,' $1')} is required.`)}
  const now=context.now??Date.now()
- const future=value=>validUtc(value)&&Date.parse(`${value}Z`)>now
+ const future=value=>validUtc(value)&&Date.parse(`${value}+05:30`)>now
  if(kind==='locate'){
    required(['decision','owner','notes'])
    if(data.decision==='Reject'){required(['reason']);return errors}
@@ -25,7 +25,7 @@ export function workflowErrors(kind,data,context={}){
    if(data.decision==='Approve'&&Number(data.approved)!==data.requested)errors.push('Approve requires the full requested quantity; use Partial approve for a smaller amount.')
    if(data.decision==='Partial approve'&&Number(data.approved)>=data.requested)errors.push('Partial approval must be smaller than the request.')
    if(!wholePositive(data.lot)||Number(data.lot)>Number(data.approved))errors.push('Minimum borrow lot must be a positive whole number within approved quantity.')
-   if(!future(data.expiry))errors.push('Locate expiry must be in the future (UTC).')
+   if(!future(data.expiry))errors.push('Locate expiry must be in the future (IST).')
    if(!validUtc(data.settlement))errors.push('Choose a valid settlement date.')
    if(!Number.isFinite(Number(data.fee))||Number(data.fee)<0)errors.push('Annual fee cannot be negative.')
    if(Number(data.coverage)<100)errors.push('Collateral coverage must be at least 100%.')
@@ -35,7 +35,7 @@ export function workflowErrors(kind,data,context={}){
  if(kind==='agreement'){
    required(['lender','borrower','type','jurisdiction','law','currency','dayCount','billing','settlement','floor','fee','rebate','limit','coverage'])
    if(['floor','fee','rebate','limit','coverage'].some(key=>!Number.isFinite(Number(data[key]))))errors.push('Commercial rates, credit limit and coverage must be finite numbers.')
-   if(!validUtc(data.effective)||!validUtc(data.expiry)||Date.parse(data.expiry+'Z')<=Date.parse(data.effective+'Z'))errors.push('Agreement expiry must be after its effective date (UTC).')
+   if(!validUtc(data.effective)||!validUtc(data.expiry)||Date.parse(data.expiry+'+05:30')<=Date.parse(data.effective+'+05:30'))errors.push('Agreement expiry must be after its effective date (IST).')
    if(Number(data.floor)<0||Number(data.fee)<Number(data.floor)||Number(data.rebate)<0)errors.push('Negotiated fee must meet the lending fee floor; rates cannot be negative.')
    if(Number(data.limit)<=0||Number(data.coverage)<100)errors.push('A positive credit limit and at least 100% collateral coverage are required.')
    if(data.haircuts.some(row=>Number(row.haircut)<0||Number(row.haircut)>=100||Number(row.max)<=0||Number(row.max)>100))errors.push('Haircuts must be between 0 and 100%; contribution limits must be above 0 and at most 100%.')
@@ -55,14 +55,14 @@ export function workflowErrors(kind,data,context={}){
    if(data.action==='Reject request'){required(['reason']);return errors}
    required(['account','reference'])
    if(!wholePositive(data.accepted)||Number(data.accepted)>data.requested||Number(data.accepted)>data.outstanding)errors.push('Accepted quantity must be within the request and outstanding loan quantity.')
-   if(!validUtc(data.settlement))errors.push('Choose a valid expected settlement date (UTC).')
+   if(!validUtc(data.settlement))errors.push('Choose a valid expected settlement date (IST).')
    const selected=(context.returnLots??[]).filter(row=>data.lots.includes(row.id)).reduce((total,row)=>total+row.quantity,0)
    if(selected<Number(data.accepted))errors.push('Select sufficient return lots for the accepted quantity.')
  }
  if(kind==='reservation'){
    required(['action','owner','reason','notes'])
    if(data.action!=='Release'){
-     if(!future(data.expiry))errors.push('Reservation expiry must be in the future (UTC).')
+     if(!future(data.expiry))errors.push('Reservation expiry must be in the future (IST).')
      if(!validUtc(data.valueDate))errors.push('Choose a valid value date.')
    }
    if(data.action==='Amend reservation'){
@@ -76,14 +76,14 @@ export function workflowErrors(kind,data,context={}){
    if(!Number.isFinite(Number(data.amount))||Number(data.amount)<=0||Number(data.amount)<result.shortfall)errors.push('Requested amount must cover the collateral shortfall.')
    if(Number(data.amount)>result.selected)errors.push('Requested amount exceeds selected eligible top-up collateral.')
    if(!data.included.length)errors.push('Include at least one eligible collateral type.')
-   if(!validUtc(data.issued)||!future(data.deadline)||Date.parse(data.deadline+'Z')<=Date.parse(data.issued+'Z'))errors.push('Response deadline must be after issue time and in the future (UTC).')
+   if(!validUtc(data.issued)||!future(data.deadline)||Date.parse(data.deadline+'+05:30')<=Date.parse(data.issued+'+05:30'))errors.push('Response deadline must be after issue time and in the future (IST).')
    if(!data.recipients.length)errors.push('Select at least one borrower notification recipient.')
  }
  if(kind==='loan'){
    required(['action','maturity','effective','reason'])
    const result=amendmentProjection(data)
-   if(!validUtc(data.maturity)||!validUtc(data.effective)||Date.parse(data.maturity+'T00:00Z')<=Date.parse(data.effective+'T00:00Z'))errors.push('Loan maturity must be after the effective amendment date (UTC).')
-   if(!validUtc(data.effective)||Date.parse(data.effective+'T00:00Z')<new Date(now).setUTCHours(0,0,0,0))errors.push('Effective amendment cannot be before today (UTC).')
+   if(!validUtc(data.maturity)||!validUtc(data.effective)||Date.parse(data.maturity+'T00:00+05:30')<=Date.parse(data.effective+'T00:00+05:30'))errors.push('Loan maturity must be after the effective amendment date (IST).')
+   if(!validUtc(data.effective)||Date.parse(data.effective+'T00:00+05:30')<(new Date(now+330*60000).setUTCHours(0,0,0,0)-330*60000))errors.push('Effective amendment cannot be before today (IST).')
    if(data.action==='Extend maturity'&&!(result.maturityDelta>0))errors.push('Extended maturity must be later than the current maturity.')
    if(data.action==='Amend terms'){
      required(['fee','rebate','billing','dayBasis'])
@@ -97,7 +97,7 @@ export function workflowErrors(kind,data,context={}){
    const result=recallProjection(data)
    if(!wholePositive(result.quantity)||result.quantity>data.outstanding)errors.push('Recall quantity must be positive whole shares within the outstanding loan quantity.')
    if(data.type==='Partial'&&result.quantity>=data.outstanding)errors.push('Use Full recall when recalling the entire outstanding quantity.')
-   if(!validUtc(data.issued)||!future(data.returnBy)||Date.parse(data.returnBy+'Z')<addBusinessDaysUtc(data.issued,parseInt(data.notice,10)||1))errors.push('Return deadline must satisfy the contractual business-day notice and be in the future (UTC).')
+   if(!validUtc(data.issued)||!future(data.returnBy)||Date.parse(data.returnBy+'+05:30')<addBusinessDaysUtc(data.issued,parseInt(data.notice,10)||1))errors.push('Return deadline must satisfy the contractual business-day notice and be in the future (IST).')
  }
  return errors
 }

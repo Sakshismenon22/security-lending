@@ -164,7 +164,7 @@ export default function LiveCollateralPage() {
                     ['loanRequiredValue', 'Loan required'],
                     ['loanCoverage', 'Loan collateral / required'],
                     ['status', 'Settlement state'],
-                    ['priceAt', 'Price UTC'],
+                    ['priceAt', 'Price IST'],
                   ].map(([k, label]) => sortHeading(k, label))}
                 </tr>
               </thead>
@@ -282,9 +282,9 @@ function CollateralDetails({ id }) {
             <tr>
               {[
                 'Valuation ID',
-                'Valued UTC',
+                'Valued IST',
                 'Price',
-                'Asset price UTC',
+                'Asset price IST',
                 'Market value',
                 'Haircut',
                 'Eligible value',
@@ -321,7 +321,7 @@ function CollateralDetails({ id }) {
       <table className="al-table">
         <thead>
           <tr>
-            <th>Time UTC</th>
+            <th>Time IST</th>
             <th>Event</th>
             <th>Reference</th>
           </tr>

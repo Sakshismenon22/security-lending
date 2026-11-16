@@ -14,6 +14,17 @@ import org.springframework.web.bind.annotation.*;
 public class LifecycleRequestController {
   private final LifecycleRequestService requests;
 
+  @GetMapping("/settings/margin-shortfall-guardrail")
+  public ApiResponse<?> marginGuardrail(@PathVariable long org) {
+    return ApiResponse.ok(requests.marginGuardrail(org));
+  }
+
+  @PutMapping("/settings/margin-shortfall-guardrail")
+  public ApiResponse<?> marginGuardrail(@PathVariable long org,
+      @Valid @RequestBody MarginGuardrailRequest request) {
+    return ApiResponse.ok(requests.setMarginGuardrail(org, request.enabled()));
+  }
+
   @PostMapping("/loans/{id}/recall-requests")
   public ApiResponse<?> recall(
       @PathVariable long org, @PathVariable long id, @Valid @RequestBody RecallRequest r) {

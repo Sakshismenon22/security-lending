@@ -401,7 +401,7 @@ export function LiveLoanDetails({ id }) {
             ['MSLA fee', `${num(l.feeBps)} bps`],
             ['MSLA rebate', `${num(l.rebateBps)} bps`],
             ['Day count', `Actual/${l.dayBasis}`],
-            ['Start date UTC', date(l.settledAt)],
+            ['Start date IST', date(l.settledAt)],
             ['Maturity', 'Not recorded'],
           ]}
         />
@@ -410,7 +410,7 @@ export function LiveLoanDetails({ id }) {
           <LoanCard
             title="Recorded valuation"
             rows={[
-              ['Valued UTC', date(l.valuationAt)],
+              ['Valued IST', date(l.valuationAt)],
               ['Eligible collateral', money(l.eligibleCollateral, l.currency)],
               ['Required collateral', money(l.requiredCollateral, l.currency)],
               ['Shortfall', money(l.shortfall, l.currency)],
@@ -487,7 +487,7 @@ export function LiveLoanDetails({ id }) {
           <table>
             <thead>
               <tr>
-                <th>Time (UTC)</th>
+                <th>Time (IST)</th>
                 <th>Event</th>
                 <th>Reference</th>
               </tr>

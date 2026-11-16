@@ -169,6 +169,7 @@ public class LoanScreenService {
 
   private List<Map<String, Object>> rows(long org, List<Loan> list) {
     if (list.isEmpty()) return List.of();
+    boolean marginGuardEnabled = tenants.marginShortfallGuardEnabled(org);
     var ids = list.stream().map(Loan::getId).toList();
     var aa =
         index(
@@ -325,8 +326,8 @@ public class LoanScreenService {
                       && l.getOutstandingQuantity() > committed,
                   "canIssueMargin",
                   "ACTIVE".equals(l.getStatus())
-                      && v != null
-                      && v.getShortfall().signum() > 0
+                      && l.getOutstandingQuantity() > 0
+                      && (!marginGuardEnabled || (v != null && v.getShortfall().signum() > 0))
                       && openMargin == 0
                       && !pendingMargin,
                   "pendingMarginRequest",

@@ -588,6 +588,42 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void demoMarginGuardrailAllowsAPositiveCallWithoutShortfallAndCanBeRestored() throws Exception {
+    var org = organization();
+    var connection = connection(org);
+    long security = security("100");
+    var loan = activeLoan(org, connection, security, true);
+    var due = Instant.now().plusSeconds(86400);
+    var call =
+        new MarginIssueRequest(bd("100"), due, "Demonstration margin call", "demo-margin-guard");
+
+    assertThrows(
+        ResponseStatusException.class,
+        () -> lifecycleRequests.margin(org.getId(), loan.getId(), call));
+
+    mvc.perform(
+            put("/api/v1/organizations/" + org.getId() + "/settings/margin-shortfall-guardrail")
+                .contentType("application/json")
+                .content(json.write(new MarginGuardrailRequest(false))))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.enabled").value(false));
+
+    var pending = lifecycleRequests.margin(org.getId(), loan.getId(), call);
+    assertEquals("PENDING", pending.getStatus());
+
+    mvc.perform(get("/api/v1/organizations/" + org.getId() + "/settings/margin-shortfall-guardrail"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.enabled").value(false));
+
+    mvc.perform(
+            put("/api/v1/organizations/" + org.getId() + "/settings/margin-shortfall-guardrail")
+                .contentType("application/json")
+                .content(json.write(new MarginGuardrailRequest(true))))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.enabled").value(true));
+  }
+
+  @Test
   void recallCapacityIncludesPendingRequestsWithoutChangingOutstanding() {
     var org = organization();
     var c = connection(org);

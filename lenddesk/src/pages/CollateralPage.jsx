@@ -13,7 +13,7 @@ const columns = [['id', 'Collateral ID'], ['loan', 'Loan ID'], ['borrower', 'Bor
 
 function CollateralDetails({ row }) {
   if (row.id !== 'COL-006-001') return <div className="ref-empty">No additional valuation or movement history is included for {row.id} in this demo.</div>
-  return <div className="ref-collateral-details"><ReferenceTable title="⌁  Daily Valuation History" headers={['Valuation Date (UTC)', 'Price', 'Market Value', 'Haircut', 'Adjusted Value', 'Required Value', 'Collateral Ratio']} rows={collateralValuations}/><ReferenceTable title="▣  Collateral Movement / Settlement History" headers={['Event Time (UTC)', 'Event', 'Details', 'Pledged qty', 'Pledged qty (After)', 'Settlement State']} rows={collateralMovements.map(([time, event, details, qty, after, state]) => [time, <><span className="ref-event-icon">{event === 'Settlement' ? '⊙' : '⇄'}</span>{event}</>, details, qty, after, <Badge>{state}</Badge>])}/></div>
+  return <div className="ref-collateral-details"><ReferenceTable title="⌁  Daily Valuation History" headers={['Valuation Date (IST)', 'Price', 'Market Value', 'Haircut', 'Adjusted Value', 'Required Value', 'Collateral Ratio']} rows={collateralValuations}/><ReferenceTable title="▣  Collateral Movement / Settlement History" headers={['Event Time (IST)', 'Event', 'Details', 'Pledged qty', 'Pledged qty (After)', 'Settlement State']} rows={collateralMovements.map(([time, event, details, qty, after, state]) => [time, <><span className="ref-event-icon">{event === 'Settlement' ? '⊙' : '⇄'}</span>{event}</>, details, qty, after, <Badge>{state}</Badge>])}/></div>
 }
 
 function DemoCollateralPage() {

@@ -15,7 +15,7 @@ const tone=x=>/ACTIVE/.test(status(x))?'active':/DRAFT|PROPOSED/.test(status(x))
 const bps=x=>x==null?'-':num(Number(x)*10000)+' bps';
 const pct=x=>x==null?'-':num(Number(x)*100)+'%';
 const initials=x=>String(x||'').split(/\s+/).filter(Boolean).slice(0,2).map(t=>t[0]).join('').toUpperCase();
-const defaultForm=()=>({lenderId:'',number:'',effectiveDate:new Date().toISOString().slice(0,10),expiryDate:'',creditLimit:'',feeRate:'0.0032',rebateRate:'0.001',coverageRatio:'1.05',billingFrequency:'MONTHLY',rebateSettlementFrequency:'AT_CLOSE',dayBasis:'360',recallAllowed:true,marginHours:'4',recallHours:'24',collateralRules:[{assetType:'CASH',securityId:'',haircut:'0'}]});
+const defaultForm=()=>({lenderId:'',number:'',effectiveDate:new Date(Date.now()+330*60000).toISOString().slice(0,10),expiryDate:'',creditLimit:'',feeRate:'0.0032',rebateRate:'0.001',coverageRatio:'1.05',billingFrequency:'MONTHLY',rebateSettlementFrequency:'AT_CLOSE',dayBasis:'360',recallAllowed:true,marginHours:'4',recallHours:'24',collateralRules:[{assetType:'CASH',securityId:'',haircut:'0'}]});
 export default function Agreements(){
  const navigate=useNavigate();
  const[data,setData]=useState({agreements:[],lenders:[],securities:[]}),[detail,setDetail]=useState(null),[selectedId,setSelectedId]=useState(''),[loading,setLoading]=useState(true),[error,setError]=useState(''),[query,setQuery]=useState(''),[lenderFilter,setLenderFilter]=useState('All counterparties'),[statusFilter,setStatusFilter]=useState('All statuses'),[tab,setTab]=useState('All'),[detailTab,setDetailTab]=useState('Terms & parties'),[modal,setModal]=useState(''),[form,setForm]=useState(defaultForm),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');

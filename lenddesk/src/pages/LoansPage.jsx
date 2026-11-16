@@ -355,7 +355,7 @@ function DemoLoanDetail({ loan: l }) {
           <table>
             <thead>
               <tr>
-                <th>Time (UTC)</th>
+                <th>Time (IST)</th>
                 <th>Event</th>
                 <th>Reference</th>
               </tr>

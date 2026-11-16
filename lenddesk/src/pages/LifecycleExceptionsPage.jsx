@@ -9,7 +9,7 @@ import './LifecycleExceptionsPage.css'
 
 const tone = value => /overdue|failed|deficit/i.test(value) ? 'risk' : /pending/i.test(value) && !/payment|^pending$/i.test(value) ? 'purple' : /payment_pending|^pending$/i.test(value) ? 'warn' : /submitted|^open$|acknowledged|scheduled/i.test(value) ? 'purple' : 'good'
 const State = ({ value }) => <Badge tone={tone(value)}>{value}</Badge>
-const returnColumns = [['Return ID','id'], ['Loan ID','loan'], ['Recall ID','recall'], ['Borrower','borrower'], ['Security','security'], ['Quantity','quantity'], ['Requested UTC','requested'], ['Collateral Release State','collateral'], ['Fee Payment State','fee'], ['Rebate Payment State','rebate'], ['Settlement State','settlement']]
+const returnColumns = [['Return ID','id'], ['Loan ID','loan'], ['Recall ID','recall'], ['Borrower','borrower'], ['Security','security'], ['Quantity','quantity'], ['Requested IST','requested'], ['Collateral Release State','collateral'], ['Fee Payment State','fee'], ['Rebate Payment State','rebate'], ['Settlement State','settlement']]
 const emptyFilters = { borrower: '', security: '', state: '', settlement: '' }
 
 function DetailStrip({ title, entries }) {
@@ -20,20 +20,20 @@ function ReturnDetails({ row }) {
   if (row.id !== 'RET-000041') return <div className="ref-empty">No additional settlement details are included for {row.id} in the reference snapshot.</div>
   return <div className="lifecycle-return-details">
     <DetailStrip title="▤  Linked Recall Summary" entries={[
-      ['Recall ID', <Link to="/recalls?id=REC-000122">REC-000122</Link>], ['Recall Type','FULL'], ['Requested UTC','Jan 27, 2025 16:20:11'], ['Recall State',<State value="SETTLED"/>], ['Return ID',<Link to="/returns?id=RET-000041">RET-000041</Link>],
+      ['Recall ID', <Link to="/recalls?id=REC-000122">REC-000122</Link>], ['Recall Type','FULL'], ['Requested IST','Jan 27, 2025 16:20:11'], ['Recall State',<State value="SETTLED"/>], ['Return ID',<Link to="/returns?id=RET-000041">RET-000041</Link>],
     ]}/>
-    <ReferenceTable title="▱  Collateral Release" headers={['Release ID','Collateral ID','Asset / Cash Type','Quantity','Market Value','Release Requested UTC','Release State']} rows={[[<Link to="/collateral">CR-000771</Link>,<Link to="/collateral">COL-006-001</Link>,'Security','1,000,000','$415,600,000','Jan 28, 2025 14:05:40',<State value="PENDING"/>]]}/>
+    <ReferenceTable title="▱  Collateral Release" headers={['Release ID','Collateral ID','Asset / Cash Type','Quantity','Market Value','Release Requested IST','Release State']} rows={[[<Link to="/collateral">CR-000771</Link>,<Link to="/collateral">COL-006-001</Link>,'Security','1,000,000','$415,600,000','Jan 28, 2025 14:05:40',<State value="PENDING"/>]]}/>
     <DetailStrip title="%  Fee Payment" entries={[
-      ['Fee ID',<Link to="/fees-rebates">FEE-009314</Link>], ['Amount','$128,750'], ['Due UTC','Jan 28, 2025 18:00:00'], ['Payment State',<State value="PAYMENT_PENDING"/>],
+      ['Fee ID',<Link to="/fees-rebates">FEE-009314</Link>], ['Amount','$128,750'], ['Due IST','Jan 28, 2025 18:00:00'], ['Payment State',<State value="PAYMENT_PENDING"/>],
     ]}/>
     <DetailStrip title="▱  Rebate Payment" entries={[
-      ['Rebate ID',<Link to="/fees-rebates">REB-004981</Link>], ['Amount','$36,400'], ['Due UTC','Jan 28, 2025 18:00:00'], ['Payment State',<State value="PAID"/>], ['Paid UTC','Jan 28, 2025 14:11:09'],
+      ['Rebate ID',<Link to="/fees-rebates">REB-004981</Link>], ['Amount','$36,400'], ['Due IST','Jan 28, 2025 18:00:00'], ['Payment State',<State value="PAID"/>], ['Paid IST','Jan 28, 2025 14:11:09'],
     ]}/>
     <section className="ref-detail-card lifecycle-timeline"><h2>▣  Settlement Event Timeline</h2><ol>{returnTimeline.map(([label, date, state]) => <li key={label} className={state}><span className="lifecycle-timeline-dot" aria-label={state === 'done' ? 'Completed' : state === 'current' ? 'Current' : 'Pending'}>{state === 'done' ? '✓' : ''}</span><strong>{label}</strong>{state === 'current' && <State value="SETTLEMENT_SUBMITTED"/>}<time>{date}</time></li>)}</ol></section>
   </div>
 }
 
-const linkedRecall = { id: 'REC-000122', loan: 'LOAN-000010', borrower: 'BARC01', security: 'MSFT', quantity: '1,000,000', notice: 'Jan 27, 2025 16:20:11', due: '—', returnId: 'RET-000041', status: 'Settled', detail: [['Recall type','FULL'], ['Requested UTC','Jan 27, 2025 16:20:11'], ['Recall state','SETTLED'], ['Linked return','RET-000041']] }
+const linkedRecall = { id: 'REC-000122', loan: 'LOAN-000010', borrower: 'BARC01', security: 'MSFT', quantity: '1,000,000', notice: 'Jan 27, 2025 16:20:11', due: '—', returnId: 'RET-000041', status: 'Settled', detail: [['Recall type','FULL'], ['Requested IST','Jan 27, 2025 16:20:11'], ['Recall state','SETTLED'], ['Linked return','RET-000041']] }
 
 export default function LifecycleExceptionsPage({ view = 'returns' }) {
   const { searchTerm = '' } = useOutletContext()

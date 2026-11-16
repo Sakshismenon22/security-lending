@@ -19,7 +19,7 @@ function cell(row,key){
 }
 function FeeDetails({row}){
  if(row.id!=='FEE-009314')return <div className="ref-empty">No additional daily accruals are included for {row.id} in the reference snapshot.</div>
- return <div className="finance-details"><ReferenceTable title="▣  Daily Fee Accruals — FEE-009314" headers={['Accrual Date','Day Count','Market Value','Daily Fee Rate','Daily Accrual','Accrued Amount (Cumulative)']} rows={feeAccruals}/><ReferenceTable title="▱  Related Payment / Ledger" headers={['Entry Type','Reference ID','Amount','Entry Date (UTC)','Description','Settlement State','Status']} rows={[[ 'Payment Request',<Link to="/ledger?reference=PAY-004981">PAY-004981</Link>,'$128,750.00','Jan 28, 2025 14:11:09','Lending fee payment request for FEE-009314','—',<FinanceState value="PAYMENT_PENDING"/>]]}/></div>
+ return <div className="finance-details"><ReferenceTable title="▣  Daily Fee Accruals — FEE-009314" headers={['Accrual Date','Day Count','Market Value','Daily Fee Rate','Daily Accrual','Accrued Amount (Cumulative)']} rows={feeAccruals}/><ReferenceTable title="▱  Related Payment / Ledger" headers={['Entry Type','Reference ID','Amount','Entry Date (IST)','Description','Settlement State','Status']} rows={[[ 'Payment Request',<Link to="/ledger?reference=PAY-004981">PAY-004981</Link>,'$128,750.00','Jan 28, 2025 14:11:09','Lending fee payment request for FEE-009314','—',<FinanceState value="PAYMENT_PENDING"/>]]}/></div>
 }
 export default function FeesRebatesDemoPage(){
  const {searchTerm=''}=useOutletContext()

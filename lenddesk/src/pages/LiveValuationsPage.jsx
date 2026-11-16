@@ -115,13 +115,13 @@ export default function LiveValuationsPage() {
                     ['symbol', 'Security'],
                     ['outstandingQuantity', 'Outstanding'],
                     ['price', 'Cached price'],
-                    ['priceAt', 'Price UTC'],
+                    ['priceAt', 'Price IST'],
                     ['marketValue', 'Loan market value'],
                     ['eligibleCollateral', 'Eligible collateral'],
                     ['coverage', 'Coverage'],
                     ['requiredCollateral', 'Required collateral'],
                     ['shortfall', 'Shortfall'],
-                    ['valuationAt', 'Valued UTC'],
+                    ['valuationAt', 'Valued IST'],
                   ].map(([k, v]) => sortHeading(k, v))}
                   <th>Action</th>
                 </tr>
@@ -226,10 +226,10 @@ function ValuationDetails({ id }) {
             <tr>
               {[
                 'Valuation ID',
-                'Valued UTC',
+                'Valued IST',
                 'Snapshot quantity',
                 'Price',
-                'Price UTC',
+                'Price IST',
                 'Loan market value',
                 'Eligible collateral',
                 'Required',

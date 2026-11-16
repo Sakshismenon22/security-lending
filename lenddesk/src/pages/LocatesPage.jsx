@@ -10,7 +10,7 @@ import { useDataSource } from '../hooks/useDataSource'
 
 const number = value => value.toLocaleString('en-US')
 const emptyFilters = { borrower: '', msla: '', security: '', status: '', expiryTone: '' }
-const columns = [['id', 'Locate ID'], ['borrower', 'Borrower'], ['msla', 'MSLA'], ['security', 'Security'], ['requested', 'Requested qty'], ['approved', 'Approved qty'], ['reserved', 'Reserved qty'], ['available', 'Available qty'], ['expiry', 'Expires UTC'], ['status', 'Status']]
+const columns = [['id', 'Locate ID'], ['borrower', 'Borrower'], ['msla', 'MSLA'], ['security', 'Security'], ['requested', 'Requested qty'], ['approved', 'Approved qty'], ['reserved', 'Reserved qty'], ['available', 'Available qty'], ['expiry', 'Expires IST'], ['status', 'Status']]
 
 function Expiry({ row, inline = false }) {
   if (row.expiryTone === 'plain') return <span>{row.expiry}</span>
@@ -21,8 +21,8 @@ function Expiry({ row, inline = false }) {
 function LocateDetails({ row }) {
   const hasDetails = row.id === 'LOC-017222'
   return <div className="locate-reference-details"><div className="locate-detail-grid"><ReferenceTable title={`▣  Reservations (${hasDetails ? 3 : 0})`} headers={['Reservation ID', 'Quantity', 'Remaining qty', 'Expiry countdown', 'Linked loan', 'Status']} rows={hasDetails ? locateReservations.map(reservation => [<Link to="/reservations" state={{ reservationId: reservation.id }}>{reservation.id}</Link>, number(reservation.quantity), number(reservation.remaining), <Expiry row={reservation} inline/>, <Link to={`/loans/${reservation.loan}`}>{reservation.loan}</Link>, <Badge>Active</Badge>]) : []}/>
-    <section className="ref-detail-card locate-summary"><h2>▱  Locate Summary — {row.id}</h2><div>{[[['Borrower', row.borrower], ['MSLA', row.msla], ['Security', row.security], ['Requested qty', number(row.requested)], ['Approved qty', number(row.approved)]], [['Reserved qty', number(row.reserved)], ['Available qty', number(row.available)], ['Expires (UTC)', <Expiry row={row}/>], ['Status', <Badge tone={row.status === 'Pending' ? 'purple' : 'good'}>{row.status}</Badge>]]].map((items, index) => <dl key={index}>{items.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>)}</div></section></div>
-    <ReferenceTable title="⌁  Activity Trail" headers={['Time (UTC)', 'Event', 'Details']} rows={hasDetails ? locateActivity.map(([time, event, details]) => [time, <><span className="ref-event-icon">{event === 'Adjustment' ? '⇄' : event === 'Locate approved' ? '⊙' : '▣'}</span>{event}</>, details]) : []}/>
+    <section className="ref-detail-card locate-summary"><h2>▱  Locate Summary — {row.id}</h2><div>{[[['Borrower', row.borrower], ['MSLA', row.msla], ['Security', row.security], ['Requested qty', number(row.requested)], ['Approved qty', number(row.approved)]], [['Reserved qty', number(row.reserved)], ['Available qty', number(row.available)], ['Expires (IST)', <Expiry row={row}/>], ['Status', <Badge tone={row.status === 'Pending' ? 'purple' : 'good'}>{row.status}</Badge>]]].map((items, index) => <dl key={index}>{items.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>)}</div></section></div>
+    <ReferenceTable title="⌁  Activity Trail" headers={['Time (IST)', 'Event', 'Details']} rows={hasDetails ? locateActivity.map(([time, event, details]) => [time, <><span className="ref-event-icon">{event === 'Adjustment' ? '⇄' : event === 'Locate approved' ? '⊙' : '▣'}</span>{event}</>, details]) : []}/>
   </div>
 }
 

@@ -40,4 +40,4 @@ export const display = (value) =>
     .replaceAll('_', ' ')
     .replace(/^./, (c) => c.toUpperCase()) ?? '—'
 export const date = (value) =>
-  value ? new Date(value).toLocaleString('en-GB', { timeZone: 'UTC' }) : '—'
+  value ? new Date(value).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata' }) : '—'

@@ -1,7 +1,7 @@
 import { topUpCollateral,loanCollateral } from './loanWorkflowFixtures.js'
 export const money = (value,decimals=0) => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:decimals,maximumFractionDigits:decimals}).format(value)
 export const shares = value => Number(value||0).toLocaleString('en-US')
-export const utcDisplay = value => value ? value.replace('T',' ')+' UTC' : '—'
+export const utcDisplay = value => value ? value.replace('T',' ')+' IST' : '—'
 export function marginProjection(data){
  const marketValue=data.outstanding*data.price
  const required=marketValue*data.requiredRatio/100
@@ -26,5 +26,5 @@ export function addBusinessDaysUtc(value,days){
  const date=new Date(value+'Z')
  if(!Number.isFinite(date.getTime()))return NaN
  for(let added=0;added<days;){date.setUTCDate(date.getUTCDate()+1);if(![0,6].includes(date.getUTCDay()))added++}
- return date.getTime()
+ return date.getTime()-330*60000
 }

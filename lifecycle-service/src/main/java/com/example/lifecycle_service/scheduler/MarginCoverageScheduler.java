@@ -13,7 +13,7 @@ public class MarginCoverageScheduler {
   private final LoanRepository loanRepository;
   private final MarginCoverageService marginCoverageService;
 
-  @Scheduled(cron = "${lifecycle.margin-check-cron:0 15 15 * * *}")
+  @Scheduled(cron = "${lifecycle.margin-check-cron:0 15 15 * * *}", zone = "Asia/Kolkata")
   public void runCoverageCheck() {
     List<com.example.lifecycle_service.model.Loan> activeLoans = loanRepository.findAllByStatus("ACTIVE");
     for (var loan : activeLoans) {

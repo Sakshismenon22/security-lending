@@ -20,7 +20,7 @@ public class RebateScheduler {
   private final LoanRepository loans;
   private final RebateLifecycleService rebates;
 
-  @Scheduled(fixedDelayString = "${lifecycle.rebate-poll-ms:60000}")
+  @Scheduled(cron = "${lifecycle.rebate-accrual-cron:0 15 15 * * *}", zone = "Asia/Kolkata")
   public void processDueRebates() {
     for (long loanId : loans.findRebateLoanIds()) {
       try {

@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDataSource } from '../hooks/useDataSource'
-import { lenderGet, lenderPost } from '../api/lendDeskApi'
+import { lenderGet, lenderPost, lenderPut } from '../api/lendDeskApi'
 import { LoanCard } from '../components/loans/LoanCards'
 import { date, display, loanId, money, num } from '../utils/loanFormat'
 import { Card, Summary } from './WorkflowControls'
 import './WorkflowPage.css'
 import '../pages/LoansPage.css'
-const utcInput = (value) => new Date(value).toISOString().slice(0, 16)
+const istInput = (value) => new Date(new Date(value).getTime() + 330 * 60000).toISOString().slice(0, 16)
 export default function LiveLoanWorkflow({ kind, id }) {
   const { organizationId, refreshKey } = useDataSource(),
     localId = Number(String(id).replace(/^LOAN-/, '')),
@@ -26,10 +26,20 @@ export default function LiveLoanWorkflow({ kind, id }) {
             abort.signal,
           )
         : Promise.resolve(null),
+      kind === 'margin'
+        ? lenderGet(
+            `/api/v1/organizations/${organizationId}/settings/margin-shortfall-guardrail`,
+            abort.signal,
+          )
+        : Promise.resolve(null),
     ])
-      .then(([data, preview]) => {
+      .then(([data, preview, guardrail]) => {
         if (!abort.signal.aborted)
-          setState({ scope, data: { ...data, preview }, error: '' })
+          setState({
+            scope,
+            data: { ...data, preview, marginGuardEnabled: guardrail?.enabled !== false },
+            error: '',
+          })
       })
       .catch((e) => {
         if (!abort.signal.aborted)
@@ -67,13 +77,14 @@ function LiveEditor({ kind, data, organizationId }) {
     ),
     [amount, setAmount] = useState(data.preview?.shortfall ?? 0),
     [dueAt, setDueAt] = useState(() =>
-      utcInput(Date.now() + (l.marginHours || 24) * 3600000),
+      istInput(Date.now() + (l.marginHours || 24) * 3600000),
     ),
     [reason, setReason] = useState(''),
     [action, setAction] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [success, setSuccess] = useState('')
+  const [guardEnabled, setGuardEnabled] = useState(data.marginGuardEnabled !== false)
   useEffect(() => {
     mounted.current = true
     return () => {
@@ -88,7 +99,7 @@ function LiveEditor({ kind, data, organizationId }) {
       : 'Manage loan'
   const allowed = isMargin
     ? l.status === 'ACTIVE' &&
-      Number(data.preview?.shortfall) > 0 &&
+      (!guardEnabled || Number(data.preview?.shortfall) > 0) &&
       !l.openMarginCount &&
       !l.pendingMarginRequest
     : isRecall
@@ -98,6 +109,21 @@ function LiveEditor({ kind, data, organizationId }) {
     e.preventDefault()
     setError('')
     dialog.current.showModal()
+  }
+  async function toggleMarginGuardrail() {
+    setBusy(true)
+    setError('')
+    try {
+      const result = await lenderPut(
+        `/api/v1/organizations/${organizationId}/settings/margin-shortfall-guardrail`,
+        { enabled: !guardEnabled },
+      )
+      setGuardEnabled(result.enabled !== false)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
   }
   function automaticSettlementReference() {
     const key = `${l.id}:${action}`
@@ -118,7 +144,7 @@ function LiveEditor({ kind, data, organizationId }) {
       body = isMargin
         ? {
             amount: Number(amount),
-            dueAt: new Date(dueAt + 'Z').toISOString(),
+            dueAt: new Date(dueAt + '+05:30').toISOString(),
             reason: reason.trim(),
           }
         : { quantity: Number(quantity), reason: reason.trim() }
@@ -219,12 +245,21 @@ function LiveEditor({ kind, data, organizationId }) {
                   {!allowed && (
                     <p className="al-error">
                       {isMargin
-                        ? 'An active loan with a current collateral shortfall and no open or pending margin call is required.'
+                        ? guardEnabled
+                          ? 'An active loan with a current collateral shortfall and no open or pending margin call is required.'
+                          : 'An active loan with outstanding quantity and no open or pending margin call is required.'
                         : 'Recall is unavailable: the agreement must permit recalls and uncommitted outstanding quantity must remain.'}
                     </p>
                   )}
                   {isMargin && (
                     <>
+                      <div className="wf-notice">
+                        <b>Margin shortfall guardrail: {guardEnabled ? 'ON' : 'OFF — demo mode'}</b>
+                        <p>{guardEnabled ? 'A current collateral shortfall is required.' : 'This demo mode allows a positive margin call without a shortfall.'}</p>
+                        <button type="button" className="wf-secondary" onClick={toggleMarginGuardrail}>
+                          Turn {guardEnabled ? 'off for demo' : 'on'}
+                        </button>
+                      </div>
                       <label>
                         Call type
                         <input value="Collateral top-up" readOnly />
@@ -235,19 +270,19 @@ function LiveEditor({ kind, data, organizationId }) {
                           aria-label="Requested amount"
                           type="number"
                           step="0.01"
-                          min={Math.max(0.01, Number(data.preview?.shortfall))}
+                          min={Math.max(0.01, guardEnabled ? Number(data.preview?.shortfall) : 0.01)}
                           required
                           value={amount}
                           onChange={(e) => setAmount(e.target.value)}
                         />
                       </label>
                       <label>
-                        Response deadline (UTC)
+                        Response deadline (IST)
                         <input
-                          aria-label="Response deadline UTC"
+                          aria-label="Response deadline IST"
                           type="datetime-local"
                           required
-                          min={utcInput(now + 60000)}
+                          min={istInput(now + 60000)}
                           value={dueAt}
                           onChange={(e) => setDueAt(e.target.value)}
                         />
@@ -384,7 +419,7 @@ function LiveEditor({ kind, data, organizationId }) {
                       <tr>
                         <th>Type / ID</th>
                         <th>Amount / quantity</th>
-                        <th>Due UTC</th>
+                        <th>Due IST</th>
                         <th>Status</th>
                       </tr>
                     </thead>
@@ -428,7 +463,7 @@ function LiveEditor({ kind, data, organizationId }) {
                     ['Security', l.symbol],
                     ['Currency', l.currency],
                     ['Outstanding', num(l.outstandingQuantity)],
-                    ['Valuation UTC', date(l.valuationAt)],
+                    ['Valuation IST', date(l.valuationAt)],
                     ['Recorded market value', money(l.marketValue, l.currency)],
                     [
                       'Recorded eligible collateral',
@@ -454,7 +489,7 @@ function LiveEditor({ kind, data, organizationId }) {
                         money(data.preview.requiredCollateral, l.currency),
                       ],
                       ['Shortfall', money(data.preview.shortfall, l.currency)],
-                      ['Price UTC', date(data.preview.priceAt)],
+                      ['Price IST', date(data.preview.priceAt)],
                     ]}
                   />
                 )}
@@ -514,7 +549,7 @@ function LiveEditor({ kind, data, organizationId }) {
             </p>
             <p>
               {isMargin
-                ? `${money(amount, l.currency)} by ${dueAt.replace('T', ' ')} UTC`
+                ? `${money(amount, l.currency)} by ${dueAt.replace('T', ' ')} IST`
                 : isRecall
                   ? `${num(quantity)} shares`
                   : display(action)}
