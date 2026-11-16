@@ -14,3 +14,72 @@
   .blotter-kpis > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
   .blotter-kpis span, .blotter-kpis small { font-size: 10px; overflow-wrap: anywhere; }
 }
+
+
+/* Overview detail tabs replace the former exceptions queue and use its freed height. */
+.borrow-blotter .blotter-table-section {
+  flex: 1.05 1 0;
+}
+.borrow-blotter .blotter-selected-row {
+  flex: 1.75 1 0;
+}
+.borrow-blotter .blotter-detail-tabs {
+  flex: none;
+  min-height: 35px;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px 7px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.borrow-blotter .blotter-detail-tabs button {
+  min-width: 0;
+  padding: 0 11px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.borrow-blotter .blotter-detail-tabs button:hover {
+  color: var(--ink);
+  background: var(--surface-muted);
+}
+.borrow-blotter .blotter-detail-tabs button.active {
+  color: var(--primary-hover);
+  border-bottom-color: var(--primary);
+}
+.borrow-blotter .blotter-tab-content {
+  flex: 1;
+  min-height: 0;
+  padding: 7px;
+  overflow: auto;
+}
+.borrow-blotter .blotter-tab-content > .blotter-detail-panel {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.borrow-blotter .blotter-tab-content .blotter-panel-content {
+  padding: 5px 10px;
+}
+.borrow-blotter .blotter-tab-content .blotter-detail-line {
+  min-height: 30px;
+}
+@media (max-width: 760px) {
+  .borrow-blotter .blotter-selected-row {
+    height: 340px;
+    flex: none;
+  }
+  .borrow-blotter .blotter-detail-tabs {
+    overflow-x: auto;
+  }
+  .borrow-blotter .blotter-detail-tabs button {
+    padding: 0 8px;
+    font-size: 10px;
+  }
+}
