@@ -319,11 +319,6 @@ export default function LiveLoansPage() {
               </tbody>
             </table>
           </div>
-          <p className="ref-empty">
-            Amounts use the latest recorded valuation, not an intraday price
-            estimate. Missing valuations are excluded from totals. Maturity is
-            not recorded; fee and rebate are MSLA terms.
-          </p>
           {selected != null && data.rows.some((l) => l.id === selected) && (
             <LiveLoanDetails
               key={`${organizationId}:${refreshKey}:${selected}`}
