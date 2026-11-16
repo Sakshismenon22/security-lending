@@ -35,3 +35,15 @@
 .fees-screen .fees-panels[data-tab="Daily accrual history"]>.fees-card:nth-child(2),
 .fees-screen .fees-panels[data-tab="Invoice & reconciliation"]>.fees-card:nth-child(3),
 .fees-screen .fees-panels[data-tab="Payment/audit events"]>.fees-card:nth-child(4){display:flex;overflow:auto}
+
+/* The workspace stays fixed; register and detail bodies own their scrolling. */
+.route-outlet .fees-screen { height: 100%; min-height: 0; overflow: hidden; }
+.fees-screen .fees-table-panel { flex: 1.15 1 0; min-height: 0; }
+.fees-screen .fees-table-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.fees-screen .fees-detail { flex: .95 1 0; height: auto; min-height: 0; }
+.fees-screen .fees-panels { min-height: 0; overflow: hidden; }
+.fees-screen .fees-card { min-height: 0; }
+.fees-screen .fees-card > h3 { flex: none; }
+.fees-screen .fees-panels > .fees-card { overflow: auto; overscroll-behavior: contain; }
+.fees-screen .fees-table thead { position: sticky; top: 0; z-index: 2; }
+@media(max-width:800px) { .fees-screen .fees-panels { grid-template-columns: 1fr; } }
