@@ -7,7 +7,7 @@ import { useDataSource } from '../hooks/useDataSource'
 
 export default function PortalLayout() {
   const { pathname } = useLocation()
-  const bounded = pathname === '/' || pathname === '/fees-rebates'
+  const bounded = pathname === '/' || pathname === '/fees-rebates' || pathname === '/audit-notifications'
   const [searchTerm, setSearchTerm] = useState('')
   const [compactSidebar, setCompactSidebar] = useState(() => localStorage.getItem('lenddesk-sidebar') === 'compact')
   const { mode } = useDataSource()
@@ -20,7 +20,7 @@ export default function PortalLayout() {
     <Sidebar compact={compactSidebar} onToggleCompact={() => setCompactSidebar(value => !value)} />
     <section className={`workspace ${bounded ? 'bounded-workspace' : ''}`}>
       <Topbar onSearch={setSearchTerm} />
-      {bounded ? <div className={`bounded-route ${pathname === '/' ? 'overview-workspace' : 'fees-workspace'}`}><Outlet context={{ searchTerm, dataMode: mode }} /></div> : <Outlet context={{ searchTerm, dataMode: mode }} />}
+      {bounded ? <div className={`bounded-route ${pathname === '/' ? 'overview-workspace' : pathname === '/audit-notifications' ? 'audit-workspace' : 'fees-workspace'}`}><Outlet context={{ searchTerm, dataMode: mode }} /></div> : <Outlet context={{ searchTerm, dataMode: mode }} />}
     </section>
   </main>
 }

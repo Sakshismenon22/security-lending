@@ -14,3 +14,10 @@
 .fees-workspace .al-detail > h2, .fees-workspace .finance-rebate-summary > h2 { flex: none; }
 .fees-workspace :is(.ref-heading,.ref-metrics,.ref-filters,.al-heading,.al-metrics,.al-tabs,.al-filters,.fee-business-date) { flex: none; }
 @media(max-width:760px) { .table-pagination { gap: 4px; } .table-pagination label { display: none; } .overview-workspace .bottom-grid { grid-template-columns: 1fr; } }
+
+/* Audit uses one register that fills the available space in demo and live modes. */
+.audit-workspace > .monitor-page { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.audit-workspace :is(.monitor-heading,.monitor-metrics,.monitor-tabs,.generic-toolbar,.heading,.panel-title) { flex: none; }
+.audit-workspace .paginated-table { flex: 1; min-height: 0; overflow: hidden; }
+.audit-workspace .generic-workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.audit-workspace .generic-register { flex: 1; min-height: 0; display: flex; flex-direction: column; }
