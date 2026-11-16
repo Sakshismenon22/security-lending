@@ -11,3 +11,62 @@
   min-height: 160px;
   max-height: none;
 }
+
+/* Resizable transaction table and selected-transaction detail workspace. */
+.funding-page .funding-workspace {
+  flex:1 1 0;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.funding-page .funding-workspace .funding-table-panel {
+  min-height:140px;
+  max-height:none;
+  flex-shrink:1;
+}
+.funding-page .funding-resizer {
+  height:10px;
+  min-height:10px;
+  flex:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:row-resize;
+  touch-action:none;
+  user-select:none;
+  outline:none;
+  z-index:2;
+}
+.funding-page .funding-resizer span {
+  width:48px;
+  height:3px;
+  border-radius:4px;
+  background:var(--border);
+  transition:background .15s,width .15s;
+}
+.funding-page .funding-resizer:hover span,
+.funding-page .funding-resizer:focus-visible span {
+  width:68px;
+  background:var(--primary);
+}
+.funding-page .funding-detail-area {
+  flex:1 1 0;
+  min-height:120px;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.funding-page .funding-detail-area .funding-detail-heading {
+  flex:none;
+}
+.funding-page .funding-detail-area .funding-details {
+  flex:1 1 0;
+  height:auto;
+  min-height:100px;
+  max-height:none;
+}
+@media(max-width:760px) {
+  .funding-page .funding-workspace { overflow:auto; }
+  .funding-page .funding-detail-area { min-height:220px; }
+}
