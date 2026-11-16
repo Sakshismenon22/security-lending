@@ -6,7 +6,7 @@ import { useDataSource } from '../hooks/useDataSource'
 import { useReferenceSort } from '../hooks/useReferenceSort'
 import { LoanBadge, LoanCard } from '../components/loans/LoanCards'
 import RunAccrualButton from '../components/loans/RunAccrualButton'
-import { num, date, loanId, display, downloadLoans } from '../utils/loanFormat'
+import { num, loanId, display, downloadLoans } from '../utils/loanFormat'
 import './ReferencePages.css'
 import './LoansPage.css'
 import './LiveValuationsPage.css'
@@ -321,53 +321,7 @@ export default function LiveFeesRebatesPage() {
               </tbody>
             </table>
           </PaginatedTable>
-          <p className="ref-empty">
-            Fees use loan market values and MSLA rates. Rebates use confirmed
-            cash collateral balances. Due processing keeps existing daily
-            records and follows the contractual settlement schedule; a fresh
-            valuation alone does not create accrual entries.
-          </p>
-          <section className="al-detail">
-            <h2>Recent accrual runs</h2>
-            <PaginatedTable className="al-table-scroll" label="Fees and rebates">
-              <table className="al-table">
-                <thead>
-                  <tr>
-                    <th>Run ID</th>
-                    <th>Loan</th>
-                    <th>Type</th>
-                    <th>Requested UTC</th>
-                    <th>Status</th>
-                    <th>Result / failure</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.runs.map((r) => (
-                    <tr key={r.id}>
-                      <td>{r.id}</td>
-                      <td>{loanId(r.loanId)}</td>
-                      <td>{r.kind === 'FEE' ? 'Fee' : 'Rebate'}</td>
-                      <td>{date(r.createdAt)}</td>
-                      <td>
-                        <LoanBadge>{display(r.status)}</LoanBadge>
-                      </td>
-                      <td>
-                        {r.failureReason ??
-                          (r.result
-                            ? `${r.result.daysRecorded} daily record(s); ${r.result.billsQueued ?? r.result.settlementsQueued ?? 0} bill/settlement(s); processed through ${r.result.processedThrough ?? 'not processed'}`
-                            : 'Awaiting lifecycle-service')}
-                      </td>
-                    </tr>
-                  ))}
-                  {!data.runs.length && (
-                    <tr>
-                      <td colSpan={6}>No manual accrual runs recorded.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </PaginatedTable>
-          </section>
+
         </>
       )}
     </section>
