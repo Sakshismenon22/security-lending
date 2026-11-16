@@ -197,3 +197,60 @@
     font-size: 9px;
   }
 }
+
+
+/* Compact icon selector for Overview request detail sections. */
+.borrow-blotter .blotter-master-detail {
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 7px;
+}
+.borrow-blotter .blotter-detail-nav.icon-only {
+  align-items: center;
+  gap: 6px;
+  padding: 7px 4px;
+  overflow: visible;
+}
+.borrow-blotter .blotter-detail-nav.icon-only button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+.borrow-blotter .blotter-detail-nav.icon-only button:hover {
+  color: var(--ink);
+  background: var(--surface-muted);
+}
+.borrow-blotter .blotter-detail-nav.icon-only button.active {
+  color: var(--primary-hover);
+  background: var(--selection);
+  border-color: var(--border);
+  border-left-color: var(--primary);
+}
+.borrow-blotter .blotter-detail-nav.icon-only button svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.9;
+}
+@media (max-width: 760px) {
+  .borrow-blotter .blotter-master-detail {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 5px;
+  }
+  .borrow-blotter .blotter-detail-nav.icon-only button {
+    width: 32px;
+    min-width: 32px;
+    height: 34px;
+    min-height: 34px;
+    flex-basis: 34px;
+  }
+}
