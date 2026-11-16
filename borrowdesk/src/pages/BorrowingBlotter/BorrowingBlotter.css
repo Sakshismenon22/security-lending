@@ -14,11 +14,3 @@
   .blotter-kpis > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
   .blotter-kpis span, .blotter-kpis small { font-size: 10px; overflow-wrap: anywhere; }
 }
-
-.route-outlet .borrow-blotter { height: 100%; min-height: 0; overflow: hidden; }
-.borrow-blotter .blotter-table-section { flex: 1.2 1 0; height: auto; min-height: 0; }
-.borrow-blotter .blotter-selected-row { flex: 1.05 1 0; height: auto; min-height: 0; }
-.borrow-blotter .blotter-exceptions { flex: .8 1 0; height: auto; min-height: 0; }
-.borrow-blotter .blotter-table-scroll, .borrow-blotter .blotter-exception-scroll,
-.borrow-blotter .blotter-panel-content { min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.borrow-blotter .blotter-detail-grid { overflow: hidden; }
