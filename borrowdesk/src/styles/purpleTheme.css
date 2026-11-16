@@ -1,0 +1,102 @@
+/* Visual reference: /borrow-ui-designs on main. Keep status colors separate from branding. */
+:root {
+  --primary-gradient: linear-gradient(135deg, #8c63f7, #6d5ce7);
+  --panel-radius: 7px;
+  --heading-ink: #342365;
+}
+
+/* Shared shell: the same navigation and action hierarchy on every desk screen. */
+.brand { letter-spacing: -.4px; }
+.brand b { font-weight: 800; }
+.nav-scroll small { color: var(--heading-ink); letter-spacing: 1.1px; }
+.nav-link.active { color: var(--primary-hover); }
+.topbar { min-height: 43px; }
+.footer-status { border-top: 1px solid var(--border); background: var(--sidebar); }
+
+.route-outlet h1 { color: var(--ink); letter-spacing: -.45px; }
+.route-outlet :is(button, input, select, textarea) { border-radius: 5px; }
+.route-outlet input:not([type=checkbox]):not([type=radio]),
+.route-outlet select, .route-outlet textarea { color: var(--ink); accent-color: var(--primary); }
+.route-outlet :is(input[type=checkbox], input[type=radio]) { accent-color: var(--primary); }
+.route-outlet button { transition: background-color .15s, border-color .15s, box-shadow .15s; }
+.route-outlet button:disabled { box-shadow: none; }
+.route-outlet :is(.blotter-button.primary, .locate-btn.orange, .res-btn.orange,
+.al-btn.orange, .ca-btn.orange, .funding-btn.primary, .fees-btn.primary,
+.rr-btn.orange, .ag-btn.primary, .ra-actions button.primary, .borrow-request-button) {
+  background: var(--primary-gradient);
+  border-color: var(--primary);
+  color: white;
+}
+.route-outlet :is(.blotter-button.primary, .locate-btn.orange, .res-btn.orange,
+.al-btn.orange, .ca-btn.orange, .funding-btn.primary, .fees-btn.primary,
+.rr-btn.orange, .ag-btn.primary, .ra-actions button.primary, .borrow-request-button):hover:not(:disabled) {
+  background: var(--primary-hover);
+  box-shadow: 0 2px 6px #6d5ce724;
+}
+
+/* Registers: lavender headings, quieter rules, and a clear selected record. */
+.route-outlet thead { background: var(--surface-muted); }
+.route-outlet th { color: var(--heading-ink); border-bottom-color: var(--border); }
+.route-outlet td { border-bottom-color: #efecf9; }
+.route-outlet tbody tr:hover { background: var(--canvas); }
+.route-outlet tbody :is(tr.selected, tr.is-selected, tr.selected-row) { background: var(--selection); }
+.route-outlet tbody :is(tr.selected, tr.is-selected, tr.selected-row) td:first-child {
+  box-shadow: inset 3px 0 var(--primary);
+}
+.route-outlet :is(.blotter-table-section, .locate-register, .reservation-table-panel,
+.al-table-panel, .ca-table-panel, .mc-table-panel, .funding-table-panel,
+.fees-table-panel, .rr-table-panel, .ag-table-panel) { border-radius: var(--panel-radius); }
+.route-outlet :is(.blotter-panel-heading, .locate-detail-card h3, .res-detail-card h3,
+.al-card h3, .ca-card h3, .mc-card h3, .fees-card h3,
+.rr-card h3, .ag-card h3) { color: var(--heading-ink); }
+.route-outlet :is(.reservation-tabs, .al-tabs, .rr-tabs, .rr-detail-tabs,
+.ag-tabs, .ag-detail-tabs, .fees-tabs, .ra-tabs,
+.market-tabs, .bottom-tabs) button.active {
+  color: var(--primary-hover);
+  border-bottom-color: var(--primary);
+}
+
+/* 01 — Borrowing Blotter: selected record and four context panels. */
+.blotter-eyebrow { color: var(--muted); }
+.blotter-section-heading { background: var(--surface); }
+.blotter-panel-heading { background: linear-gradient(90deg, var(--surface-muted), var(--canvas)); }
+.blotter-detail-panel { border-radius: var(--panel-radius); }
+.borrow-blotter .request-cell, .borrow-blotter .text-action { color: var(--primary-hover) !important; }
+
+/* 02 — Trading: retain financial red/green; purple indicates navigation only. */
+.trade-watchlist-panel, .trade-market-panel, .trade-order-panel, .trading-bottom-panel {
+  border-radius: var(--panel-radius);
+}
+.trade-section-title, .positions-panel-heading { color: var(--heading-ink); }
+.chart-tools button.chosen, .bottom-filter-row button.active { background: var(--selection); color: var(--primary-hover); }
+
+/* 03–05 — Locate, reservation and loan registers share the same detail hierarchy. */
+.locate-detail-card, .res-detail-card, .al-card { border-radius: var(--panel-radius); }
+.locate-detail-card h3, .res-detail-card h3, .al-card h3 { border-bottom: 1px solid var(--border); padding-bottom: 7px; }
+.locate-id, .al-id { color: var(--primary-hover); }
+.locate-offer-summary { background: var(--canvas); border-radius: 5px; }
+
+/* 06–09 — Treasury: white detail cards and lavender summary surfaces. */
+.ca-card, .mc-card, .fees-card { border-radius: var(--panel-radius); }
+.ca-card h3, .mc-card h3, .fees-card h3 {
+  border-bottom: 1px solid var(--border); padding-bottom: 7px;
+}
+.funding-details > article { border-radius: var(--panel-radius); }
+.funding-details h3 { color: var(--heading-ink); }
+.funding-balance, .funding-schedule { border-color: var(--border); border-radius: var(--panel-radius); }
+.fees-summary { background: var(--canvas); }
+
+/* 10–12 — Operations: consistent cards, selected tabs and report controls. */
+.rr-card, .ag-card { border-radius: var(--panel-radius); }
+.rr-card h3, .ag-card h3 { border-bottom: 1px solid var(--border); padding-bottom: 7px; }
+.ag-credit-bar, .ag-wide-progress { background: var(--selection); }
+.ra-col-list input, .ra-parameters input { accent-color: var(--primary); }
+.ra-preview-mini, .ra-history-mini, .ra-parameters, .ra-col-list { border-color: var(--border); border-radius: var(--panel-radius); }
+
+@media (prefers-reduced-motion: reduce) {
+  .route-outlet button, .sidebar { transition: none; }
+}
+@media (max-width: 760px) {
+  .topbar { min-height: 43px; }
+  .route-outlet h1 { font-size: 17px; }
+}
