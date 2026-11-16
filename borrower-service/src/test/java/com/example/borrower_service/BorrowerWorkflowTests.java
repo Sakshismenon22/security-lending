@@ -246,6 +246,112 @@ class BorrowerWorkflowTests {
     }
 
     @Test
+    void updatingPendingBuyRetainsIdentityAndReplacesCashReservation() {
+        long org = org(), security = security("100");
+        fund(org, "10000");
+        long id = n(trading.order(org,
+                new OrderRequest(security, "BUY", "LIMIT", "OWNED", 10, bd("90"))), "id");
+        var updated = trading.update(org, id, new OrderUpdateRequest("LIMIT", 20, bd("80")));
+        assertEquals(id, n(updated, "id"));
+        assertEquals(20, n(updated, "quantity"));
+        assertEquals("PENDING", updated.get("status"));
+        assertEquals(0, bd("1600").compareTo(money(account(org), "blocked")));
+        assertEquals(0, bd("8400").compareTo(money(account(org), "available")));
+        trading.cancel(org, id);
+        assertEquals(0, money(account(org), "blocked").signum());
+        assertEquals(0, bd("10000").compareTo(money(account(org), "available")));
+    }
+
+    @Test
+    void updatingPendingSellReplacesShareReservationAndCanFillImmediately() {
+        long org = org(), security = security("100");
+        fund(org, "10000");
+        trading.order(org, new OrderRequest(security, "BUY", "MARKET", "OWNED", 30, null));
+        long id = n(trading.order(org,
+                new OrderRequest(security, "SELL", "LIMIT", "OWNED", 10, bd("120"))), "id");
+        trading.update(org, id, new OrderUpdateRequest("LIMIT", 20, bd("130")));
+        assertEquals(20, n(db.matchingRow(Holding.class,
+                eq("organizationId", org), eq("securityId", security)), "blocked_owned"));
+        var filled = trading.update(org, id, new OrderUpdateRequest("MARKET", 15, null));
+        assertEquals("FILLED", filled.get("status"));
+        var holding = db.matchingRow(Holding.class,
+                eq("organizationId", org), eq("securityId", security));
+        assertEquals(0, n(holding, "blocked_owned"));
+        assertEquals(15, n(holding, "owned_quantity"));
+        assertEquals(1, db.rows(TradeHistory.class, eq("orderId", id)).size());
+    }
+
+    @Test
+    void borrowedReservationsAndBuyToCoverUpdatesExcludeTheReplacedOrder() {
+        long org = org(), security = security("100");
+        fund(org, "10000");
+        db.holding(org, security);
+        db.edit(Holding.class, new HoldingId(org, security), h -> h.setBorrowedQuantity(20L));
+        long sell = n(trading.order(org,
+                new OrderRequest(security, "SELL", "LIMIT", "BORROWED", 5, bd("120"))), "id");
+        trading.update(org, sell, new OrderUpdateRequest("LIMIT", 10, bd("120")));
+        assertEquals(10, n(db.matchingRow(Holding.class,
+                eq("organizationId", org), eq("securityId", security)), "blocked_borrowed"));
+        trading.cancel(org, sell);
+        assertEquals(0, n(db.matchingRow(Holding.class,
+                eq("organizationId", org), eq("securityId", security)), "blocked_borrowed"));
+        trading.order(org, new OrderRequest(security, "SELL", "MARKET", "BORROWED", 10, null));
+        long cover = n(trading.order(org,
+                new OrderRequest(security, "BUY", "LIMIT", "BORROWED", 6, bd("90"))), "id");
+        trading.order(org, new OrderRequest(security, "BUY", "LIMIT", "BORROWED", 4, bd("90")));
+        var updated = trading.update(org, cover, new OrderUpdateRequest("LIMIT", 6, bd("80")));
+        assertEquals("PENDING", updated.get("status"));
+        assertEquals(6, n(updated, "quantity"));
+        assertEquals(0, bd("480").compareTo(money(updated, "reserved_cash")));
+    }
+
+    @Test
+    void orderUpdateEndpointValidatesPayloadAndTenant() throws Exception {
+        long org = org(), security = security("100"), other = org();
+        fund(org, "10000");
+        long id = n(trading.order(org,
+                new OrderRequest(security, "BUY", "LIMIT", "OWNED", 10, bd("90"))), "id");
+        String path = "/api/v1/organizations/" + org + "/orders/" + id;
+        mvc.perform(put(path).contentType("application/json")
+                .content("{\"type\":\"LIMIT\",\"quantity\":0,\"limitPrice\":80}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(put("/api/v1/organizations/" + other + "/orders/" + id)
+                .contentType("application/json")
+                .content("{\"type\":\"LIMIT\",\"quantity\":5,\"limitPrice\":80}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(put(path).contentType("application/json")
+                .content("{\"type\":\"LIMIT\",\"quantity\":5,\"limitPrice\":80}"))
+                .andExpect(status().isOk());
+        assertEquals(5, n(db.owned(TradeOrder.class, org, id), "quantity"));
+    }
+
+    @Test
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    void failedUpdateRollsBackReservationsAndTerminalOrdersRejectChanges() {
+        long org = org(), security = security("100");
+        fund(org, "1000");
+        long id = n(trading.order(org,
+                new OrderRequest(security, "BUY", "LIMIT", "OWNED", 10, bd("90"))), "id");
+        assertThrows(ResponseStatusException.class,
+                () -> trading.update(org, id, new OrderUpdateRequest("LIMIT", 100, bd("90"))));
+        assertEquals("PENDING", db.owned(TradeOrder.class, org, id).get("status"));
+        assertEquals(10, n(db.owned(TradeOrder.class, org, id), "quantity"));
+        assertEquals(0, bd("900").compareTo(money(account(org), "blocked")));
+        assertEquals(0, bd("100").compareTo(money(account(org), "available")));
+        assertThrows(ResponseStatusException.class,
+                () -> trading.update(org, id, new OrderUpdateRequest("LIMIT", 5, null)));
+        trading.cancel(org, id);
+        assertThrows(ResponseStatusException.class,
+                () -> trading.update(org, id, new OrderUpdateRequest("LIMIT", 5, bd("80"))));
+        assertThrows(ResponseStatusException.class, () -> trading.cancel(org, id));
+        long filled = n(trading.order(org,
+                new OrderRequest(security, "BUY", "MARKET", "OWNED", 1, null)), "id");
+        assertThrows(ResponseStatusException.class,
+                () -> trading.update(org, filled, new OrderUpdateRequest("LIMIT", 1, bd("80"))));
+        assertThrows(ResponseStatusException.class, () -> trading.cancel(org, filled));
+    }
+
+    @Test
     void limitFillUsesImprovedPriceAndIsIdempotent() {
         long org = org(), security = security("100");
         fund(org, "10000");

@@ -36,6 +36,52 @@ public class TradingService {
 
     public Map<String, Object> order(long org, OrderRequest r) {
         db.lock(org);
+        BigDecimal reserve = reserve(org, r);
+        long id =
+                db.create(
+                        TradeOrder::new,
+                        entity -> {
+                            entity.setOrganizationId(org);
+                            entity.setSecurityId(r.securityId());
+                            entity.setSide(r.side());
+                            entity.setType(r.type());
+                            entity.setSource(r.source());
+                            entity.setQuantity(r.quantity());
+                            entity.setLimitPrice(r.limitPrice());
+                            entity.setReservedCash(reserve);
+                            entity.setStatus("PENDING");
+                        });
+        events.write(org, "ORDER_SUBMITTED", id, r);
+        match(org, id);
+        return db.owned(TradeOrder.class, org, id);
+    }
+
+    /** Retains order identity; reservation changes and any immediate fill commit together. */
+    public Map<String, Object> update(long org, long id, OrderUpdateRequest r) {
+        db.lock(org);
+        var old = db.owned(TradeOrder.class, org, id);
+        require("PENDING".equals(old.get("status")), "Only unfilled pending orders can be updated");
+        require(db.rows(TradeHistory.class, eq("organizationId", org), eq("orderId", id)).isEmpty(),
+                "Orders with executions cannot be updated");
+        var next = new OrderRequest(n(old, "security_id"), (String) old.get("side"),
+                r.type(), (String) old.get("source"), r.quantity(), r.limitPrice());
+        release(old);
+        // Exclude this order from pending buy-to-cover commitments while reserving its replacement.
+        db.edit(TradeOrder.class, id, entity -> entity.setStatus("AMENDING"));
+        BigDecimal reserved = reserve(org, next);
+        db.edit(TradeOrder.class, id, entity -> {
+            entity.setType(next.type());
+            entity.setQuantity(next.quantity());
+            entity.setLimitPrice(next.limitPrice());
+            entity.setReservedCash(reserved);
+            entity.setStatus("PENDING");
+        });
+        events.write(org, "ORDER_UPDATED", id, Map.of("previous", old, "update", r));
+        match(org, id);
+        return db.owned(TradeOrder.class, org, id);
+    }
+
+    private BigDecimal reserve(long org, OrderRequest r) {
         var quote = market.price(r.securityId());
         require(!"LIMIT".equals(r.type()) || r.limitPrice() != null, "Limit price is required");
         require(
@@ -97,29 +143,15 @@ public class TradingService {
                     eq("organizationId", org),
                     eq("securityId", r.securityId()));
         }
-        long id =
-                db.create(
-                        TradeOrder::new,
-                        entity -> {
-                            entity.setOrganizationId(org);
-                            entity.setSecurityId(r.securityId());
-                            entity.setSide(r.side());
-                            entity.setType(r.type());
-                            entity.setSource(r.source());
-                            entity.setQuantity(r.quantity());
-                            entity.setLimitPrice(r.limitPrice());
-                            entity.setReservedCash(reserve);
-                            entity.setStatus("PENDING");
-                        });
-        events.write(org, "ORDER_SUBMITTED", id, r);
-        match(org, id);
-        return db.owned(TradeOrder.class, org, id);
+        return reserve;
     }
 
     public Map<String, Object> cancel(long org, long id) {
         db.lock(org);
         var order = db.owned(TradeOrder.class, org, id);
         require("PENDING".equals(order.get("status")), "Only pending orders can be cancelled");
+        require(db.rows(TradeHistory.class, eq("organizationId", org), eq("orderId", id)).isEmpty(),
+                "Orders with executions cannot be cancelled");
         release(order);
         db.edit(
                 TradeOrder.class,

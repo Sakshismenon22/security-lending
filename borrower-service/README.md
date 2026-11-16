@@ -121,3 +121,17 @@ Tests use a separate H2 PostgreSQL-mode database, run all Flyway migrations, val
 
 Verification on this implementation: **20 tests passed on H2 and on an isolated PostgreSQL 18.6 instance**. The temporary PostgreSQL instance was stopped after verification; the configured `borrower_db` was not modified.
 
+
+## Updating and cancelling unfilled orders
+
+`PUT /api/v1/organizations/{org}/orders/{id}` updates a pending order in place:
+
+```json
+{"type":"LIMIT","quantity":20,"limitPrice":85.50}
+```
+
+Quantity must be a positive integer. Type is `LIMIT` or `MARKET`; limit orders require a positive price (up to six decimals), and market orders must send `limitPrice: null` or omit it. Security, side and owned/borrowed source remain fixed. Updated orders are evaluated for immediate paper execution using the existing delayed-price model.
+
+`POST /api/v1/organizations/{org}/orders/{id}/cancel` cancels the unfilled order and releases its reservation. Both operations verify organization ownership and reject orders that have executions or are no longer pending. Updates atomically replace cash/share reservations; failed updates roll back the original order and reservation. Trading, updates and cancellation share the organization lock. Audit events record order updates and cancellations.
+
+BorrowDesk exposes edit and cancel icons in Orders and in the Unfilled orders section of Open Positions. Filled holdings remain positions; cancellation changes an order's status rather than deleting its history.
