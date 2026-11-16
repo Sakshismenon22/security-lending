@@ -1,4 +1,4 @@
-/* Visual reference: /borrowdesk-ui-designs on main. Keep status colors separate from branding. */
+/* Visual reference: /borrow-ui-designs on main. Keep status colors separate from branding. */
 :root {
   --primary-gradient: linear-gradient(135deg, #8c63f7, #6d5ce7);
   --panel-radius: 7px;
