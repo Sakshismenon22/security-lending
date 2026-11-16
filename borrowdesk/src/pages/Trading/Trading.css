@@ -42,3 +42,12 @@
 .bottom-trading-table :is(th,td):nth-child(7),
 .bottom-trading-table :is(th,td):nth-child(8) { text-align: right; }
 .positions-table td { white-space: nowrap; min-width: 65px; }
+
+/* One register: positions live in their tab alongside orders and trades. */
+.trading-workstation .trading-bottom-panel {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.trading-workstation .bottom-left-panel { border-right: 0; border-bottom: 0; }
+.trading-workstation .bottom-trading-table :is(th, td) { text-align: left; }
+.trading-workstation .bottom-trading-table :is(th, td).num { text-align: right; }
