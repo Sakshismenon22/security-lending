@@ -24,3 +24,10 @@
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 button:disabled { cursor: not-allowed; }
 ::selection { background: var(--selection); color: var(--ink); }
+
+
+/* Keep the collapsed navigation control fully inside the sidebar. */
+.sidebar.collapsed { width: 52px; }
+.sidebar.collapsed .brand { gap: 3px; padding: 0 4px; justify-content: center; }
+.sidebar.collapsed .brand b { font-size: 20px; }
+.sidebar.collapsed .sidebar-toggle { position: static; width: 20px; height: 20px; margin: 0; flex: none; }
