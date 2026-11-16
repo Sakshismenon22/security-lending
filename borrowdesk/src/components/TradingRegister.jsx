@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Minimize2, Maximize2 } from 'lucide-react';
 const number = v => v == null ? '—' : Number(v).toLocaleString('en-IN', {maximumFractionDigits:2});
 const money = v => v == null ? '—' : Number(v).toLocaleString('en-IN', {style:'currency',currency:'INR'});
 const percentage = v => v == null ? '—' : `${Number(v)>0?'+':''}${Number(v).toFixed(2)}%`;
@@ -6,9 +7,10 @@ const time = v => v ? new Date(v).toLocaleString('en-IN',{timeZone:'Asia/Kolkata
 const id = v => String(v ?? '');
 const pnlClass = value => value == null || !Number.isFinite(Number(value)) || Number(value) === 0 ? 'pnl-neutral' : Number(value) > 0 ? 'pnl-profit' : 'pnl-loss';
 const byId = (rows,value) => rows.find(r => id(r.id) === id(value));
-
+ 
 export default function TradingRegister({tab,onTab,orders,trades,positions,loans,collateral,securities,agreements=[],lenders=[]}) {
   const [filter,setFilter]=useState('All');
+  const [minimized,setMinimized]=useState(false);
   const symbol = row => row.symbol ?? byId(securities,row.securityId ?? row.security_id)?.symbol ?? '—';
   const loanContext = loan => {
     const agreement=byId(agreements,loan?.mslaId);
@@ -61,10 +63,17 @@ export default function TradingRegister({tab,onTab,orders,trades,positions,loans
     if(c.type==='time')return time(value);
     return String(value);
   };
-  return <section className="trading-bottom-panel"><div className="bottom-left-panel">
-    <div className="bottom-panel-top"><div className="bottom-tabs" role="tablist" aria-label="Trading registers">{tabs.map(name=><button key={name} role="tab" aria-selected={tab===name} className={tab===name?'active':''} onClick={()=>{setFilter('All');onTab(name)}}>{name}{counts[name]!=null?` (${counts[name]})`:''}</button>)}</div></div>
-    <div className="bottom-filter-row">{options.map(value=><button key={value} className={filter===value?'chosen':''} onClick={()=>setFilter(value)}>{value}</button>)}{isPosition&&<span className="register-pnl-note">Day MTM: current quantity × move from previous session close; excludes realized intraday P&amp;L.</span>}</div>
-    <div className="bottom-table-wrap"><table className="bottom-trading-table trading-register"><thead><tr>{columns.map(c=><th key={c.key} className={['money','number','percent'].includes(c.type)?'num':undefined}>{c.label}</th>)}</tr></thead><tbody>{visible.map(r=><tr key={r.key}>{columns.map(c=><td key={c.key} className={[['money','number','percent'].includes(c.type)?'num':'',c.key.startsWith('day')||c.key==='unrealized'?pnlClass(r[c.key]):''].join(' ')}>{c.type==='status'?<span className={'order-status '+String(r[c.key]??'').toLowerCase()}>{format(r,c)}</span>:format(r,c)}</td>)}</tr>)}{!visible.length&&<tr><td colSpan={columns.length} className="trade-empty">No {tab.toLowerCase()} records.</td></tr>}</tbody></table></div>
-    {isPosition&&visible.length>0&&<div className="register-position-total">Open legs: {openPositions.length} · Day MTM P&amp;L: <b className={pnlClass(dayTotal)}>{visible.every(r=>r.day!=null)?money(visible.reduce((sum,r)=>sum+r.day,0)):'—'}</b> · Day MTM %: <b className={pnlClass(dayTotal)}>{dayTotal!=null&&dayBase?percentage(dayTotal/dayBase*100):'—'}</b></div>}
-  </div></section>;
+  return <section className={`trading-bottom-panel${minimized?' is-minimized':''}`}>
+    <div className="bottom-left-panel">
+      <div className="bottom-panel-top">
+        <div className="bottom-tabs" role="tablist" aria-label="Trading registers">{tabs.map(name=><button key={name} role="tab" aria-selected={tab===name} className={tab===name?'active':''} onClick={()=>{setFilter('All');onTab(name)}}>{name}{counts[name]!=null?` (${counts[name]})`:''}</button>)}</div>
+        <button className="register-size-toggle" type="button" onClick={()=>setMinimized(value=>!value)} aria-expanded={!minimized} aria-label={minimized?'Maximize trading table':'Minimize trading table'} title={minimized?'Maximize table':'Minimize table'}>
+          {minimized?<Maximize2 size={13}/>:<Minimize2 size={13}/>}<span>{minimized?'Maximize':'Minimize'}</span>
+        </button>
+      </div>
+      <div className="bottom-filter-row">{options.map(value=><button key={value} className={filter===value?'chosen':''} onClick={()=>setFilter(value)}>{value}</button>)}{isPosition&&<span className="register-pnl-note">Day MTM: current quantity × move from previous session close; excludes realized intraday P&amp;L.</span>}</div>
+      <div className="bottom-table-wrap"><table className="bottom-trading-table trading-register"><thead><tr>{columns.map(c=><th key={c.key} className={['money','number','percent'].includes(c.type)?'num':undefined}>{c.label}</th>)}</tr></thead><tbody>{visible.map(r=><tr key={r.key}>{columns.map(c=><td key={c.key} className={[[ 'money','number','percent'].includes(c.type)?'num':'',c.key.startsWith('day')||c.key==='unrealized'?pnlClass(r[c.key]):''].join(' ')}>{c.type==='status'?<span className={'order-status '+String(r[c.key]??'').toLowerCase()}>{format(r,c)}</span>:format(r,c)}</td>)}</tr>)}{!visible.length&&<tr><td colSpan={columns.length} className="trade-empty">No {tab.toLowerCase()} records.</td></tr>}</tbody></table></div>
+      {isPosition&&visible.length>0&&<div className="register-position-total">Open legs: {openPositions.length} · Day MTM P&amp;L: <b className={pnlClass(dayTotal)}>{visible.every(r=>r.day!=null)?money(visible.reduce((sum,r)=>sum+r.day,0)):'—'}</b> · Day MTM %: <b className={pnlClass(dayTotal)}>{dayTotal!=null&&dayBase?percentage(dayTotal/dayBase*100):'—'}</b></div>}
+    </div>
+  </section>;
 }
