@@ -3,6 +3,8 @@ const base=orgUrl('');
 const marketBase=(import.meta.env.VITE_MARKET_DATA_API||'http://localhost:8080').replace(/\/$/,'');
 async function marketGet(path){const response=await fetch(marketBase+path);const payload=await response.json();if(!response.ok)throw new Error(payload?.message||'Market data unavailable');return payload?.data??payload;}
 export const tradingDeskApi={
+ agreements:()=>get(base+'/agreements?page=0&size=200'),
+ lenders:()=>get(base+'/lenders'),
  securities:q=>get('/api/v1/securities?search='+encodeURIComponent(q||'')),
  watchlist:()=>get(base+'/watchlist'),
  addWatch:id=>put(base+'/watchlist/'+id,{}),

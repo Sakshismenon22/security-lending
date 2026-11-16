@@ -33,5 +33,5 @@ export function positionValues(position, quote = {}) {
   const quantity = long-short;
   const dayPnl = price != null && previous != null ? quantity*(Number(price)-Number(previous)) : null;
   const base = previous != null ? (long+short)*Number(previous) : 0;
-  return { ...row, price, dayPnl, dayPnlPercent: dayPnl != null && base ? dayPnl/base*100 : null };
+  return { ...row, price, previousClose: previous, dayPnl, dayPnlPercent: dayPnl != null && base ? dayPnl/base*100 : null };
 }
