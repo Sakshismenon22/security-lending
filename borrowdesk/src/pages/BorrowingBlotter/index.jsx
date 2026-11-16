@@ -1,6 +1,6 @@
 import{useCallback,useEffect,useMemo,useState}from'react';
 import{useNavigate}from'react-router-dom';
-import{Download,Plus,RefreshCw,Search,Eye,MoreHorizontal,AlertTriangle,CheckCircle2,Clock3,ArrowUpRight}from'lucide-react';
+import{Download,Plus,RefreshCw,Search,Eye,MoreHorizontal,AlertTriangle,CheckCircle2,Clock3,ArrowUpRight,FileText,ShieldCheck,Activity,ListChecks}from'lucide-react';
 import{borrowerBlotterApi}from'../../api/borrowerBlotterApi';
 import './BorrowingBlotter.css';
 const pick=(obj,...keys)=>{for(const key of keys){const v=obj?.[key];if(v!==undefined&&v!==null&&v!=='')return v;}return null};
@@ -57,12 +57,11 @@ export default function BorrowingBlotter(){
   <section className="blotter-selected-row">
    <div className="blotter-selected-heading"><div><b>{selected?'#'+text(selected.requestId)+' / '+selected.security:'No request selected'}</b>{selected&&<span className={'blotter-status '+statusTone(selected.stage)}>{statusLabel(selected.stage)}</span>}</div><div className="blotter-selected-actions"><button disabled={!selected?.loanId} onClick={()=>selected?.loanId&&navigate('/loans')}><Eye size={12}/> View loan</button><button disabled={!selected?.loanId} onClick={()=>selected?.loanId&&navigate('/collateral')}>Post collateral</button><button disabled={!selected?.loanId} onClick={()=>selected?.loanId&&navigate('/returns-recalls')}>Return shares</button><button disabled={!selected?.loanId} onClick={()=>selected?.loanId&&navigate('/returns-recalls')}>Respond to recall</button><button className="dots-button"><MoreHorizontal size={14}/></button></div></div>
    <div className="blotter-master-detail">
-    <div className="blotter-detail-nav" role="list" aria-label="Request detail sections">
-     <div className="blotter-detail-nav-heading">REQUEST DETAILS</div>
-     <button type="button" role="listitem" aria-current={detailTab==='terms'?'page':undefined} className={detailTab==='terms'?'active':''} onClick={()=>setDetailTab('terms')}><span>Request &amp; Terms</span><small>Request information and agreement</small></button>
-     <button type="button" role="listitem" aria-current={detailTab==='collateral'?'page':undefined} className={detailTab==='collateral'?'active':''} onClick={()=>setDetailTab('collateral')}><span>Collateral Readiness</span><small>Valuation and coverage</small></button>
-     <button type="button" role="listitem" aria-current={detailTab==='events'?'page':undefined} className={detailTab==='events'?'active':''} onClick={()=>setDetailTab('events')}><span>Execution / FIX Events</span><small>Trades and audit activity</small></button>
-     <button type="button" role="listitem" aria-current={detailTab==='checklist'?'page':undefined} className={detailTab==='checklist'?'active':''} onClick={()=>setDetailTab('checklist')}><span>Settlement Checklist</span><small>Workflow completion status</small></button>
+    <div className="blotter-detail-nav icon-only" role="group" aria-label="Request detail sections">
+     <button type="button" title="Request &amp; Terms" aria-label="Request &amp; Terms" aria-pressed={detailTab==='terms'} className={detailTab==='terms'?'active':''} onClick={()=>setDetailTab('terms')}><FileText size={17}/></button>
+     <button type="button" title="Collateral Readiness" aria-label="Collateral Readiness" aria-pressed={detailTab==='collateral'} className={detailTab==='collateral'?'active':''} onClick={()=>setDetailTab('collateral')}><ShieldCheck size={17}/></button>
+     <button type="button" title="Execution / FIX Events" aria-label="Execution / FIX Events" aria-pressed={detailTab==='events'} className={detailTab==='events'?'active':''} onClick={()=>setDetailTab('events')}><Activity size={17}/></button>
+     <button type="button" title="Settlement Checklist" aria-label="Settlement Checklist" aria-pressed={detailTab==='checklist'} className={detailTab==='checklist'?'active':''} onClick={()=>setDetailTab('checklist')}><ListChecks size={17}/></button>
     </div>
     <div className="blotter-detail-view">
      {detailTab==='terms'&&<Panel title="Request & terms"><DetailLine label="Request ID" value={selected?.requestId}/><DetailLine label="Security" value={selected?.security}/><DetailLine label="ISIN" value={selected?.isin}/><DetailLine label="Lender" value={selected?.lender}/><DetailLine label="Qty requested" value={selected?.requested}/><DetailLine label="Qty approved" value={selected?.approved}/><DetailLine label="MSLA ID" value={pick(selected?.request,'mslaId','msla_id')}/><DetailLine label="Fee rate (bps)" value={pick(detailLoan,'feeBps','fee_bps')??pick(selected?.request,'feeBps','fee_bps')}/></Panel>}
