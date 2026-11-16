@@ -161,3 +161,55 @@
   background: #fff0d9;
   color: #a96512;
 }
+
+
+/* Order ticket collapse: let the live chart reclaim the entire right-hand workspace. */
+.trading-workstation .trading-main-grid.order-ticket-minimized {
+  grid-template-columns: minmax(190px, 21.5%) minmax(0, 1fr);
+}
+.trading-workstation .trading-main-grid.order-ticket-minimized > .trade-market-panel {
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+}
+.trading-workstation .panel-size-toggle {
+  width: 25px;
+  height: 23px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+.trading-workstation .panel-size-toggle:hover {
+  background: var(--selection);
+  border-color: var(--primary);
+  color: var(--primary-hover);
+}
+.trading-workstation .chart-tools button[aria-label="Restore order ticket"] {
+  width: 25px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--primary-hover);
+}
+.trading-workstation .chart-tools button[aria-label="Restore order ticket"]:hover {
+  background: var(--selection);
+}
+@media(max-width:900px) {
+  .trading-workstation .trading-main-grid.order-ticket-minimized {
+    grid-template-columns: minmax(120px, 19%) minmax(0, 1fr);
+  }
+  .trading-workstation .trading-main-grid.order-ticket-minimized > .trade-market-panel {
+    grid-column: 2;
+  }
+}
+@media(max-width:620px) {
+  .trading-workstation .trading-main-grid.order-ticket-minimized {
+    grid-template-columns: minmax(105px, 19%) minmax(0, 1fr);
+  }
+  .trading-workstation .trading-main-grid.order-ticket-minimized > .trade-market-panel {
+    grid-column: 2;
+  }
+}
