@@ -29,6 +29,13 @@
 .live-collateral .al-detail {
   overflow: auto;
 }
+.live-collateral-note {
+  margin: 0;
+  padding: 0;
+  color: #756f91;
+  font-size: 12px;
+  line-height: 1.5;
+}
 @media (max-width: 760px) {
   .workspace:has(.live-valuations, .live-collateral) .topbar {
     flex-wrap: wrap;

@@ -210,9 +210,6 @@ export default function LiveCollateralPage() {
                     </td>
                     <td>
                       <LoanBadge>{display(p.status)}</LoanBadge>
-                      {!p.includedInCoverage && (
-                        <small>Excluded from coverage</small>
-                      )}
                     </td>
                     <td>
                       {p.assetType === 'CASH' ? 'Cash at par' : date(p.priceAt)}
@@ -227,12 +224,6 @@ export default function LiveCollateralPage() {
               </tbody>
             </table>
           </div>
-          <p className="ref-empty">
-            Current marks are indicative cached-price values. Only posted and
-            release-requested positions count toward coverage; pending pledges
-            and released positions are excluded. The required amount and ratio
-            refer to the whole loan, not an individual collateral lot.
-          </p>
           {expanded != null && (
             <CollateralDetails
               key={`${organizationId}:${expanded}`}
