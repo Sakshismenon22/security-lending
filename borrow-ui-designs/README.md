@@ -32,3 +32,7 @@ Open [the comparison gallery](index.html) locally to review each pair side by si
 | Agreements | [Design](11-agreements.png) |
 | Reports & Audit | [Design](12-reports-audit.png) |
 
+
+## Fees & Rebates density update
+
+The Fees & Rebates references now use a compact register with lender, security, type, status and date filters, four adjacent inline detail sections, and a workspace that shows daily accruals alongside settlements and payment history. Images contain illustrative sample data; the implementation uses recorded API amounts and keeps fee and rebate records separate.
