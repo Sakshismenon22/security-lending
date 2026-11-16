@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
-import FooterStatus from './FooterStatus'
 
 export default function AppLayout() {
   const [navCollapsed, setNavCollapsed] = useState(false)
@@ -14,7 +13,6 @@ export default function AppLayout() {
     <main className="main-shell">
       {showTopbar && <Topbar />}
       <div className="route-outlet"><Outlet /></div>
-      <FooterStatus />
     </main>
   </div>
 }
