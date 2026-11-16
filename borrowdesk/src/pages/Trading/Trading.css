@@ -162,3 +162,81 @@
   color: #a96512;
 }
 
+
+
+/* Independent collapsible side drawers for the Trading watchlist and order ticket. */
+.trading-workstation .trading-main-grid.watchlist-minimized {
+  grid-template-columns: 42px minmax(0, 1fr) minmax(235px, 25%);
+}
+.trading-workstation .trading-main-grid.order-ticket-minimized {
+  grid-template-columns: minmax(190px, 21.5%) minmax(0, 1fr) 42px;
+}
+.trading-workstation .trading-main-grid.watchlist-minimized.order-ticket-minimized {
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+}
+.trading-workstation .trade-watchlist-panel.is-minimized,
+.trading-workstation .trade-order-panel.is-minimized {
+  min-width: 0;
+  width: 100%;
+}
+.trading-workstation .trade-watchlist-panel.is-minimized > :not(.trade-section-title),
+.trading-workstation .trade-order-panel.is-minimized > :not(.trade-section-title) {
+  display: none !important;
+}
+.trading-workstation .trade-watchlist-panel.is-minimized > .trade-section-title,
+.trading-workstation .trade-order-panel.is-minimized > .trade-section-title {
+  height: 100%;
+  min-height: 100%;
+  padding: 0;
+  justify-content: center;
+  align-items: flex-start;
+  border-bottom: 0;
+}
+.trading-workstation .trade-watchlist-panel.is-minimized .trade-section-title b,
+.trading-workstation .trade-order-panel.is-minimized .trade-section-title b {
+  display: none;
+}
+.trading-workstation .panel-collapse-toggle {
+  width: 26px;
+  height: 27px;
+  flex: 0 0 26px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+.trading-workstation .panel-collapse-toggle:hover {
+  background: var(--selection);
+  border-color: var(--primary);
+  color: var(--primary-hover);
+}
+.trading-workstation .trade-watchlist-panel.is-minimized .panel-collapse-toggle,
+.trading-workstation .trade-order-panel.is-minimized .panel-collapse-toggle {
+  margin-top: 5px;
+}
+@media(max-width:900px) {
+  .trading-workstation .trading-main-grid.watchlist-minimized {
+    grid-template-columns: 38px minmax(0, 1fr) minmax(185px, 27%);
+  }
+  .trading-workstation .trading-main-grid.order-ticket-minimized {
+    grid-template-columns: minmax(120px, 19%) minmax(0, 1fr) 38px;
+  }
+  .trading-workstation .trading-main-grid.watchlist-minimized.order-ticket-minimized {
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
+  }
+}
+@media(max-width:620px) {
+  .trading-workstation .trading-main-grid.watchlist-minimized {
+    grid-template-columns: 36px minmax(0, 1fr) minmax(165px, 29%);
+  }
+  .trading-workstation .trading-main-grid.order-ticket-minimized {
+    grid-template-columns: minmax(105px, 19%) minmax(0, 1fr) 36px;
+  }
+  .trading-workstation .trading-main-grid.watchlist-minimized.order-ticket-minimized {
+    grid-template-columns: 36px minmax(0, 1fr) 36px;
+  }
+}
