@@ -1,6 +1,6 @@
 import{useCallback,useEffect,useMemo,useState}from'react';
 import{useNavigate}from'react-router-dom';
-import{Download,Plus,RefreshCw,Search,Eye,MoreHorizontal,AlertTriangle,CheckCircle2,Clock3,ArrowUpRight,FileText,ShieldCheck,Activity,ListChecks}from'lucide-react';
+import{Download,Plus,RefreshCw,Search,Eye,MoreHorizontal,AlertTriangle,CheckCircle2,Clock3,ArrowUpRight}from'lucide-react';
 import{borrowerBlotterApi}from'../../api/borrowerBlotterApi';
 import './BorrowingBlotter.css';
 const pick=(obj,...keys)=>{for(const key of keys){const v=obj?.[key];if(v!==undefined&&v!==null&&v!=='')return v;}return null};
@@ -37,7 +37,7 @@ function DetailLine({label,value:val,emphasis=false}){return <div className="blo
 function ChecklistItem({label,value}){const tone=statusTone(value);return <div className="blotter-check-item"><span className={'blotter-check-icon '+tone}>{tone==='green'?<CheckCircle2 size={11}/>:tone==='amber'?<Clock3 size={11}/>:tone==='red'?<AlertTriangle size={11}/>:<span>•</span>}</span><span>{label}</span><b>{statusLabel(value)}</b></div>}
 function csvDownload(rows){const cols=['requestId','submitted','security','isin','lender','requested','approved','fee','collateral','valueDate','maturity','stage','owner','sla'],quote=v=>'"'+String(v??'-').replaceAll('"','""')+'"',csv=[cols.join(','),...rows.map(r=>cols.map(k=>quote(r[k])).join(','))].join('\r\n'),blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='borrowdesk-borrowing-blotter.csv';a.click();URL.revokeObjectURL(url)}
 export default function BorrowingBlotter(){
- const navigate=useNavigate(),[data,setData]=useState({}),[loading,setLoading]=useState(true),[errors,setErrors]=useState([]),[selectedKey,setSelectedKey]=useState(null),[loanDetail,setLoanDetail]=useState(null),[valuation,setValuation]=useState(null),[search,setSearch]=useState(''),[requestFilter,setRequestFilter]=useState('All requests'),[stageFilter,setStageFilter]=useState('All stages'),[securityFilter,setSecurityFilter]=useState('All securities'),[lenderFilter,setLenderFilter]=useState('All lenders'),[ownerFilter,setOwnerFilter]=useState('All owners'),[dateFilter,setDateFilter]=useState('This week'),[detailTab,setDetailTab]=useState('terms');
+ const navigate=useNavigate(),[data,setData]=useState({}),[loading,setLoading]=useState(true),[errors,setErrors]=useState([]),[selectedKey,setSelectedKey]=useState(null),[loanDetail,setLoanDetail]=useState(null),[valuation,setValuation]=useState(null),[search,setSearch]=useState(''),[requestFilter,setRequestFilter]=useState('All requests'),[stageFilter,setStageFilter]=useState('All stages'),[securityFilter,setSecurityFilter]=useState('All securities'),[lenderFilter,setLenderFilter]=useState('All lenders'),[ownerFilter,setOwnerFilter]=useState('All owners'),[dateFilter,setDateFilter]=useState('This week');
  const refresh=useCallback(async()=>{setLoading(true);try{const snapshot=await borrowerBlotterApi.snapshot();setData(snapshot);setErrors(snapshot.errors||[]);const next=makeRows(snapshot);setSelectedKey(current=>next.some(r=>r._key===current)?current:next[0]?._key??null)}finally{setLoading(false)}},[]);
  useEffect(()=>{refresh()},[refresh]);const rows=useMemo(()=>makeRows(data),[data]),selected=rows.find(r=>r._key===selectedKey)||null;
  useEffect(()=>{let cancelled=false;setLoanDetail(null);setValuation(null);if(!selected?.loanId)return;Promise.allSettled([borrowerBlotterApi.loan(selected.loanId),borrowerBlotterApi.valuation(selected.loanId)]).then(([lr,vr])=>{if(cancelled)return;if(lr.status==='fulfilled')setLoanDetail(asObject(lr.value));if(vr.status==='fulfilled')setValuation(arr(vr.value)[0]||asObject(vr.value))});return()=>{cancelled=true}},[selected?.loanId]);
@@ -56,19 +56,43 @@ export default function BorrowingBlotter(){
   <section className="blotter-table-section"><div className="blotter-section-heading"><b>Requests & loans</b><span>{loading?'Refreshing live data…':filtered.length+' records'} <i className="live-dot"/> LIVE</span></div><div className="blotter-table-scroll"><table className="borrow-blotter-table"><thead><tr><th>Request ID</th><th>Submitted</th><th>Security</th><th>ISIN</th><th>Lender</th><th className="num">Qty requested</th><th className="num">Qty approved</th><th className="num">Fee (bps)</th><th className="num">Collateral required</th><th>Value date</th><th>Maturity</th><th>Stage</th><th>Owner</th><th>SLA</th><th>Action</th></tr></thead><tbody>{filtered.map(row=><tr key={row._key} onClick={()=>setSelectedKey(row._key)} className={selectedKey===row._key?'is-selected':''}><td className="request-cell">{text(row.requestId)}</td><td>{time(row.submitted)}</td><td><b>{row.security}</b></td><td>{row.isin}</td><td>{row.lender}</td><td className="num">{text(row.requested)}</td><td className="num">{text(row.approved)}</td><td className="num">{text(row.fee)}</td><td className="num">{row.collateral}</td><td>{date(row.valueDate)}</td><td>{date(row.maturity)}</td><td><span className={'blotter-status '+statusTone(row.stage)}>{statusLabel(row.stage)}</span></td><td>{text(row.owner)}</td><td>{row.sla==='-'?'-':time(row.sla)}</td><td><button className="row-action" onClick={e=>{e.stopPropagation();setSelectedKey(row._key)}}><Eye size={13}/></button></td></tr>)}</tbody></table>{!filtered.length&&<div className="blotter-empty">{loading?'Loading live borrower data…':'No matching records returned by the borrower service.'}</div>}</div></section>
   <section className="blotter-selected-row">
    <div className="blotter-selected-heading"><div><b>{selected?'#'+text(selected.requestId)+' / '+selected.security:'No request selected'}</b>{selected&&<span className={'blotter-status '+statusTone(selected.stage)}>{statusLabel(selected.stage)}</span>}</div><div className="blotter-selected-actions"><button disabled={!selected?.loanId} onClick={()=>selected?.loanId&&navigate('/loans')}><Eye size={12}/> View loan</button><button disabled={!selected?.loanId} onClick={()=>selected?.loanId&&navigate('/collateral')}>Post collateral</button><button disabled={!selected?.loanId} onClick={()=>selected?.loanId&&navigate('/returns-recalls')}>Return shares</button><button disabled={!selected?.loanId} onClick={()=>selected?.loanId&&navigate('/returns-recalls')}>Respond to recall</button><button className="dots-button"><MoreHorizontal size={14}/></button></div></div>
-   <div className="blotter-master-detail">
-    <div className="blotter-detail-nav icon-only" role="group" aria-label="Request detail sections">
-     <button type="button" title="Request &amp; Terms" aria-label="Request &amp; Terms" aria-pressed={detailTab==='terms'} className={detailTab==='terms'?'active':''} onClick={()=>setDetailTab('terms')}><FileText size={17}/></button>
-     <button type="button" title="Collateral Readiness" aria-label="Collateral Readiness" aria-pressed={detailTab==='collateral'} className={detailTab==='collateral'?'active':''} onClick={()=>setDetailTab('collateral')}><ShieldCheck size={17}/></button>
-     <button type="button" title="Execution / FIX Events" aria-label="Execution / FIX Events" aria-pressed={detailTab==='events'} className={detailTab==='events'?'active':''} onClick={()=>setDetailTab('events')}><Activity size={17}/></button>
-     <button type="button" title="Settlement Checklist" aria-label="Settlement Checklist" aria-pressed={detailTab==='checklist'} className={detailTab==='checklist'?'active':''} onClick={()=>setDetailTab('checklist')}><ListChecks size={17}/></button>
-    </div>
-    <div className="blotter-detail-view">
-     {detailTab==='terms'&&<Panel title="Request & terms"><DetailLine label="Request ID" value={selected?.requestId}/><DetailLine label="Security" value={selected?.security}/><DetailLine label="ISIN" value={selected?.isin}/><DetailLine label="Lender" value={selected?.lender}/><DetailLine label="Qty requested" value={selected?.requested}/><DetailLine label="Qty approved" value={selected?.approved}/><DetailLine label="MSLA ID" value={pick(selected?.request,'mslaId','msla_id')}/><DetailLine label="Fee rate (bps)" value={pick(detailLoan,'feeBps','fee_bps')??pick(selected?.request,'feeBps','fee_bps')}/></Panel>}
-     {detailTab==='collateral'&&<Panel title="Collateral readiness" action={<span className="panel-live-label">VALUATION</span>}><DetailLine label="Loan market value" value={money(pick(valuationRow,'loanMarketValue','loan_market_value'))}/><DetailLine label="Required collateral" value={money(pick(valuationRow,'requiredCollateral','required_collateral'))} emphasis/><DetailLine label="Recognized collateral" value={money(pick(valuationRow,'recognizedCollateral','recognized_collateral'))}/><DetailLine label="Coverage ratio" value={pick(valuationRow,'coverageRatio','coverage_ratio')}/><DetailLine label="Shortfall" value={money(pick(valuationRow,'shortfall'))}/><DetailLine label="Collateral positions" value={collateralRows.length||'-'}/><DetailLine label="Last valued" value={time(pick(valuationRow,'valuedAt','valued_at'))}/></Panel>}
-     {detailTab==='events'&&<Panel title="Execution / FIX events"><div className="event-list">{tradeRows.map((event,i)=><div className="event-row" key={'trade-'+(pick(event,'id')??i)}><time>{time(pick(event,'executedAt','executed_at'))}</time><b>{text(pick(event,'side'))} {text(pick(event,'source'))}</b><span>{text(pick(event,'quantity'))} @ {text(pick(event,'price'))}</span></div>)}{auditRows.map((event,i)=><div className="event-row" key={'audit-'+(pick(event,'id')??i)}><time>{time(pick(event,'createdAt','created_at'))}</time><b>{text(pick(event,'type'))}</b><span>{text(pick(event,'reference'))}</span></div>)}{!auditRows.length&&!tradeRows.length&&<div className="blotter-no-data">-</div>}</div><div className="execution-foot"><span>Trade / audit events</span><b>{data.trades===null&&data.audit===null?'-':tradeRows.length+auditRows.length}</b></div></Panel>}
-     {detailTab==='checklist'&&<Panel title="Settlement checklist"><div className="checklist">{checklist.map(([label,val])=><ChecklistItem key={label} label={label} value={val}/>)}</div></Panel>}
-    </div>
+   <div className="blotter-detail-grid compact-four-tables">
+    <Panel title="Request &amp; Terms">
+     <table className="blotter-compact-table"><tbody>
+      <tr><th>Request ID</th><td>{text(selected?.requestId)}</td></tr>
+      <tr><th>Security</th><td>{text(selected?.security)}</td></tr>
+      <tr><th>ISIN</th><td>{text(selected?.isin)}</td></tr>
+      <tr><th>Lender</th><td>{text(selected?.lender)}</td></tr>
+      <tr><th>Qty requested</th><td>{text(selected?.requested)}</td></tr>
+      <tr><th>Qty approved</th><td>{text(selected?.approved)}</td></tr>
+      <tr><th>MSLA ID</th><td>{text(pick(selected?.request,'mslaId','msla_id'))}</td></tr>
+      <tr><th>Fee rate (bps)</th><td>{text(pick(detailLoan,'feeBps','fee_bps')??pick(selected?.request,'feeBps','fee_bps'))}</td></tr>
+     </tbody></table>
+    </Panel>
+    <Panel title="Collateral Readiness" action={<span className="panel-live-label">VALUATION</span>}>
+     <table className="blotter-compact-table"><tbody>
+      <tr><th>Loan market value</th><td>{money(pick(valuationRow,'loanMarketValue','loan_market_value'))}</td></tr>
+      <tr><th>Required collateral</th><td className="value-emphasis">{money(pick(valuationRow,'requiredCollateral','required_collateral'))}</td></tr>
+      <tr><th>Recognized collateral</th><td>{money(pick(valuationRow,'recognizedCollateral','recognized_collateral'))}</td></tr>
+      <tr><th>Coverage ratio</th><td>{text(pick(valuationRow,'coverageRatio','coverage_ratio'))}</td></tr>
+      <tr><th>Shortfall</th><td>{money(pick(valuationRow,'shortfall'))}</td></tr>
+      <tr><th>Collateral positions</th><td>{text(collateralRows.length||'-')}</td></tr>
+      <tr><th>Last valued</th><td>{time(pick(valuationRow,'valuedAt','valued_at'))}</td></tr>
+     </tbody></table>
+    </Panel>
+    <Panel title="Execution / FIX Events">
+     <div className="blotter-compact-table-wrap"><table className="blotter-compact-table events-compact"><thead><tr><th>Time</th><th>Event</th><th>Details</th></tr></thead><tbody>
+      {tradeRows.map((event,i)=><tr key={'trade-'+(pick(event,'id')??i)}><td>{time(pick(event,'executedAt','executed_at'))}</td><td>{text(pick(event,'side'))} {text(pick(event,'source'))}</td><td>{text(pick(event,'quantity'))} @ {text(pick(event,'price'))}</td></tr>)}
+      {auditRows.map((event,i)=><tr key={'audit-'+(pick(event,'id')??i)}><td>{time(pick(event,'createdAt','created_at'))}</td><td>{text(pick(event,'type'))}</td><td>{text(pick(event,'reference'))}</td></tr>)}
+      {!auditRows.length&&!tradeRows.length&&<tr><td colSpan="3" className="compact-empty">No execution or FIX events</td></tr>}
+     </tbody></table></div>
+     <div className="execution-foot"><span>Trade / audit events</span><b>{data.trades===null&&data.audit===null?'-':tradeRows.length+auditRows.length}</b></div>
+    </Panel>
+    <Panel title="Settlement Checklist">
+     <table className="blotter-compact-table"><thead><tr><th>Step</th><th>Status</th></tr></thead><tbody>
+      {checklist.map(([label,val])=><tr key={label}><td>{label}</td><td><span className={'blotter-status '+statusTone(val)}>{text(val)}</span></td></tr>)}
+     </tbody></table>
+    </Panel>
    </div>
   </section>
   {errors.length>0&&<div className="blotter-data-warning">{errors.length} data source(s) unavailable: {errors.map(e=>e.resource).join(', ')}. Missing fields are shown as “-”.</div>}
