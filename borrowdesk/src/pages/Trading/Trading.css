@@ -63,3 +63,49 @@
 .trading-register td.pnl-profit, .register-position-total .pnl-profit { color: #187543; font-weight: 650; }
 .trading-register td.pnl-loss, .register-position-total .pnl-loss { color: #b23e35; font-weight: 650; }
 .trading-register td.pnl-neutral, .register-position-total .pnl-neutral { color: var(--muted); }
+
+
+/* Trading register collapse/expand: let the market workspace reclaim the released height. */
+.trading-workstation:has(.trading-bottom-panel.is-minimized) .trading-main-grid {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.trading-workstation .trading-bottom-panel.is-minimized {
+  height: 33px;
+  min-height: 33px;
+  flex: 0 0 33px;
+}
+.trading-bottom-panel.is-minimized .bottom-filter-row,
+.trading-bottom-panel.is-minimized .bottom-table-wrap,
+.trading-bottom-panel.is-minimized .register-position-total {
+  display: none;
+}
+.trading-bottom-panel .bottom-panel-top {
+  min-width: 0;
+}
+.register-size-toggle {
+  flex: none;
+  height: 25px;
+  margin: 0 7px 0 8px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.register-size-toggle:hover {
+  background: var(--selection);
+  color: var(--primary-hover);
+  border-color: var(--primary);
+}
+.trading-bottom-panel.is-minimized .bottom-panel-top {
+  border-bottom: 0;
+}
