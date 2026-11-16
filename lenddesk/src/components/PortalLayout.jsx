@@ -7,6 +7,7 @@ import { useDataSource } from '../hooks/useDataSource'
 
 export default function PortalLayout() {
   const { pathname } = useLocation()
+  const isOverview = pathname === '/'
   const bounded = pathname === '/' || pathname === '/fees-rebates' || pathname === '/audit-notifications'
   const [searchTerm, setSearchTerm] = useState('')
   const [compactSidebar, setCompactSidebar] = useState(() => localStorage.getItem('lenddesk-sidebar') === 'compact')
@@ -19,8 +20,8 @@ export default function PortalLayout() {
   return <main className={`app-shell ${compactSidebar ? 'sidebar-compact' : ''}`}>
     <Sidebar compact={compactSidebar} onToggleCompact={() => setCompactSidebar(value => !value)} />
     <section className={`workspace ${bounded ? 'bounded-workspace' : ''}`}>
-      <Topbar onSearch={setSearchTerm} />
-      {bounded ? <div className={`bounded-route ${pathname === '/' ? 'overview-workspace' : pathname === '/audit-notifications' ? 'audit-workspace' : 'fees-workspace'}`}><Outlet context={{ searchTerm, dataMode: mode }} /></div> : <Outlet context={{ searchTerm, dataMode: mode }} />}
+      {isOverview && <Topbar onSearch={setSearchTerm} />}
+      {bounded ? <div className={`bounded-route ${pathname === '/' ? 'overview-workspace' : pathname === '/audit-notifications' ? 'audit-workspace' : 'fees-workspace'}`}><Outlet context={{ searchTerm: isOverview ? searchTerm : '', dataMode: mode }} /></div> : <Outlet context={{ searchTerm: isOverview ? searchTerm : '', dataMode: mode }} />}
     </section>
   </main>
 }
