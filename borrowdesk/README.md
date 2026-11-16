@@ -36,4 +36,4 @@ The UI calls borrower-service REST endpoints only. Lender decisions, FIX executi
 
 The shared visual layer is `src/styles/purpleTheme.css`, loaded after the base and page styles. It applies the reference designs across all twelve screens while preserving the existing workflows and semantic status colors. Core colors remain in `src/styles/variables.css`.
 
-Design references: [borrow-ui-designs on main](https://github.com/code-with-niranjan-v/security-lending/tree/main/borrow-ui-designs). The generated designs use sample data; unsupported controls shown in those images are not added by the styling layer.
+Design references: [borrowdesk-ui-designs on main](https://github.com/code-with-niranjan-v/security-lending/tree/main/borrowdesk-ui-designs). The generated designs use sample data; unsupported controls shown in those images are not added by the styling layer.
