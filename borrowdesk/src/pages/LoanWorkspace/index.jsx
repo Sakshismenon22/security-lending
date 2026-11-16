@@ -16,7 +16,8 @@ const stamp=x=>{if(!x)return'-';const d=new Date(x);return Number.isNaN(+d)?'-':
 const state=x=>String(x||'-').replaceAll('_',' ').toUpperCase();
 const statusTone=x=>{const s=state(x);return ['ACTIVE','COMPLETED','SETTLED','POSTED'].includes(s)?'good':s.includes('MARGIN')||s.includes('PENDING')||s.includes('ACCRUED')?'warn':s.includes('RECALL')||s.includes('OVERDUE')||s.includes('DEFAULT')?'bad':'neutral'};
 const labelId=x=>x==null?'-':/^LN-/i.test(String(x))?String(x):'LN-'+String(x).padStart(6,'0');
-const feePercent=x=>x==null?null:Number(x)>20?Number(x)/100:Number(x)<=1?Number(x)*100:Number(x);\nconst bps=x=>x==null?'-':n(feePercent(x)*100)+' bps';
+const feePercent=x=>x==null?null:Number(x)>20?Number(x)/100:Number(x)<=1?Number(x)*100:Number(x);
+const bps=x=>x==null?'-':n(feePercent(x)*100)+' bps';
 const getRows=(obj,...names)=>{for(const name of names){const x=obj?.[name];if(Array.isArray(x))return x;if(x&&Array.isArray(x.content))return x.content}return[]};
 
 function Field({label,value,good=false}){return <div className="lw-field"><span>{label}</span><b className={good?'positive':''}>{value??'-'}</b></div>}
