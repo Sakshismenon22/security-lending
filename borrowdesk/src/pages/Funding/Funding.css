@@ -70,3 +70,25 @@
   .funding-page .funding-workspace { overflow:auto; }
   .funding-page .funding-detail-area { min-height:220px; }
 }
+
+
+/* Funding transaction details collapse/expand, matching the Trading register control. */
+.funding-page .funding-workspace.details-minimized .funding-table-panel {
+  flex: 1 1 0 !important;
+  min-height: 0;
+}
+.funding-page .funding-workspace.details-minimized .funding-resizer {
+  display: none;
+}
+.funding-page .funding-workspace.details-minimized .funding-detail-area {
+  flex: 0 0 36px;
+  min-height: 36px;
+  height: 36px;
+}
+.funding-page .funding-workspace.details-minimized .funding-details {
+  display: none;
+}
+.funding-page .funding-details-size-toggle {
+  min-width: 88px;
+  justify-content: center;
+}
