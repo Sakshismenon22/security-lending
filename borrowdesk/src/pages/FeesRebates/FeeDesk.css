@@ -1,0 +1,547 @@
+.fee-desk {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  overflow: hidden;
+  background: var(--canvas);
+  color: var(--ink);
+}
+.fd-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex: none;
+}
+.fd-heading h1 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  letter-spacing: -0.5px;
+}
+.fd-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.fd-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.fee-desk button,
+.fee-desk .fd-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: white;
+  color: var(--primary-hover);
+  font-size: 12px;
+  text-decoration: none;
+}
+.fee-desk button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.fee-desk .fd-primary {
+  background: var(--primary-gradient, var(--primary));
+  color: white;
+  border-color: var(--primary);
+}
+.fd-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: white;
+}
+.fd-metrics > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 13px;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+.fd-metrics > span:last-child {
+  border: 0;
+}
+.fd-metrics b {
+  color: var(--ink);
+  font-size: 17px;
+}
+.fd-filters {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex: none;
+}
+.fd-filters label {
+  display: grid;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.fd-filters label:first-child {
+  min-width: 270px;
+}
+.fd-filters input,
+.fd-filters select {
+  height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: white;
+  color: var(--ink);
+}
+.fd-filters p {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+.fd-register {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.fd-table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.fee-desk table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.fee-desk thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-muted);
+}
+.fee-desk th {
+  height: 38px;
+  text-align: left;
+  color: var(--heading-ink, var(--ink));
+  font-size: 11px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.fee-desk td {
+  height: 38px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+.fee-desk .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.fee-desk small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.fee-desk a {
+  color: var(--primary-hover);
+  font-weight: 650;
+}
+.fd-selected {
+  background: var(--selection);
+}
+.fee-desk .fd-inline > td {
+  background: var(--canvas);
+  padding: 14px;
+  white-space: normal;
+}
+.fd-inline-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+.fd-inline-heading > b {
+  font-size: 16px;
+}
+.fd-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.fd-card {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: white;
+  min-width: 0;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+}
+.fd-card h2 {
+  margin: 0 0 12px;
+  color: var(--heading-ink, var(--ink));
+  font-size: 15px;
+}
+.fd-fields {
+  margin: 0;
+}
+.fd-fields > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+  font-size: 12px;
+}
+.fd-fields dt {
+  color: var(--muted);
+}
+.fd-fields dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.fd-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.fd-badge {
+  display: inline-block;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 750;
+  padding: 4px 7px;
+  vertical-align: middle;
+  background: var(--surface-muted);
+}
+.fd-badge.good {
+  color: #187543;
+  background: #dff7e7;
+}
+.fd-badge.warn {
+  color: #895d10;
+  background: #fff0c7;
+}
+.fd-badge.bad,
+.fd-error {
+  color: #b23e35;
+  background: #ffe0e2;
+}
+.fd-error {
+  padding: 9px;
+  border-radius: 5px;
+}
+.fd-pagination {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+.fd-pagination > span:first-child {
+  margin-right: auto;
+}
+.fd-workspace .fd-back {
+  flex: none;
+  align-self: flex-start;
+  padding: 4px 0;
+}
+.fd-tabs {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.fd-tabs button {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  white-space: nowrap;
+  padding: 10px 14px;
+}
+.fd-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--primary);
+  background: var(--selection);
+}
+.fd-workspace-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 5px;
+}
+.fd-workspace-body > .fd-card {
+  flex: none;
+}
+.fd-workspace-body .fd-card > .fd-table-scroll {
+  flex: none;
+  max-height: 390px;
+}
+.fd-workspace dialog {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 450px;
+  padding: 24px;
+  color: var(--ink);
+}
+.fd-workspace dialog::backdrop {
+  background: #25223a66;
+}
+@media (max-width: 1000px) {
+  .fd-cards {
+    grid-template-columns: 1fr;
+  }
+  .fd-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+  .fd-metrics > span {
+    border-bottom: 1px solid var(--border);
+  }
+  .fd-filters p {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  .fee-desk {
+    padding: 10px;
+    gap: 9px;
+  }
+  .fd-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .fd-heading h1 {
+    font-size: 20px;
+  }
+  .fd-filters {
+    flex-wrap: wrap;
+  }
+  .fd-filters label:first-child {
+    min-width: 0;
+    flex: 1;
+  }
+  .fd-metrics > span {
+    padding: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .fd-metrics b {
+    font-size: 14px;
+  }
+  .fd-inline-heading {
+    flex-wrap: wrap;
+  }
+  .fd-pagination {
+    gap: 5px;
+    padding: 6px;
+  }
+}
+/* Compact register and parallel workspace context. */
+.fee-desk {
+  padding: 14px 16px;
+  gap: 9px;
+}
+.fd-heading h1 {
+  font-size: 22px;
+  margin-bottom: 3px;
+}
+.fd-metrics {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.fd-metrics > span {
+  padding: 9px 12px;
+  display: grid;
+  gap: 5px;
+  font-size: 10px;
+}
+.fd-metrics b {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.fee-desk:not(.fd-workspace) .fd-metrics > span:nth-child(2) b {
+  color: #187543;
+}
+.fd-filters {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.fd-filters label {
+  flex: 1;
+  min-width: 105px;
+  font-size: 10px;
+  gap: 3px;
+}
+.fd-filters label:first-child {
+  flex: 2;
+  min-width: 200px;
+}
+.fd-filters input,
+.fd-filters select {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  font-size: 11px;
+  padding: 4px 7px;
+}
+.fee-desk th {
+  height: 30px;
+  padding: 6px 9px;
+  font-size: 10px;
+}
+.fee-desk td {
+  height: 31px;
+  padding: 5px 9px;
+  font-size: 11px;
+}
+.fee-desk td button {
+  min-height: 24px;
+  padding: 2px 5px;
+}
+.fee-desk small {
+  margin-top: 2px;
+  font-size: 9px;
+}
+.fd-register tbody > tr:not(.fd-inline):hover {
+  background: #f6f3ff;
+}
+.fd-register tbody > tr.fd-selected {
+  background: var(--selection);
+  box-shadow: inset 3px 0 var(--primary);
+}
+.fee-desk .fd-inline > td {
+  padding: 10px;
+}
+.fd-inline-heading {
+  margin-bottom: 8px;
+}
+.fd-inline-heading > b {
+  font-size: 13px;
+}
+.fd-inline-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 0.9fr 1.1fr;
+  gap: 8px;
+  min-width: 1050px;
+}
+.fd-card {
+  padding: 10px;
+  border-radius: 5px;
+}
+.fd-card h2 {
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.fd-fields > div {
+  padding: 5px 0;
+  font-size: 11px;
+  gap: 10px;
+}
+.fd-fields > div:last-child {
+  border-bottom: 0;
+}
+.fd-note {
+  font-size: 10px;
+  margin: 6px 0 0;
+}
+.fd-formula {
+  background: var(--selection);
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 6px;
+  margin: 6px 0 0;
+  color: var(--primary-hover);
+}
+.fd-inline-grid .fd-table-scroll {
+  max-height: 175px;
+  flex: auto;
+}
+.fd-inline-grid th,
+.fd-inline-grid td {
+  padding: 5px 6px;
+  font-size: 10px;
+  height: 26px;
+}
+.fd-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+.fd-side-stack {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.fd-workspace-body,
+.fd-workspace .fd-cards {
+  gap: 10px;
+}
+.fd-workspace .fd-tabs button {
+  padding: 8px 12px;
+  font-size: 11px;
+}
+.fee-desk button:focus-visible,
+.fee-desk a:focus-visible,
+.fee-desk input:focus-visible,
+.fee-desk select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+@media (max-width: 1100px) {
+  .fd-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .fd-workspace .fd-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fd-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 650px) {
+  .fd-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fd-workspace .fd-cards {
+    grid-template-columns: 1fr;
+  }
+  .fee-desk {
+    padding: 10px;
+  }
+}

@@ -1,68 +1,821 @@
-import{useEffect,useMemo,useState}from'react';
-import{Download,FileText,RefreshCw,ChevronLeft,ChevronRight,ExternalLink,CheckCircle2,Clock,CalendarDays,Search}from'lucide-react';
-import{feesRebatesApi}from'../../api/feesRebatesApi';
-import{unwrapRows}from'../../api/apiClient';
-import'./FeesRebates.css';
+import { Fragment, useMemo, useRef, useState } from "react";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  ExternalLink,
+  RefreshCw,
+} from "lucide-react";
+import useFeesData from "../../hooks/useFeesData";
+import {
+  buildFeeRecords,
+  feeRecordPath,
+  relatedFeeHistory,
+} from "../../utils/feeRecords";
+import { billingApi } from "../../api/billingApi";
+import "./FeeDesk.css";
+const money = (v, c = "INR") =>
+  v == null
+    ? "—"
+    : new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: c,
+        maximumFractionDigits: 2,
+      }).format(v);
+const number = (v) =>
+  v == null
+    ? "—"
+    : Number(v).toLocaleString("en-IN", { maximumFractionDigits: 4 });
+const date = (v) =>
+  v
+    ? new Date(v).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" })
+    : "—";
+const kind = (r) => (r.kind === "REBATE" ? "Cash rebate" : "Lending fee");
+function Badge({ value }) {
+  return (
+    <span
+      className={`fd-badge ${/PAID|SETTLED|RECORDED/.test(value) ? "good" : /FAILED|REJECT|OVERDUE/.test(value) ? "bad" : "warn"}`}
+    >
+      {value ?? "Not recorded"}
+    </span>
+  );
+}
+function Pagination({ page, pages, total, onPage }) {
+  return (
+    <div
+      className="fd-pagination"
+      role="navigation"
+      aria-label="Fees pagination"
+    >
+      <span>
+        {total ? `${page * 10 + 1}–${Math.min((page + 1) * 10, total)}` : "0"}{" "}
+        of {total}
+      </span>
+      <button disabled={!page} onClick={() => onPage(page - 1)}>
+        Previous
+      </button>
+      <span>
+        Page {page + 1} of {pages}
+      </span>
+      <button disabled={page + 1 >= pages} onClick={() => onPage(page + 1)}>
+        Next
+      </button>
+    </div>
+  );
+}
+function Card({ title, children }) {
+  return (
+    <section className="fd-card">
+      <h2>{title}</h2>
+      {children}
+    </section>
+  );
+}
+function Fields({ rows }) {
+  return (
+    <dl className="fd-fields">
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value ?? "—"}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+function RecordOverview({ record: r }) {
+  return (
+    <div className="fd-cards">
+      <Card title="Record details">
+        <Fields
+          rows={[
+            ["Record", r.label],
+            ["Loan", `LN-${String(r.loanId).padStart(6, "0")}`],
+            ["Security", r.symbol],
+            ["Lender", r.lender],
+            [
+              "Type",
+              `${kind(r)} · ${r.category === "accruals" ? "Daily accrual" : "Settlement"}`,
+            ],
+            ["Date", date(r.date)],
+            ["Outstanding shares", number(r.loan?.outstandingQuantity)],
+            ["Status", <Badge value={r.status} />],
+          ]}
+        />
+      </Card>
+      <Card title="Calculation context">
+        <Fields
+          rows={[
+            ["Recorded amount", money(r.amount, r.currency)],
+            ["Historical base value", money(r.baseValue, r.currency)],
+            [
+              "Annual rate",
+              r.rate == null ? "—" : `${number(r.rate * 10000)} bps`,
+            ],
+            ["MSLA day basis", r.dayBasis ? `Actual/${r.dayBasis}` : "—"],
+            ["Period start", date(r.periodStart)],
+            ["Period end", date(r.periodEnd)],
+          ]}
+        />
+        <p className="fd-note">
+          Amounts are recorded API values. Current MSLA terms are context;
+          historical daily records remain authoritative.
+        </p>
+      </Card>
+      <Card title="Settlement context">
+        <Fields
+          rows={[
+            ["Linked bill / settlement", r.bill?.id ?? "Not issued"],
+            ["Status", r.bill?.status ?? "Not issued"],
+            ["Due / scheduled date", date(r.dueDate)],
+            ["Paid date", date(r.bill?.paidAt)],
+          ]}
+        />
+      </Card>
+    </div>
+  );
+}
+function DetailsTable({ headers, children }) {
+  return (
+    <div className="fd-table-scroll">
+      <table>
+        <thead>
+          <tr>
+            {headers.map((h) => (
+              <th key={h}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+function DailyHistory({ record, data, compact = false }) {
+  const [page, setPage] = useState(0);
+  const rows = relatedFeeHistory(record, data),
+    pages = Math.max(1, Math.ceil(rows.length / (compact ? 4 : 10))),
+    current = Math.min(page, pages - 1);
+  return (
+    <Card title="Daily accrual history">
+      <DetailsTable
+        headers={["Date", "Type", "Historical base", "Rate (bps)", "Amount"]}
+      >
+        {rows
+          .slice(
+            current * (compact ? 4 : 10),
+            (current + 1) * (compact ? 4 : 10),
+          )
+          .map((r) => (
+            <tr key={r.id}>
+              <td>{date(r.accrualDate)}</td>
+              <td>{r.type}</td>
+              <td className="num">{money(r.baseValue, record.currency)}</td>
+              <td className="num">{number(r.rate * 10000)}</td>
+              <td className="num">{money(r.amount, record.currency)}</td>
+            </tr>
+          ))}
+        {!rows.length && (
+          <tr>
+            <td colSpan={5}>
+              No daily accrual records are available for this period.
+            </td>
+          </tr>
+        )}
+      </DetailsTable>
+      {!compact && (
+        <Pagination
+          page={current}
+          pages={pages}
+          total={rows.length}
+          onPage={setPage}
+        />
+      )}
+    </Card>
+  );
+}
+function Settlements({ record, data }) {
+  const records = [
+    ...data.fees
+      .filter((r) => String(r.loanId) === String(record.loanId))
+      .map((r) => ({ ...r, label: `FEE-${r.id}`, amount: r.feeAmount })),
+    ...data.rebates
+      .filter((r) => String(r.loanId) === String(record.loanId))
+      .map((r) => ({ ...r, label: `REB-${r.id}` })),
+  ];
+  return (
+    <Card title="Loan bills and settlements">
+      <DetailsTable
+        headers={["Reference", "Period", "Amount", "Status", "Due / scheduled"]}
+      >
+        {records.map((r) => (
+          <tr key={r.label}>
+            <td>{r.label}</td>
+            <td>
+              {date(r.periodStart)} – {date(r.periodEnd)}
+            </td>
+            <td className="num">{money(r.amount, record.currency)}</td>
+            <td>
+              <Badge value={r.status} />
+            </td>
+            <td>{date(r.dueDate ?? r.nextPaymentDate)}</td>
+          </tr>
+        ))}
+        {!records.length && (
+          <tr>
+            <td colSpan={5}>No settlements recorded for this loan.</td>
+          </tr>
+        )}
+      </DetailsTable>
+    </Card>
+  );
+}
+function Payments({ record, data }) {
+  const feeIds = new Set(
+    data.fees
+      .filter((f) => String(f.loanId) === String(record.loanId))
+      .map((f) => String(f.id)),
+  );
+  const records = [
+    ...data.payments
+      .filter((r) => String(r.loanId) === String(record.loanId))
+      .map((r) => ({
+        ...r,
+        key: `rebate:${r.id}`,
+        label: `REB-PAY-${r.id}`,
+        type: "Cash rebate",
+        date: r.paymentDate,
+        reference: `REB-${r.rebateId}`,
+        status: "PAID",
+      })),
+    ...(data.feePayments ?? [])
+      .filter((r) => feeIds.has(String(r.feeId)))
+      .map((r) => ({
+        ...r,
+        key: `fee:${r.id}`,
+        label: `PAY-${r.id}`,
+        type: "Fee payment request",
+        date: r.confirmedAt ?? r.createdAt,
+        reference: `FEE-${r.feeId}`,
+      })),
+  ];
+  return (
+    <Card title="Payment history">
+      <DetailsTable
+        headers={["Payment", "Type", "Date", "Amount", "Reference", "Status"]}
+      >
+        {records.map((r) => (
+          <tr key={r.key}>
+            <td>{r.label}</td>
+            <td>{r.type}</td>
+            <td>{date(r.date)}</td>
+            <td className="num">{money(r.amount, record.currency)}</td>
+            <td>{r.reference}</td>
+            <td>
+              <Badge value={r.status} />
+            </td>
+          </tr>
+        ))}
+        {!records.length && (
+          <tr>
+            <td colSpan={6}>No payment records returned for this loan.</td>
+          </tr>
+        )}
+      </DetailsTable>
+    </Card>
+  );
+}
 
-const val=(o,...keys)=>{for(const k of keys){if(o?.[k]!==undefined&&o?.[k]!==null)return o[k]}return null};
-const key=v=>String(v??'');
-const n=v=>v==null||v===''?null:Number(v);
-const money=(v,cur='INR')=>v==null?'-':new Intl.NumberFormat('en-IN',{style:'currency',currency:cur,minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v));
-const amount=(v)=>v==null?'-':new Intl.NumberFormat('en-IN',{maximumFractionDigits:2}).format(Number(v));
-const fmtDate=v=>{if(!v)return'-';const d=new Date(v);return Number.isNaN(d.getTime())?String(v):d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Kolkata'})};
-const rows=x=>unwrapRows(x);
-const ratePct=v=>v==null?'-':(Number(v)*100).toFixed(2)+'%';
-const statusTone=s=>{const x=String(s||'').toUpperCase();return /PAID|SETTLED|INVOICED|MATCHED|COMPLETED/.test(x)?'good':/OVERDUE|REJECT|FAILED/.test(x)?'bad':/DUE|PENDING|REVIEW|ACCRUED/.test(x)?'warn':''};
-const getDate=v=>String(v||'').slice(0,10);
-export default function FeesRebates(){
- const[data,setData]=useState({accruals:[],fees:[],rebates:[],payments:[],loans:[],securities:[],agreements:[],lenders:[],audit:[]});
- const[loading,setLoading]=useState(true),[error,setError]=useState(''),[selected,setSelected]=useState(null),[search,setSearch]=useState(''),[lender,setLender]=useState('All lenders'),[period,setPeriod]=useState('All time'),[activeTab,setActiveTab]=useState('Calculation breakdown'),[showAllDays,setShowAllDays]=useState(false);
- const refresh=async()=>{setLoading(true);setError('');try{setData(await feesRebatesApi.load())}catch(e){setError(e.message||'Unable to load fees and rebates')}finally{setLoading(false)}};
- useEffect(()=>{refresh()},[]);
- const securityMap=useMemo(()=>new Map(data.securities.map(s=>[key(val(s,'id','securityId','security_id')),s])),[data.securities]);
- const agreementMap=useMemo(()=>new Map(data.agreements.map(a=>[key(val(a,'id','mslaId','msla_id')),a])),[data.agreements]);
- const lenderMap=useMemo(()=>new Map(data.lenders.map(l=>[key(val(l,'id','lenderId','lender_id')),l])),[data.lenders]);
- const loanMap=useMemo(()=>new Map(data.loans.map(l=>[key(val(l,'id','loanId','loan_id')),l])),[data.loans]);
- const accrualRows=useMemo(()=>{
-  const grouped=new Map();
-  data.accruals.forEach(a=>{const loanId=val(a,'loanId','loan_id'),date=getDate(val(a,'accrualDate','accrual_date','entryDate','entry_date')),type=String(val(a,'type','accrualType','accrual_type')||'FEE').toUpperCase();const k=loanId+':'+date;const r=grouped.get(k)||{key:k,loanId,date,accrualId:val(a,'id'),fee:null,rebate:null,feeBase:null,rebateBase:null,feeRate:null,rebateRate:null};if(r.accrualId==null)r.accrualId=val(a,'id');if(type.includes('REBATE')){r.rebate=n(val(a,'amount'));r.rebateBase=n(val(a,'baseValue','base_value'));r.rebateRate=n(val(a,'rate','rebateRate','rebate_rate'))}else{r.fee=n(val(a,'amount'));r.feeBase=n(val(a,'baseValue','base_value'));r.feeRate=n(val(a,'rate','feeRate','fee_rate'))}grouped.set(k,r)});
-  // Settlements can arrive independently of daily accrual projections.
-  [...data.fees,...data.rebates,...data.payments].forEach(record=>{
-   const loanId=record.loanId;
-   if([...grouped.values()].some(row=>key(row.loanId)===key(loanId)))return;
-   const date=getDate(record.periodEnd||record.accrualDate||record.paymentDate||record.dueDate);
-   grouped.set('settlement:'+loanId,{key:'settlement:'+loanId,loanId,date,settlementOnly:true,fee:null,rebate:null});
-  });
-  return [...grouped.values()].map((r,i)=>{const loan=loanMap.get(key(r.loanId))||{},sec=securityMap.get(key(val(loan,'securityId','security_id')))||{},agreement=agreementMap.get(key(val(loan,'mslaId','msla_id')))||{},lenderId=val(agreement,'lenderId','lender_id','counterpartyId','counterparty_id'),lenderObj=lenderMap.get(key(lenderId))||{};const bills=data.fees.filter(f=>key(val(f,'loanId','loan_id'))===key(r.loanId));const bill=bills.find(f=>r.date>=getDate(val(f,'periodStart','period_start'))&&r.date<=getDate(val(f,'periodEnd','period_end')))||bills[0];const gross=r.fee,rebate=r.rebate;return {...r,index:i+1,loan,sec,agreement,lenderName:val(agreement,'lenderName','counterpartyName','lender_name')??val(lenderObj,'name','legalName','legal_name')??'-',securityName:val(sec,'symbol','ticker','isin')??val(loan,'securitySymbol','security_symbol')??'-',quantity:val(loan,'outstandingQuantity','outstanding_quantity'),notional:r.feeBase??r.rebateBase,feeRate:r.feeRate??val(loan,'feeRate','fee_rate'),rebateRate:r.rebateRate??val(loan,'rebateRate','rebate_rate'),dayBasis:val(loan,'dayBasis','day_basis'),days:1,gross,rebate,net:gross==null&&rebate==null?null:(gross||0)-(rebate||0),bill,invoiceStatus:val(bill,'status')??'-',billId:val(bill,'id')??null}}).sort((a,b)=>b.date.localeCompare(a.date)||Number(b.loanId)-Number(a.loanId));
- },[data,loanMap,securityMap,agreementMap,lenderMap]);
- const latestDate=accrualRows[0]?.date||'';
- const periodStart=period==='10 days'&&latestDate?new Date(new Date(latestDate+'T12:00:00').getTime()-9*86400000).toISOString().slice(0,10):period==='This month'&&latestDate?latestDate.slice(0,7)+'-01':'';
- const dailyFiltered=useMemo(()=>accrualRows.filter(r=>(!periodStart||r.date>=periodStart)&&(!latestDate||r.date<=latestDate)&&(lender==='All lenders'||r.lenderName===lender)),[accrualRows,periodStart,latestDate,lender]);
- const filtered=useMemo(()=>{const grouped=new Map();dailyFiltered.forEach(r=>{const k=key(r.loanId);let g=grouped.get(k);if(!g){g={...r,key:k,gross:0,rebate:0,hasFee:false,hasRebate:false,dailyRows:[],days:0};grouped.set(k,g)}if(!r.settlementOnly)g.dailyRows.push(r);if(r.gross!=null){g.gross+=r.gross;g.hasFee=true}if(r.rebate!=null){g.rebate+=r.rebate;g.hasRebate=true}if(r.date>=g.date){g.date=r.date;g.notional=r.notional??g.notional;g.quantity=r.quantity??g.quantity;g.feeRate=r.feeRate??g.feeRate;g.rebateRate=r.rebateRate??g.rebateRate;g.dayBasis=r.dayBasis??g.dayBasis;g.bill=r.bill??g.bill;g.invoiceStatus=r.invoiceStatus??g.invoiceStatus;g.billId=r.billId??g.billId}if(r.fee!=null&&r.date>=g.date){g.accrualId=r.accrualId??g.accrualId}});return [...grouped.values()].map(g=>({...g,gross:g.hasFee?g.gross:null,rebate:g.hasRebate?g.rebate:null,net:g.hasFee||g.hasRebate?(g.gross-g.rebate):null,days:new Set(g.dailyRows.map(r=>r.date)).size,dailyRows:g.dailyRows.sort((a,b)=>a.date.localeCompare(b.date))})).filter(r=>!search||[r.key,r.loanId,r.securityName,r.lenderName,r.billId].join(' ').toLowerCase().includes(search.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date))},[dailyFiltered,search]);
- const active=filtered.find(r=>r.key===selected)||filtered[0]||null;
- useEffect(()=>{if(active&&selected!==active.key)setSelected(active.key)},[active?.key]);
- const totals=useMemo(()=>{const fee=filtered.reduce((s,r)=>s+(r.gross||0),0),rebate=filtered.reduce((s,r)=>s+(r.rebate||0),0);const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});const overdue=data.fees.filter(f=>String(val(f,'status')||'').toUpperCase()==='DUE'&&val(f,'dueDate','due_date')&&getDate(val(f,'dueDate','due_date'))<today).length;return{fee,rebate,net:fee-rebate,overdue}},[filtered,data.fees]);
- const daily=active?active.dailyRows:[],shownDays=showAllDays?daily:daily.slice(-5);
- const loanFees=active?data.fees.filter(f=>key(val(f,'loanId','loan_id'))===key(active.loanId)):[],loanRebates=active?data.rebates.filter(r=>key(val(r,'loanId','loan_id'))===key(active.loanId)):[];
- const paymentEvents=active?data.payments.filter(p=>key(val(p,'loanId','loan_id'))===key(active.loanId)):[],auditEvents=active?data.audit.filter(a=>key(val(a,'loanId','loan_id','entityId','entity_id'))===key(active.loanId)).slice(0,6):[];
- const settlements=[...loanFees.map(f=>({id:'FEE-'+f.id,type:'Lending fee',amount:f.feeAmount,status:f.status,date:f.dueDate,paid:f.paidAt})),...loanRebates.map(r=>({id:'REB-'+r.id,type:'Rebate',amount:r.amount,status:r.status,date:r.nextPaymentDate,paid:paymentEvents.find(p=>key(p.rebateId)===key(r.id))?.paymentDate}))];
- const events=[...daily.flatMap(r=>[{date:r.date,title:r.gross!=null?'Fee accrual recorded':'',detail:r.gross!=null?money(r.gross):''},{date:r.date,title:r.rebate!=null?'Rebate accrual recorded':'',detail:r.rebate!=null?money(r.rebate):''}].filter(e=>e.title)),...paymentEvents.map(p=>({date:val(p,'paymentDate','payment_date'),title:'Rebate payment recorded',detail:money(val(p,'amount'))})),...loanFees.filter(f=>val(f,'paidAt','paid_at')).map(f=>({date:val(f,'paidAt','paid_at'),title:'Fee payment confirmed',detail:money(val(f,'feeAmount','fee_amount'))})),...auditEvents.map(a=>({date:val(a,'createdAt','created_at','timestamp'),title:val(a,'action','eventType','event_type')||'Audit event',detail:val(a,'description','details')||'-'}))].filter(e=>e.date).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
- const exportCsv=()=>{const cols=['key','loanId','date','securityName','lenderName','quantity','notional','feeRate','rebateRate','dayBasis','days','gross','rebate','net','invoiceStatus'];const esc=v=>'"'+String(v??'-').replaceAll('"','""')+'"';const csv=[cols.join(','),...filtered.map(r=>cols.map(c=>esc(r[c])).join(','))].join('\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download='fees-rebates.csv';a.click();URL.revokeObjectURL(url)};
- const invoiceReview=()=>setActiveTab('Invoice & reconciliation');
- return <main className="fees-screen">
-  <header className="fees-head"><div><h1>Fees &amp; rebates</h1><p>Accrued borrowing fees and rebates, invoice status, and settlement tracking</p></div><div className="fees-actions"><button className="fees-btn" onClick={exportCsv}><Download size={12}/>Export</button><button className="fees-btn primary" onClick={invoiceReview}><FileText size={12}/>Review invoice</button></div></header>
-  <section className="fees-kpis"><div><span>Accrued fees</span><b>{money(totals.fee)}</b></div><div><span>Rebates</span><b className="green">{money(totals.rebate)}</b></div><div><span>Net accrued</span><b>{money(totals.net)}</b></div><div><span>Overdue</span><b className="red">{totals.overdue||'-'}</b></div></section>
-  <section className="fees-filters"><label>Period <select className="period" value={period} onChange={e=>setPeriod(e.target.value)}><option value="10 days">{periodStart&&latestDate?fmtDate(periodStart)+' – '+fmtDate(latestDate):'Last 10 days'}</option><option value="This month">This month</option><option value="All time">All time</option></select></label><label>Lender <select value={lender} onChange={e=>setLender(e.target.value)}><option>All lenders</option>{[...new Set(accrualRows.map(r=>r.lenderName).filter(x=>x&&x!=='-'))].map(x=><option key={x}>{x}</option>)}</select></label><div className="fees-search"><Search size={11}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search accrual ID, loan ID, security, lender..."/></div><button className="fees-refresh" title="Refresh" onClick={refresh}><RefreshCw size={11}/></button></section>
-  {error&&<div className="fees-error">{error}</div>}
-  <section className="fees-table-panel"><div className="fees-table-scroll"><table className="fees-table"><thead><tr><th>#</th><th>Accrual ID</th><th>Loan ID</th><th>Security</th><th>Lender</th><th className="num">Outstanding qty</th><th className="num">Notional</th><th className="num">Fee p.a. %</th><th className="num">Rebate p.a. %</th><th className="num">Day basis</th><th className="num">Days</th><th className="num">Gross fee ₹</th><th className="num">Rebate ₹</th><th className="num">Net payable ₹</th><th>Invoice status</th></tr></thead><tbody>{filtered.map((r,i)=><tr key={r.key} className={active?.key===r.key?'selected':''} onClick={()=>{setSelected(r.key);setShowAllDays(false)}}><td>{i+1}</td><td className="fees-id">AC-{r.accrualId??'-'}</td><td>LN-{String(r.loanId).padStart(6,'0')}</td><td><b>{r.securityName}</b></td><td>{r.lenderName}</td><td className="num">{amount(r.quantity)}</td><td className="num">{money(r.notional)}</td><td className="num">{ratePct(r.feeRate)}</td><td className="num">{ratePct(r.rebateRate)}</td><td className="num">{r.dayBasis??'-'}</td><td className="num">{r.days??'-'}</td><td className="num">{money(r.gross)}</td><td className="num" style={{color:'#27824b'}}>{r.rebate==null?'-':'('+money(r.rebate)+')'}</td><td className="num">{money(r.net)}</td><td><span className={'fees-status '+statusTone(r.invoiceStatus)}>{r.invoiceStatus}</span></td></tr>)}{!filtered.length&&<tr><td colSpan="15" className="fees-empty">{loading?'Loading accruals…':'No recorded accruals for the selected period. Missing backend fields are shown as -.'}</td></tr>}</tbody><tfoot><tr><td colSpan="5">Total ({filtered.length} loans)</td><td className="num">{amount(filtered.reduce((s,r)=>s+(Number(r.quantity)||0),0))}</td><td className="num">-</td><td className="num">-</td><td className="num">-</td><td className="num">-</td><td className="num">-</td><td className="num">{money(totals.fee)}</td><td className="num" style={{color:'#27824b'}}>({money(totals.rebate)})</td><td className="num">{money(totals.net)}</td><td>-</td></tr></tfoot></table></div></section>
-  <section className="fees-detail"><div className="fees-detail-head"><div className="fees-detail-title"><h2>{active?'AC-'+(active.accrualId??'-')+' / '+active.securityName:'Accrual details'}</h2>{active&&<span className={'fees-status '+statusTone(active.invoiceStatus)}>{active.invoiceStatus}</span>}</div><div className="fees-actions"><button className="fees-btn" disabled={!filtered.length} onClick={()=>{const i=filtered.findIndex(r=>r.key===active?.key);setSelected(filtered[Math.max(0,i-1)]?.key)}}><ChevronLeft size={12}/></button><button className="fees-btn" disabled={!filtered.length} onClick={()=>{const i=filtered.findIndex(r=>r.key===active?.key);setSelected(filtered[Math.min(filtered.length-1,i+1)]?.key)}}><ChevronRight size={12}/></button><button className="fees-btn primary" disabled={!active} onClick={invoiceReview}>Review invoice</button></div></div>
-  {active&&<div className="fees-summary">{[['Loan ID','LN-'+String(active.loanId).padStart(6,'0')],['Security',active.securityName],['Lender',active.lenderName],['Outstanding qty',amount(active.quantity)],['Notional',money(active.notional)],['Fee p.a.',ratePct(active.feeRate)],['Rebate p.a.',ratePct(active.rebateRate)],['Day basis',active.dayBasis??'-'],['Days',active.days??'-'],['Gross fee',money(active.gross)],['Rebate',money(active.rebate)],['Net payable',money(active.net)],['Invoice status',active.invoiceStatus]].map(([k,v])=><div key={k}><span>{k}</span><b>{v}</b></div>)}</div>}
-  <nav className="fees-tabs">{['Calculation breakdown','Daily accrual history','Invoice & reconciliation','Payment/audit events'].map(t=><button key={t} className={activeTab===t?'active':''} onClick={()=>setActiveTab(t)}>{t}</button>)}</nav>
-  <div className="fees-panels" data-tab={activeTab}>
-   <article className="fees-card"><h3>Calculation breakdown</h3><p>Totals sum the recorded daily amounts; base values shown are from the latest day.</p><div className="fees-formula">Accrual = Notional × Annual rate × Days / {active?.dayBasis??'-'}</div><div className="fees-line"><span>Fee base = {money(active?.feeBase)} × {ratePct(active?.feeRate)} × {active?.days??'-'} / {active?.dayBasis??'-'}</span><b>{money(active?.gross)}</b></div><div className="fees-line"><span>Rebate base = {money(active?.rebateBase)} × {ratePct(active?.rebateRate)} × {active?.days??'-'} / {active?.dayBasis??'-'}</span><b style={{color:'#27824b'}}>{money(active?.rebate)}</b></div><div className="fees-line"><span>Net payable = Gross fee − Rebate</span><b>{money(active?.net)}</b></div><div className="fees-line"><span>Fee base value</span><b>{money(active?.feeBase)}</b></div><div className="fees-line"><span>Rebate base value</span><b>{money(active?.rebateBase)}</b></div></article>
-   <article className="fees-card"><h3>Daily accrual history</h3><p>Day-wise accruals for selected loan</p><div className="fees-daily-row head"><b>Date</b><b>Notional</b><b>Gross fee ₹</b><b>Rebate ₹</b><b>Net ₹</b></div><div className="fees-daily">{shownDays.map(r=><div className="fees-daily-row" key={r.key}><span>{fmtDate(r.date)}</span><span>{money(r.notional)}</span><span>{money(r.gross)}</span><span style={{color:'#27824b'}}>{money(r.rebate)}</span><b>{money(r.net)}</b></div>)}{!daily.length&&<div className="fees-empty">-</div>}</div><button className="fees-btn" style={{margin:'3px 5px',alignSelf:'flex-start'}} onClick={()=>setShowAllDays(!showAllDays)} disabled={daily.length<=5}>{showAllDays?'Show fewer days':'⌄ Show more days ('+Math.max(0,daily.length-5)+')'}</button><div className="fees-total"><span>Total ({daily.length} days)</span><b>{money(daily.reduce((s,r)=>s+(r.gross||0),0))} · ({money(daily.reduce((s,r)=>s+(r.rebate||0),0))}) · {money(daily.reduce((s,r)=>s+(r.net||0),0))}</b></div></article>
-   <article className="fees-card"><h3>Fee &amp; rebate settlements</h3><p>Settlement status for the selected loan (all dates)</p><div className="fees-events"><table className="fees-table" style={{minWidth:0}}><thead><tr><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th>Due</th><th>Paid</th></tr></thead><tbody>{settlements.map(r=><tr key={r.id}><td>{r.id}</td><td>{r.type}</td><td>{money(r.amount)}</td><td><span className={'fees-status '+statusTone(r.status)}>{r.status}</span></td><td>{fmtDate(r.date)}</td><td>{fmtDate(r.paid)}</td></tr>)}</tbody></table>{!settlements.length&&<div className="fees-empty">No settlements recorded for this loan.</div>}</div></article>
-   <article className="fees-card"><h3>Payment/audit events</h3><p>Key events for this accrual</p><div className="fees-events">{events.map((e,i)=><div className="fees-event" key={i}><i className={'fees-dot '+(i===events.length-1?'pending':'')}/><div><b>{fmtDate(e.date)} · {e.title}</b><span>{e.detail}</span></div></div>)}{!events.length&&<div className="fees-empty">No payment or audit events recorded.</div>}</div></article>
-  </div></section>
- </main>;
+function exportRecords(records) {
+  const keys = [
+    "label",
+    "loanId",
+    "symbol",
+    "lender",
+    "kind",
+    "category",
+    "date",
+    "amount",
+    "rate",
+    "status",
+  ];
+  const text = [keys, ...records.map((r) => keys.map((k) => r[k] ?? ""))]
+    .map((row) =>
+      row.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(","),
+    )
+    .join("\n");
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "fees-rebates.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+export default function FeesRebates() {
+  const { data, loading, error, refresh } = useFeesData();
+  const records = useMemo(() => buildFeeRecords(data), [data]);
+  const [params, setParams] = useSearchParams(),
+    navigate = useNavigate();
+  const [expanded, setExpanded] = useState(null);
+  const search = params.get("q") ?? "",
+    type = params.get("type") ?? "ALL";
+  const lender = params.get("lender") ?? "",
+    security = params.get("security") ?? "",
+    status = params.get("status") ?? "",
+    from = params.get("from") ?? "",
+    to = params.get("to") ?? "";
+  const filtered = records.filter(
+    (r) =>
+      (type === "ALL" || r.kind === type) &&
+      (!lender || r.lender === lender) &&
+      (!security || r.symbol === security) &&
+      (!status || r.status === status) &&
+      (!from || r.date.slice(0, 10) >= from) &&
+      (!to || r.date.slice(0, 10) <= to) &&
+      `${r.label} ${r.loanId} ${r.symbol} ${r.lender}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+  );
+  const pages = Math.max(1, Math.ceil(filtered.length / 10)),
+    page = Math.max(
+      0,
+      Math.min(Math.floor(Number(params.get("page"))) || 0, pages - 1),
+    );
+  const query = params.toString() ? `?${params}` : "";
+  const update = (k, v) => {
+    const next = new URLSearchParams(params);
+    if (v) next.set(k, String(v));
+    else next.delete(k);
+    if (k !== "page") next.delete("page");
+    setParams(next, { replace: true });
+  };
+  const daily = filtered.filter((r) => r.category === "accruals");
+  const totals = Object.entries(
+    daily.reduce((groups, r) => {
+      (groups[r.currency] ??= []).push(r);
+      return groups;
+    }, {}),
+  ).map(([currency, rows]) => ({
+    currency,
+    fee: rows
+      .filter((r) => r.kind === "FEE")
+      .reduce((n, r) => n + (r.amount ?? 0), 0),
+    rebate: rows
+      .filter((r) => r.kind === "REBATE")
+      .reduce((n, r) => n + (r.amount ?? 0), 0),
+  }));
+  const amounts = (key) =>
+    totals.length
+      ? totals
+          .map((t) =>
+            money(key === "net" ? t.fee - t.rebate : t[key], t.currency),
+          )
+          .join(" / ")
+      : "—";
+  const options = (key) =>
+    [...new Set(records.map((r) => r[key]).filter(Boolean))].sort();
+  return (
+    <main className="fee-desk">
+      <header className="fd-heading">
+        <div>
+          <h1>Fees &amp; Rebates</h1>
+          <p>Recorded borrowing fees, cash rebates and settlements.</p>
+        </div>
+        <div className="fd-actions">
+          <button onClick={refresh} disabled={loading}>
+            <RefreshCw size={14} />
+            Refresh
+          </button>
+          <button onClick={() => exportRecords(filtered)}>
+            <Download size={14} />
+            Export
+          </button>
+        </div>
+      </header>
+      <div className="fd-metrics">
+        <span>
+          Recorded fees <b>{amounts("fee")}</b>
+        </span>
+        <span>
+          Recorded rebates <b>{amounts("rebate")}</b>
+        </span>
+        <span>
+          Net accrued <b>{amounts("net")}</b>
+        </span>
+        <span>
+          Due fee bills{" "}
+          <b>
+            {
+              filtered.filter(
+                (r) => r.category === "fees" && r.status === "DUE",
+              ).length
+            }
+          </b>
+        </span>
+        <span>
+          Payment requests{" "}
+          <b>
+            {
+              data.feePayments.filter(
+                (r) =>
+                  !["CONFIRMED", "PAID", "REJECTED", "FAILED"].includes(
+                    r.status,
+                  ),
+              ).length
+            }
+          </b>
+        </span>
+        <span>
+          Matching records <b>{filtered.length}</b>
+        </span>
+      </div>
+      <div className="fd-filters">
+        <label>
+          Search
+          <input
+            value={search}
+            placeholder="Record, loan, security or lender"
+            onChange={(e) => update("q", e.target.value)}
+          />
+        </label>
+        <label>
+          Type
+          <select value={type} onChange={(e) => update("type", e.target.value)}>
+            <option value="ALL">All types</option>
+            <option value="FEE">Lending fees</option>
+            <option value="REBATE">Cash rebates</option>
+          </select>
+        </label>
+        {[
+          ["lender", "Lender", lender],
+          ["symbol", "Security", security],
+          ["status", "Status", status],
+        ].map(([key, label, value]) => (
+          <label key={key}>
+            {label}
+            <select
+              value={value}
+              onChange={(e) =>
+                update(key === "symbol" ? "security" : key, e.target.value)
+              }
+            >
+              <option value="">All {label.toLowerCase()}s</option>
+              {options(key).map((v) => (
+                <option key={v}>{v}</option>
+              ))}
+            </select>
+          </label>
+        ))}
+        <label>
+          From
+          <input
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => update("from", e.target.value)}
+          />
+        </label>
+        <label>
+          To
+          <input
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => update("to", e.target.value)}
+          />
+        </label>
+        <button onClick={() => setParams({})}>Clear</button>
+      </div>
+      {error && (
+        <p role="alert" className="fd-error">
+          {error}
+        </p>
+      )}
+      <section className="fd-register">
+        <DetailsTable
+          headers={[
+            "",
+            "Record",
+            "Loan",
+            "Security",
+            "Lender",
+            "Type",
+            "Date / period end",
+            "Base value",
+            "Rate (bps)",
+            "Amount",
+            "Due date",
+            "Status",
+            "",
+          ]}
+        >
+          {filtered.slice(page * 10, (page + 1) * 10).map((r) => (
+            <Fragment key={r.key}>
+              <tr
+                className={expanded === r.key ? "fd-selected" : ""}
+                onClick={(e) => {
+                  if (!e.target.closest("a,button"))
+                    navigate(feeRecordPath(r) + query);
+                }}
+              >
+                <td>
+                  <button
+                    aria-label={`${expanded === r.key ? "Collapse" : "Expand"} ${r.label}`}
+                    aria-expanded={expanded === r.key}
+                    onClick={() =>
+                      setExpanded(expanded === r.key ? null : r.key)
+                    }
+                  >
+                    {expanded === r.key ? (
+                      <ChevronDown size={14} />
+                    ) : (
+                      <ChevronRight size={14} />
+                    )}
+                  </button>
+                </td>
+                <td>
+                  <Link to={feeRecordPath(r) + query}>{r.label}</Link>
+                </td>
+                <td>LN-{String(r.loanId).padStart(6, "0")}</td>
+                <td>{r.symbol}</td>
+                <td>{r.lender}</td>
+                <td>
+                  {kind(r)}
+                  <small>
+                    {r.category === "accruals" ? "Daily accrual" : "Settlement"}
+                  </small>
+                </td>
+                <td>{date(r.date)}</td>
+                <td className="num">{money(r.baseValue, r.currency)}</td>
+                <td className="num">
+                  {r.rate == null ? "—" : number(r.rate * 10000)}
+                </td>
+                <td className="num">{money(r.amount, r.currency)}</td>
+                <td>{date(r.dueDate)}</td>
+                <td>
+                  <Badge value={r.status} />
+                </td>
+                <td>
+                  <Link
+                    to={feeRecordPath(r) + query}
+                    aria-label={`Open workspace ${r.label}`}
+                  >
+                    <ExternalLink size={14} />
+                  </Link>
+                </td>
+              </tr>
+              {expanded === r.key && (
+                <tr className="fd-inline">
+                  <td colSpan={13}>
+                    <div className="fd-inline-heading">
+                      <b>
+                        {r.label} / {r.symbol}
+                      </b>
+                      <Link
+                        className="fd-primary"
+                        to={feeRecordPath(r) + query}
+                      >
+                        Open workspace <ExternalLink size={13} />
+                      </Link>
+                    </div>
+                    <div className="fd-inline-grid">
+                      <Card title="Calculation context">
+                        <Fields
+                          rows={[
+                            ["Historical base", money(r.baseValue, r.currency)],
+                            [
+                              "Annual rate",
+                              r.rate == null
+                                ? "—"
+                                : `${number(r.rate * 10000)} bps`,
+                            ],
+                            [
+                              "Current day basis",
+                              r.dayBasis ? `Actual/${r.dayBasis}` : "—",
+                            ],
+                            ["Recorded amount", money(r.amount, r.currency)],
+                          ]}
+                        />
+                        <p className="fd-formula">
+                          Daily accrual = base × annual rate ÷ day basis
+                        </p>
+                      </Card>
+                      <DailyHistory
+                        key={r.key}
+                        compact
+                        record={r}
+                        data={data}
+                      />
+                      <Card title="Settlement context">
+                        <Fields
+                          rows={[
+                            ["Reference", r.bill?.id ?? "Not issued"],
+                            ["Status", r.bill?.status ?? "Not issued"],
+                            ["Due / scheduled", date(r.dueDate)],
+                            ["Paid date", date(r.bill?.paidAt)],
+                          ]}
+                        />
+                      </Card>
+                      <Payments record={r} data={data} />
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          ))}
+          {!filtered.length && (
+            <tr>
+              <td colSpan={13}>
+                {loading
+                  ? "Loading fees and rebates…"
+                  : "No recorded entries match this view."}
+              </td>
+            </tr>
+          )}
+        </DetailsTable>
+        <Pagination
+          page={page}
+          pages={pages}
+          total={filtered.length}
+          onPage={(value) => update("page", value)}
+        />
+      </section>
+    </main>
+  );
+}
+export function FeeWorkspace() {
+  const { category, id } = useParams();
+  const { search } = useLocation();
+  const { data, loading, error, refresh } = useFeesData();
+  const records = useMemo(() => buildFeeRecords(data), [data]);
+  const record = records.find(
+    (r) => r.category === category && String(r.id) === id,
+  );
+  const [tab, setTab] = useState("Overview");
+  const [busy, setBusy] = useState(false),
+    [notice, setNotice] = useState("");
+  const dialog = useRef(null),
+    requestKey = useRef(null);
+  const bill = record?.kind === "FEE" ? record.bill : null;
+  const payable = bill?.status === "DUE";
+  async function pay() {
+    if (busy || !bill) return;
+    setBusy(true);
+    setNotice("");
+    if (requestKey.current?.billId !== bill.id)
+      requestKey.current = { billId: bill.id, key: crypto.randomUUID() };
+    try {
+      await billingApi.payFee(bill.id, requestKey.current.key);
+      setNotice(
+        "Payment request accepted. Refresh to check confirmation; acceptance does not mean settlement.",
+      );
+      dialog.current.close();
+      refresh();
+    } catch (e) {
+      setNotice(
+        `${e.message}. If the outcome is uncertain, refresh before retrying; the same request key is retained.`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <main className="fee-desk fd-workspace">
+      <Link className="fd-back" to={"/fees-rebates" + search}>
+        ← Back to Fees &amp; Rebates
+      </Link>
+      {loading ? (
+        <p role="status">Loading record…</p>
+      ) : error ? (
+        <p role="alert" className="fd-error">
+          {error}
+        </p>
+      ) : !record ? (
+        <section className="fd-card">
+          <h1>Record not found</h1>
+          <p>This record is unavailable for the configured organization.</p>
+        </section>
+      ) : (
+        <>
+          <header className="fd-heading">
+            <div>
+              <p>Fees &amp; Rebates / {record.label}</p>
+              <h1>
+                {record.label} / {record.symbol} <Badge value={record.status} />
+              </h1>
+              <p>
+                {record.lender} · Loan {record.loanId} · {kind(record)}
+              </p>
+            </div>
+            <div className="fd-actions">
+              <button onClick={refresh}>Refresh</button>
+              <button onClick={() => exportRecords([record])}>
+                Export statement
+              </button>
+              {payable && (
+                <button
+                  className="fd-primary"
+                  onClick={() => dialog.current.showModal()}
+                >
+                  Request fee payment
+                </button>
+              )}
+            </div>
+          </header>
+          <div className="fd-metrics">
+            <span>
+              Historical base <b>{money(record.baseValue, record.currency)}</b>
+            </span>
+            <span>
+              Recorded amount <b>{money(record.amount, record.currency)}</b>
+            </span>
+            <span>
+              Annual rate{" "}
+              <b>
+                {record.rate == null
+                  ? "—"
+                  : `${number(record.rate * 10000)} bps`}
+              </b>
+            </span>
+            <span>
+              Date <b>{date(record.date)}</b>
+            </span>
+            <span>
+              Due / scheduled <b>{date(record.dueDate)}</b>
+            </span>
+            <span>
+              Day basis{" "}
+              <b>{record.dayBasis ? `Actual/${record.dayBasis}` : "—"}</b>
+            </span>
+          </div>
+          <nav className="fd-tabs" role="tablist" aria-label="Record workspace">
+            {[
+              "Overview",
+              "Daily accruals",
+              "Settlements",
+              "Payment history",
+            ].map((name) => (
+              <button
+                key={name}
+                role="tab"
+                aria-selected={tab === name}
+                onClick={() => setTab(name)}
+              >
+                {name}
+              </button>
+            ))}
+          </nav>
+          {notice && <p role="status">{notice}</p>}
+          <div className="fd-workspace-body">
+            {tab === "Overview" ? (
+              <>
+                <RecordOverview record={record} />
+                <div className="fd-workspace-grid">
+                  <DailyHistory key={record.key} record={record} data={data} />
+                  <div className="fd-side-stack">
+                    <Settlements record={record} data={data} />
+                    <Payments record={record} data={data} />
+                  </div>
+                </div>
+              </>
+            ) : tab === "Daily accruals" ? (
+              <DailyHistory key={record.key} record={record} data={data} />
+            ) : tab === "Settlements" ? (
+              <Settlements record={record} data={data} />
+            ) : (
+              <Payments record={record} data={data} />
+            )}
+          </div>
+          <dialog
+            ref={dialog}
+            onCancel={(e) => {
+              if (busy) e.preventDefault();
+            }}
+          >
+            <h2>Request fee payment</h2>
+            <p>
+              Bill FEE-{bill?.id} · {money(bill?.feeAmount, record.currency)}
+            </p>
+            <p>This sends a real payment request to the borrower service.</p>
+            {notice && <p role="alert">{notice}</p>}
+            <div className="fd-actions">
+              <button disabled={busy} onClick={() => dialog.current.close()}>
+                Back
+              </button>
+              <button className="fd-primary" disabled={busy} onClick={pay}>
+                {busy ? "Submitting…" : "Confirm payment request"}
+              </button>
+            </div>
+          </dialog>
+        </>
+      )}
+    </main>
+  );
 }
