@@ -150,3 +150,14 @@
 .trading-workstation .trade-side.side-sell {
   color: #b23e35;
 }
+
+
+/* Ownership source badges in the positions register. */
+.trading-workstation .position-source.owned {
+  background: #e0f2e6;
+  color: #247b48;
+}
+.trading-workstation .position-source.borrowed {
+  background: #fff0d9;
+  color: #a96512;
+}
