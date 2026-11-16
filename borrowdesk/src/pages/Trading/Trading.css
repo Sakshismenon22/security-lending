@@ -244,10 +244,6 @@
 .order-row-actions button { display:inline-flex; align-items:center; justify-content:center; width:26px; height:25px; padding:3px; border:1px solid var(--border); border-radius:4px; background:white; color:var(--primary-hover); }
 .order-row-actions .order-cancel-action { color:#b73e48; }
 .order-row-actions button:disabled { opacity:.45; }
-.unfilled-orders { flex:none; min-height:0; border-top:1px solid var(--border); }
-.unfilled-orders h3 { margin:0; padding:8px 12px; font-size:11px; background:var(--surface-muted); }
-.unfilled-orders h3 span { margin-left:5px; color:var(--primary-hover); }
-.unfilled-orders .bottom-table-wrap { max-height:165px; overflow:auto; }
 .order-management-notice { margin:0; padding:8px 12px; background:#e7f6ed; color:#187543; font-size:12px; }
 .order-management-dialog { width:min(420px,calc(100vw - 32px)); padding:20px; border:1px solid var(--border); border-radius:8px; color:var(--ink); background:var(--surface); }
 .order-management-dialog::backdrop { background:#25223a66; }
@@ -260,7 +256,4 @@
 .order-management-dialog .order-management-confirm { background:var(--primary); color:white; }
 .order-management-dialog .order-management-error { color:#b73e48; }
 .order-management-dialog footer { justify-content:flex-end; margin-top:16px; }
-.trading-workstation .trading-bottom-panel:has(.unfilled-orders):not(.is-minimized) { height:36%; min-height:235px; }
-.trading-bottom-panel.is-minimized .unfilled-orders { display:none; }
-.unfilled-orders .bottom-table-wrap { max-height:120px; }
 .order-row-actions button:focus-visible,.order-management-dialog :is(button,input,select):focus-visible { outline:2px solid var(--primary); outline-offset:2px; }

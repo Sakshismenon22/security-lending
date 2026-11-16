@@ -241,12 +241,11 @@ export default function TradingRegister({
   };
   return (
     <OrderManagement
-      orders={orders}
       trades={trades}
       securities={securities}
       onChanged={onOrdersChanged}
     >
-      {({ actions, pending, symbol: orderSymbol }) => (
+      {({ actions }) => (
         <section
           className={`trading-bottom-panel${minimized ? " is-minimized" : ""}`}
         >
@@ -371,61 +370,6 @@ export default function TradingRegister({
                 </tbody>
               </table>
             </div>
-            {tab === "Open Positions" && (
-              <section className="unfilled-orders">
-                <h3>
-                  Unfilled orders <span>{pending.length}</span>
-                </h3>
-                <div className="bottom-table-wrap">
-                  <table className="bottom-trading-table">
-                    <thead>
-                      <tr>
-                        {[
-                          "Order",
-                          "Security",
-                          "Side",
-                          "Source",
-                          "Type",
-                          "Quantity",
-                          "Limit price",
-                          "Status",
-                          "Actions",
-                        ].map((h) => (
-                          <th key={h}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pending.map((order) => (
-                        <tr key={order.id}>
-                          <td>#{order.id}</td>
-                          <td>{orderSymbol(order)}</td>
-                          <td>{order.side}</td>
-                          <td>{order.source}</td>
-                          <td>{order.type}</td>
-                          <td>{number(order.quantity)}</td>
-                          <td>
-                            {order.type === "MARKET"
-                              ? "Market"
-                              : money(order.limitPrice ?? order.limit_price)}
-                          </td>
-                          <td>{order.status}</td>
-                          <td>{actions(order)}</td>
-                        </tr>
-                      ))}
-                      {!pending.length && (
-                        <tr>
-                          <td colSpan={9} className="trade-empty">
-                            No unfilled orders. Filled positions cannot be
-                            edited or cancelled.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            )}
             {isPosition && visible.length > 0 && (
               <div className="register-position-total">
                 Open legs: {openPositions.length} · Day MTM P&amp;L:{" "}

@@ -134,4 +134,4 @@ Quantity must be a positive integer. Type is `LIMIT` or `MARKET`; limit orders r
 
 `POST /api/v1/organizations/{org}/orders/{id}/cancel` cancels the unfilled order and releases its reservation. Both operations verify organization ownership and reject orders that have executions or are no longer pending. Updates atomically replace cash/share reservations; failed updates roll back the original order and reservation. Trading, updates and cancellation share the organization lock. Audit events record order updates and cancellations.
 
-BorrowDesk exposes edit and cancel icons in Orders and in the Unfilled orders section of Open Positions. Filled holdings remain positions; cancellation changes an order's status rather than deleting its history.
+BorrowDesk exposes edit and cancel icons in Orders. Filled holdings remain positions; cancellation changes an order's status rather than deleting its history.

@@ -9,7 +9,6 @@ export const isUnfilledOrder = (order, trades = []) =>
   );
 
 export default function OrderManagement({
-  orders,
   trades,
   securities,
   onChanged,
@@ -104,10 +103,9 @@ export default function OrderManagement({
       setBusy(false);
     }
   }
-  const pending = orders.filter((order) => isUnfilledOrder(order, trades));
   return (
     <>
-      {children({ actions, pending, symbol })}
+      {children({ actions })}
       {notice && (
         <p className="order-management-notice" role="status">
           {notice}
