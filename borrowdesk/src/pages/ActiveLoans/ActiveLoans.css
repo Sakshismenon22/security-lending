@@ -187,3 +187,29 @@
   .active-loans-page .al-inline-detail .al-detail-head { flex-wrap:wrap; }
   .active-loans-page .al-inline-detail .al-detail-actions { flex-wrap:wrap; }
 }
+
+.active-loans-page .al-table th.view-col,
+.active-loans-page .al-table td.view-col {
+  width:48px;
+  min-width:48px;
+  max-width:48px;
+  text-align:center;
+  padding:0 5px;
+}
+.active-loans-page .al-view-btn {
+  width:27px;
+  height:25px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid transparent;
+  border-radius:4px;
+  background:transparent;
+  color:var(--primary);
+  cursor:pointer;
+}
+.active-loans-page .al-view-btn:hover {
+  border-color:var(--border);
+  background:var(--selection);
+  color:var(--primary-hover);
+}
