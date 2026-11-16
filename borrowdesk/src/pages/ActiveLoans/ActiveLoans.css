@@ -214,10 +214,3 @@
   color:var(--primary-hover);
 }
 
-
-/* Bottom detail workspace size control, consistent with the Trading screen. */
-.al-detail.details-minimized { flex: 0 0 36px !important; min-height:36px !important; }
-.al-detail.details-minimized .al-detail-grid { display:none !important; }
-.detail-size-toggle { min-width:82px; justify-content:center; }
-.detail-size-toggle svg { width:12px; height:12px; }
-.al-inline-detail.details-minimized .al-detail-grid{display:none!important}.al-inline-detail.details-minimized{min-height:36px!important;height:36px!important}.al-inline-detail.details-minimized .al-detail-head{height:35px;min-height:35px}
