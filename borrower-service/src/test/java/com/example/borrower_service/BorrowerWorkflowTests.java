@@ -213,6 +213,19 @@ class BorrowerWorkflowTests {
     }
 
     @Test
+    void depositListEndpointReturnsDepositRequests() throws Exception {
+        long org = org();
+        payments.funding(org, new FundingRequest(bd("2500"), "fund-list-1"), true);
+        payments.funding(org, new FundingRequest(bd("1000"), "fund-list-2"), true);
+
+        mvc.perform(get("/api/v1/organizations/{org}/deposits", org).param("page", "0").param("size", "50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.content").isArray())
+                .andExpect(jsonPath("$.data.content[0].type").value("DEPOSIT"));
+    }
+
+    @Test
     void marketBuyAndOwnedSellUpdateHoldingsCashAndRealizedPnl() {
         long org = org(), security = security("100");
         fund(org, "10000");

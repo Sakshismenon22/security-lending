@@ -10,5 +10,6 @@ import java.util.Optional;
 public interface PaymentRequestRepository extends JpaRepository<PaymentRequest,Long> {
     List<PaymentRequest> findByOrganizationId(Long organizationId);
     Page<PaymentRequest> findByOrganizationId(Long organizationId,Pageable pageable);
+    Page<PaymentRequest> findByOrganizationIdAndType(Long organizationId,String type,Pageable pageable);
     Optional<PaymentRequest> findByIdAndOrganizationId(Long id,Long organizationId);
 }

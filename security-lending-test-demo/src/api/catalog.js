@@ -178,6 +178,16 @@ export const actions = [
       note: "Only the currently selected admin user can approve a pending deposit request.",
     },
   ),
+  op(
+    "deposit-list",
+    "Setup",
+    "List deposit requests",
+    "borrower",
+    "GET",
+    "/deposits",
+    undefined,
+    { paged: true, note: "Shows all deposit requests for this organization, including pending approvals and confirmed payments." },
+  ),
   l(
     "agreement-send",
     "Agreements",

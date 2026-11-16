@@ -1,7 +1,11 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { topicName, integer } from "../server/errors.js";
 import { createConfig } from "../server/config.js";
+import { BrokerManager } from "../server/broker.js";
 test("rejects internal and malformed topics", () => {
   for (const name of ["__consumer_offsets", "..", "bad topic", "x/y", "", null])
     assert.throws(() => topicName(name));
@@ -22,4 +26,34 @@ test("local ports are distinct and remote brokers are not locally managed", () =
     createConfig({ KAFKA_BOOTSTRAP_SERVER: "localhost:29092" }).controllerPort,
     29093,
   );
+});
+test("removes stale Kafka checkpoint files before startup", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "relay-broker-"));
+  const dataDir = path.join(tempDir, "data");
+  const partitionDir = path.join(dataDir, "__cluster_metadata-0");
+  fs.mkdirSync(partitionDir, { recursive: true });
+  const staleFile = path.join(
+    partitionDir,
+    "00000000000000000000-0000000000.checkpoint.deleted",
+  );
+  const keepFile = path.join(dataDir, "keep.log");
+  fs.writeFileSync(staleFile, "stale");
+  fs.writeFileSync(keepFile, "keep");
+
+  const broker = new BrokerManager({
+    runtime: tempDir,
+    kafkaHome: tempDir,
+    heapMb: 512,
+    java: "java",
+    brokerPort: 9092,
+    controllerPort: 9093,
+    controlPort: 9094,
+    local: true,
+    projectRoot: tempDir,
+  });
+
+  broker.cleanupStaleRuntimeFiles();
+
+  assert.equal(fs.existsSync(staleFile), false);
+  assert.equal(fs.existsSync(keepFile), true);
 });

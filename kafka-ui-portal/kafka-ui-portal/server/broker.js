@@ -92,9 +92,31 @@ export class BrokerManager {
       );
     });
   }
+  cleanupStaleRuntimeFiles(baseDir = path.join(this.config.runtime, "data")) {
+    if (!fs.existsSync(baseDir)) return;
+    const queue = [baseDir];
+    while (queue.length) {
+      const current = queue.pop();
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        const fullPath = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          queue.push(fullPath);
+          continue;
+        }
+        if (
+          entry.name.endsWith(".deleted") ||
+          entry.name === ".lock" ||
+          entry.name.toLowerCase().endsWith(".lock")
+        ) {
+          fs.rmSync(fullPath, { force: true, recursive: true });
+        }
+      }
+    }
+  }
   writeConfig() {
     fs.mkdirSync(this.config.runtime, { recursive: true });
     fs.mkdirSync(path.join(this.config.runtime, "logs"), { recursive: true });
+    this.cleanupStaleRuntimeFiles();
     const data = path.join(this.config.runtime, "data").replaceAll("\\", "/");
     // Dedicated managed configuration: never edit or format the bundled distribution's existing storage.
     fs.writeFileSync(

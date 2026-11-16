@@ -99,4 +99,10 @@ public class BorrowerReadService {
             default -> throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Unknown resource");
         };
     }
+    public Object listDeposits(long org,int page,int size) {
+        db.find(Organization.class, org);
+        if(page<0 || size<1 || size>200)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"page must be nonnegative and size between 1 and 200");
+        var pageable=PageRequest.of(page,size,Sort.by(Sort.Direction.DESC,"id"));
+        return paymentRequestRepository.findByOrganizationIdAndType(org,"DEPOSIT",pageable);
+    }
 }
