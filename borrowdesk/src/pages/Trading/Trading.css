@@ -109,3 +109,44 @@
 .trading-bottom-panel.is-minimized .bottom-panel-top {
   border-bottom: 0;
 }
+
+
+/* Consistent trading-side colors across the order ticket, trade tape and registers. */
+.trading-workstation .buy-sell-toggle button.buy {
+  color: #23834b;
+  background: #e5f4ea;
+  border-color: #b8dfc5;
+}
+.trading-workstation .buy-sell-toggle button.sell {
+  color: #b23e35;
+  background: #fbe9e7;
+  border-color: #edc2bd;
+}
+.trading-workstation .buy-sell-toggle button.buy.active {
+  color: #fff;
+  background: #29975d;
+  border-color: #238650;
+}
+.trading-workstation .buy-sell-toggle button.sell.active {
+  color: #fff;
+  background: #b23e35;
+  border-color: #9d332c;
+}
+.trading-workstation .review-order.buy {
+  background: #29975d;
+  border-color: #238650;
+}
+.trading-workstation .review-order.sell {
+  background: #b23e35;
+  border-color: #9d332c;
+}
+.trading-workstation .trade-side {
+  display: inline-block;
+  font-weight: 750;
+}
+.trading-workstation .trade-side.side-buy {
+  color: #23834b;
+}
+.trading-workstation .trade-side.side-sell {
+  color: #b23e35;
+}
