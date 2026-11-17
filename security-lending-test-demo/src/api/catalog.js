@@ -32,6 +32,11 @@ export const categories = [
   "Operations",
 ];
 export const actions = [
+  ...["borrower", "lender"].flatMap(side => [
+    op(`${side}-delivery-failures`, "Operations", "View failed deliveries", side, "GET", "/delivery-failures"),
+    op(`${side}-delivery-retry`, "Operations", "Retry failed delivery", side, "POST", "/delivery-failures/{id}/retry", {}, { note: "Use the failure ID from View failed deliveries. Reuses the original event ID." , deliveryFailureId: true }),
+    op(`${side}-delivery-close`, "Operations", "Close failed delivery", side, "POST", "/delivery-failures/{id}/close", {}, { note: "Stops transport retries. Does not cancel financial activity; reconcile before replacing a request.", deliveryFailureId: true }),
+  ]),
   b(
     "register-b",
     "Setup",
@@ -852,9 +857,9 @@ export function requestPath(action, org, id, page = 0, size = 25) {
   const isLifecycleApi = action.path.startsWith("/api/v1/lifecycle");
   if (!action.global && !isLifecycleApi && !/^[1-9]\d*$/.test(String(org)))
     throw Error("Select a valid organization first.");
-  if (action.path.includes("{id}") && !/^[1-9]\d*$/.test(String(id)))
+  if (action.path.includes("{id}") && !(action.deliveryFailureId ? /^(OUTBOX|BORROWER_FIX|LENDER_FIX):(kafka|outbound|publications):[1-9]\d*$/.test(String(id)) : /^[1-9]\d*$/.test(String(id))))
     throw Error("Enter the resource ID from this service.");
   let path = action.global || isLifecycleApi ? action.path : `/api/v1/organizations/${org}${action.path}`;
-  path = path.replace("{id}", String(id));
+  path = path.replace("{id}", encodeURIComponent(String(id)));
   return path + (action.paged ? `?page=${page}&size=${size}` : "");
 }

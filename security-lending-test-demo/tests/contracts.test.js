@@ -142,3 +142,12 @@ test("HTTP errors remain failures and fee idempotency keys reach the proxy", asy
     globalThis.fetch = original;
   }
 });
+
+test("delivery recovery accepts only scoped failure keys and encodes them in paths", () => {
+  for (const side of ["borrower", "lender"]) {
+    const retry=actions.find(a=>a.id===`${side}-delivery-retry`);
+    assert.equal(requestPath(retry,7,"OUTBOX:kafka:3"),"/api/v1/organizations/7/delivery-failures/OUTBOX%3Akafka%3A3/retry");
+    assert.throws(()=>requestPath(retry,7,"../other"));
+    assert.throws(()=>requestPath(retry,7,"https://host"));
+  }
+});

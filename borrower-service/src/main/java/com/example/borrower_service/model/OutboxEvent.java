@@ -1,44 +1,57 @@
 package com.example.borrower_service.model;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 /** Persistence model for outbox_event; foreign keys are defined by Flyway. */
 @Entity
-@Table(name="outbox_event")
+@Table(name = "outbox_event")
 @Getter
 @Setter
 @NoArgsConstructor
 public class OutboxEvent {
-    @Id
-    @GeneratedValue(strategy=GenerationType.IDENTITY)
-    @Column(name="id",nullable=false)
-    private Long id;
 
-    @Column(name="organization_id",nullable=false)
-    private Long organizationId;
+  @Column(name = "status", nullable = false, length = 30)
+  private String status = "PENDING";
 
-    @Column(name="event_type",nullable=false,length=80)
-    private String eventType;
+  @Column(name = "attempts", nullable = false)
+  private Integer attempts = 0;
 
-    @Column(name="aggregate_id",nullable=false,length=120)
-    private String aggregateId;
+  @Column(name = "next_attempt_at", nullable = false)
+  private Instant nextAttemptAt = Instant.now();
 
-    @Column(name="payload",nullable=false,columnDefinition="text")
-    private String payload;
+  @Column(name = "last_error", length = 1000)
+  private String lastError;
 
-    @Column(name="published",nullable=false)
-    private Boolean published = false;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Column(name = "id", nullable = false)
+  private Long id;
 
-    @Column(name="created_at",nullable=false)
-    private Instant createdAt = Instant.now();
+  @Column(name = "organization_id", nullable = false)
+  private Long organizationId;
 
-    @Column(name="ws_sent",nullable=false)
-    private Boolean wsSent = false;
+  @Column(name = "event_type", nullable = false, length = 80)
+  private String eventType;
 
+  @Column(name = "aggregate_id", nullable = false, length = 120)
+  private String aggregateId;
+
+  @com.fasterxml.jackson.annotation.JsonIgnore
+  @Column(name = "payload", nullable = false, columnDefinition = "text")
+  private String payload;
+
+  @Column(name = "published", nullable = false)
+  private Boolean published = false;
+
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt = Instant.now();
+
+  @Column(name = "ws_sent", nullable = false)
+  private Boolean wsSent = false;
 }

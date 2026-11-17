@@ -1,0 +1,119 @@
+.delivery-failures {
+  position: fixed;
+  top: 8px;
+  right: 14px;
+  z-index: 80;
+  color: var(--ink, #25223a);
+  font:
+    12px Inter,
+    Arial,
+    sans-serif;
+}
+.delivery-trigger {
+  border: 1px solid #e2b448;
+  background: #fff4d7;
+  color: #805b0f;
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+.delivery-trigger span {
+  font-weight: 700;
+}
+.delivery-popover {
+  margin-top: 7px;
+  width: min(460px, calc(100vw - 28px));
+  max-height: 80vh;
+  overflow: auto;
+  border: 1px solid var(--border, #e4e0f4);
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 8px 30px #25223a26;
+  padding: 14px;
+}
+.delivery-popover header,
+.delivery-popover footer,
+.delivery-dialog footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.delivery-popover h2,
+.delivery-dialog h2 {
+  font-size: 15px;
+  margin: 0 auto 0 0;
+}
+.delivery-popover p,
+.delivery-dialog p {
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.delivery-popover ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.delivery-popover li {
+  border: 1px solid var(--border, #e4e0f4);
+  padding: 10px;
+  margin-top: 8px;
+  border-radius: 5px;
+}
+.delivery-popover strong {
+  font-size: 12px;
+}
+.delivery-popover small {
+  display: block;
+  margin-top: 6px;
+  color: #756f91;
+}
+.delivery-state {
+  display: block;
+  font-weight: 700;
+  color: #a53d35;
+  margin-top: 4px;
+}
+.delivery-popover code {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  color: #756f91;
+  margin-bottom: 10px;
+}
+.delivery-popover button,
+.delivery-dialog button {
+  padding: 5px 9px;
+  border: 1px solid var(--border, #e4e0f4);
+  border-radius: 4px;
+  background: white;
+  color: #5746ce;
+  font-size: 12px;
+  cursor: pointer;
+}
+.delivery-popover button:disabled,
+.delivery-dialog button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.delivery-dialog {
+  width: min(440px, calc(100vw - 28px));
+  padding: 20px;
+  border: 1px solid #e4e0f4;
+  border-radius: 8px;
+  color: #25223a;
+}
+.delivery-dialog::backdrop {
+  background: #25223a77;
+}
+.delivery-dialog footer {
+  justify-content: flex-end;
+}
+.delivery-error {
+  color: #b23e35;
+}
+.delivery-failures button:focus-visible {
+  outline: 2px solid #6d5ce7;
+  outline-offset: 2px;
+}

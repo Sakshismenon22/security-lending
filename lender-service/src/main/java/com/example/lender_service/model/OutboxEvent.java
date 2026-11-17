@@ -12,6 +12,10 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class OutboxEvent {
+
+  @Column(name = "status", nullable = false, length = 30)
+  private String status = "PENDING";
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   @Column(name = "id", nullable = false)

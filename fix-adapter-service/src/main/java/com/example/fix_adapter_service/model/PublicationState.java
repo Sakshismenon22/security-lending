@@ -1,3 +1,9 @@
 package com.example.fix_adapter_service.model;
 
-public enum PublicationState { PENDING, PUBLISHED, SUSPENDED }
+public enum PublicationState {
+  PENDING,
+  PUBLISHED,
+  SUSPENDED,
+  FAILED,
+  CLOSED,
+}

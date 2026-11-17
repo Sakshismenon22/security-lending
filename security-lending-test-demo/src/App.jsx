@@ -1086,8 +1086,9 @@ export default function App() {
                                 ID
                               </small>
                               <input
-                                type="number"
-                                min="1"
+                                type={operation.deliveryFailureId ? "text" : "number"}
+                                min={operation.deliveryFailureId ? undefined : "1"}
+                                placeholder={operation.deliveryFailureId ? "OUTBOX:kafka:1" : undefined}
                                 required
                                 value={resourceId}
                                 onChange={(e) => setResourceId(e.target.value)}
