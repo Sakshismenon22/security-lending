@@ -97,7 +97,10 @@ public class BorrowerEventProjectionService {
                     returned(org, id, event.type().equals("RETURN_SETTLED"));
             case "COLLATERAL_PLEDGED" -> collateral.applyPledgeConfirmation(org, id);
             case "COLLATERAL_REJECTED" -> collateral.applyReleaseConfirmation(org, id, true);
-            case "COLLATERAL_RELEASED" -> collateral.applyReleaseConfirmation(org, id, false);
+            case "COLLATERAL_RELEASED" -> collateral.applyReleaseConfirmation(
+                    org, id, false,
+                    d.get("cashAmount") != null ? decimal(d, "cashAmount") : null,
+                    d.get("quantity") != null ? Long.valueOf(d.get("quantity").toString()) : null);
             case "COLLATERAL_RELEASE_REJECTED" -> {
                 var p = db.owned(CollateralPosition.class, org, id);
                 require(
@@ -108,6 +111,13 @@ public class BorrowerEventProjectionService {
                         id,
                         entity -> {
                             entity.setStatus("POSTED");
+                            entity.setReleaseRequestStatus("REJECTED");
+                            String reason = String.valueOf(
+                                    d.getOrDefault("reason", d.getOrDefault("reference", "Rejected by lender")));
+                            entity.setReleaseRejectionReason(
+                                    reason.substring(0, Math.min(1000, reason.length())));
+                            entity.setRequestedReleaseCash(null);
+                            entity.setRequestedReleaseQuantity(null);
                         });
             }
             case "PAYMENT_CONFIRMED", "PAYMENT_REJECTED" ->
@@ -195,7 +205,9 @@ public class BorrowerEventProjectionService {
                         "BUY_IN_REPORTED",
                         "LOAN_SETTLED",
                         "RETURN_SETTLED",
-                        "REBATE_PAID")
+                        "REBATE_PAID",
+                        "COLLATERAL_RELEASED",
+                        "COLLATERAL_RELEASE_REJECTED")
                 .contains(event.type()))
             db.create(
                     Notification::new,

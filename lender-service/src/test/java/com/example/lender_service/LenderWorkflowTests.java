@@ -1280,6 +1280,96 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void partialReleaseRechecksMarketCoverageAndPreservesImmutableCashMovements() throws Exception {
+    var org = organization();
+    var c = connection(org);
+    long sec = security("100");
+    var loan = activeLoan(org, c, sec, true);
+    var p = positions.findByLoanId(loan.getId()).get(0);
+    command(
+      org,
+      "COLLATERAL_RELEASE_REQUESTED",
+      400,
+      10,
+      Map.of("cashAmount", bd("400"), "quantity", 0)
+    );
+    var row = (Map<?, ?>) (
+      (List<?>) loanScreen.detail(org.getId(), loan.getId()).get("collateral")
+    ).get(0);
+    assertEquals(
+      0,
+      bd("400").compareTo((BigDecimal) row.get("requestedReleaseCash"))
+    );
+    // The loan price rises after the request: acceptance must use today's coverage, not submission's.
+    market.quote(sec, bd("110"), Instant.now().minusSeconds(30));
+    assertThrows(ResponseStatusException.class, () ->
+      collateral.release(org.getId(), p.getId(), "BLOCKED", true)
+    );
+    assertEquals("RELEASE_REQUESTED", p.getStatus());
+    market.quote(sec, bd("100"), Instant.now().minusSeconds(10));
+    mvc
+      .perform(
+        post(
+          "/api/v1/organizations/" +
+            org.getId() +
+            "/collateral/" +
+            p.getId() +
+            "/release-confirmations"
+        )
+          .contentType("application/json")
+          .content("{\"reference\":\"PARTIAL-RELEASE\"}")
+      )
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.data.status").value("POSTED"));
+    assertEquals(0, bd("10600").compareTo(p.getCashAmount()));
+    assertEquals(
+      0,
+      bd("10600").compareTo(
+        accounts
+          .findByOrganizationId(org.getId())
+          .orElseThrow()
+          .getCashCollateralHeld()
+      )
+    );
+    var movements = valuationEm
+      .createQuery(
+        "select h from CollateralHistory h where h.positionId=:id order by h.id",
+        CollateralHistory.class
+      )
+      .setParameter("id", p.getId())
+      .getResultList();
+    assertEquals(0, bd("11000").compareTo(movements.get(0).getCashAmount()));
+    assertEquals(0, bd("400").compareTo(movements.get(1).getCashAmount()));
+    // A full return while another partial release is pending must still release all remaining cash.
+    command(
+      org,
+      "COLLATERAL_RELEASE_REQUESTED",
+      400,
+      10,
+      Map.of("cashAmount", bd("100"), "quantity", 0)
+    );
+    command(org, "RETURN_REQUESTED", 500, 10, new ReturnCommand(300, 100, 0));
+    var returned = returns
+      .findByConnectionIdAndBorrowerReturnId(c.getId(), 500L)
+      .orElseThrow();
+    loanService.returnDecision(
+      org.getId(),
+      returned.getId(),
+      true,
+      "CLOSING-RETURN"
+    );
+    assertEquals("RELEASED", p.getStatus());
+    assertEquals(
+      0,
+      accounts
+        .findByOrganizationId(org.getId())
+        .orElseThrow()
+        .getCashCollateralHeld()
+        .signum()
+    );
+  }
+
+  @Test
   void collateralReleaseWaitsForRequestAndCannotUndercollateralizeAnActiveLoan() {
     var o = organization();
     var c = connection(o);
@@ -1293,6 +1383,9 @@ class LenderWorkflowTests {
         () -> collateral.release(o.getId(), p.getId(), "TOO-EARLY", true));
     collateral.release(o.getId(), p.getId(), "Not enough cover", false);
     assertEquals("POSTED", p.getStatus());
+    var rejection=events.findByOrganizationId(o.getId(),Pageable.unpaged()).getContent().stream()
+        .map(e->json.tree(e.getPayload())).filter(e->"COLLATERAL_RELEASE_REJECTED".equals(e.path("type").asText())).findFirst().orElseThrow();
+    assertEquals("Not enough cover",rejection.path("data").path("reason").asText());
   }
 
   @Test

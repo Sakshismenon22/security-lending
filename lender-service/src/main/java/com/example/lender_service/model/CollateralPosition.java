@@ -13,6 +13,11 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class CollateralPosition {
+    @Column(name="requested_release_cash",precision=24,scale=6)
+    private BigDecimal requestedReleaseCash;
+    @Column(name="requested_release_quantity")
+    private Long requestedReleaseQuantity;
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   @Column(name = "id", nullable = false)

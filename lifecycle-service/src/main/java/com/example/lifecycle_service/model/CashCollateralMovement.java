@@ -10,6 +10,7 @@ public class CashCollateralMovement {
   @Id private Long id;
   @Column(name = "position_id") private Long positionId;
   private String type;
+  @Column(name="cash_amount") private java.math.BigDecimal cashAmount;
   @Column(name = "created_at") private Instant createdAt;
 
   protected CashCollateralMovement() {}

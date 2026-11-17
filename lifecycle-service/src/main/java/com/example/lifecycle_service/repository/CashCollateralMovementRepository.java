@@ -9,7 +9,7 @@ import org.springframework.data.repository.Repository;
 
 public interface CashCollateralMovementRepository extends Repository<CashCollateralMovement, Long> {
   @Query("""
-      select new com.example.lifecycle_service.dto.CashCollateralChange(h.createdAt, h.type, p.cashAmount)
+      select new com.example.lifecycle_service.dto.CashCollateralChange(h.createdAt, h.type, coalesce(h.cashAmount, p.cashAmount))
       from CashCollateralMovement h, CollateralPosition p
       where h.positionId = p.id and p.loanId = :loanId and p.assetType = 'CASH'
         and h.type in ('PLEDGE_CONFIRMED', 'RELEASE_CONFIRMED') and h.createdAt < :before

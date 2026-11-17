@@ -130,55 +130,142 @@ public class CollateralService {
     return p;
   }
 
-  public CollateralPosition release(long org, long id, String reference, boolean approve) {
+  public CollateralPosition release(
+    long org,
+    long id,
+    String reference,
+    boolean approve
+  ) {
     tenants.lock(org);
     var p = found(collateral.findByIdAndOrganizationId(id, org));
-    require("RELEASE_REQUESTED".equals(p.getStatus()), "No borrower release request exists");
+    require(
+      "RELEASE_REQUESTED".equals(p.getStatus()),
+      "No borrower release request exists"
+    );
+    var l = found(loans.findByIdAndOrganizationId(p.getLoanId(), org));
+    boolean cash = "CASH".equals(p.getAssetType());
+    // Closing the loan returns the entire remaining lot, including any pending partial release.
+    boolean closed =
+      "CLOSED".equals(l.getStatus()) && l.getOutstandingQuantity() == 0;
+    BigDecimal releaseCash = cash
+      ? closed || p.getRequestedReleaseCash() == null
+        ? p.getCashAmount()
+        : p.getRequestedReleaseCash()
+      : BigDecimal.ZERO;
+    long releaseQty = cash
+      ? 0L
+      : closed || p.getRequestedReleaseQuantity() == null
+        ? p.getQuantity()
+        : p.getRequestedReleaseQuantity();
     if (approve) {
-      var l = found(loans.findById(p.getLoanId()));
       require(
-          !Set.of("DEFAULTED", "RECOVERED").contains(l.getStatus()),
-          "Recovery collateral release belongs to the lifecycle owner");
-      if (l.getOutstandingQuantity() > 0 && "ACTIVE".equals(l.getStatus()))
+        Set.of("ACTIVE", "CLOSED").contains(l.getStatus()),
+        "Collateral cannot be released in this loan state"
+      );
+      require(
+        cash
+          ? releaseCash.signum() > 0 &&
+              releaseCash.compareTo(p.getCashAmount()) <= 0
+          : releaseQty > 0 && releaseQty <= p.getQuantity(),
+        "Release exceeds held collateral"
+      );
+      if (!closed) {
+        var remaining = preview(org, l.getId(), false, id);
+        BigDecimal retained = cash
+          ? p.getCashAmount().subtract(releaseCash)
+          : market
+              .price(p.getSecurityId())
+              .value()
+              .multiply(BigDecimal.valueOf(p.getQuantity() - releaseQty));
+        BigDecimal recognizedAfter = (
+          (BigDecimal) remaining.get("recognizedValue")
+        ).add(
+          amount(retained.multiply(BigDecimal.ONE.subtract(p.getHaircut())))
+        );
         require(
-            ((BigDecimal) preview(org, l.getId(), false, id).get("shortfall")).signum() == 0,
-            "Release would leave insufficient collateral");
-      p.setStatus("RELEASED");
-      p.setSettlementReference(reference);
-      if ("CASH".equals(p.getAssetType())) {
-        var a = found(accounts.findByOrganizationId(org));
-        a.setCashCollateralHeld(a.getCashCollateralHeld().subtract(p.getCashAmount()));
+          recognizedAfter.compareTo(
+            (BigDecimal) remaining.get("requiredCollateral")
+          ) >= 0,
+          "Release would leave insufficient collateral at current prices; reject this request or add collateral"
+        );
       }
-      movement(p, "RELEASE_CONFIRMED", reference);
-    } else p.setStatus("POSTED");
+      // Record the released amount in the cash ledger before reducing the lot.
+      movement(p, "RELEASE_CONFIRMED", reference, releaseCash);
+      boolean full = cash
+        ? releaseCash.compareTo(p.getCashAmount()) == 0
+        : releaseQty == p.getQuantity();
+      p.setStatus(full ? "RELEASED" : "POSTED");
+      p.setSettlementReference(reference);
+      if (cash) {
+        var account = found(accounts.findByOrganizationId(org));
+        account.setCashCollateralHeld(
+          account.getCashCollateralHeld().subtract(releaseCash)
+        );
+      }
+      if (!full) {
+        p.setCashAmount(p.getCashAmount().subtract(releaseCash));
+        p.setQuantity(p.getQuantity() - releaseQty);
+      }
+    } else {
+      p.setStatus("POSTED");
+      movement(p, "RELEASE_REJECTED", reference);
+    }
+    p.setRequestedReleaseCash(null);
+    p.setRequestedReleaseQuantity(null);
     events.confirm(
-        found(connections.findById(p.getConnectionId())),
-        approve ? "COLLATERAL_RELEASED" : "COLLATERAL_RELEASE_REJECTED",
-        "collateral_position",
-        p.getBorrowerPositionId(),
-        Map.of("reference", reference));
+      found(connections.findById(p.getConnectionId())),
+      approve ? "COLLATERAL_RELEASED" : "COLLATERAL_RELEASE_REJECTED",
+      "collateral_position",
+      p.getBorrowerPositionId(),
+      approve
+        ? Map.of(
+            "reference",
+            reference,
+            "cashAmount",
+            releaseCash,
+            "quantity",
+            releaseQty
+          )
+        : Map.of("reference", reference, "reason", reference)
+    );
     events.local(org, "COLLATERAL_RELEASE_DECIDED", id, Map.of("position", p));
     return p;
   }
 
   public void movement(CollateralPosition p, String type, String reference) {
+    movement(p, type, reference, p.getCashAmount());
+  }
+
+  private void movement(
+    CollateralPosition p,
+    String type,
+    String reference,
+    BigDecimal cashAmount
+  ) {
     var h = new CollateralHistory();
     h.setOrganizationId(p.getOrganizationId());
     h.setPositionId(p.getId());
     h.setType(type);
-    h.setReference(reference.length() > 160 ? reference.substring(0, 160) : reference);
+    h.setCashAmount(cashAmount);
+    h.setReference(
+      reference.length() > 160 ? reference.substring(0, 160) : reference
+    );
     h.setCreatedAt(clock.instant());
     history.save(h);
-    if ("CASH".equals(p.getAssetType())
-        && Set.of("PLEDGE_CONFIRMED", "RELEASE_CONFIRMED").contains(type)) {
+    if (
+      "CASH".equals(p.getAssetType()) &&
+      Set.of("PLEDGE_CONFIRMED", "RELEASE_CONFIRMED").contains(type)
+    ) {
       var entry = new LenderAccountLedger();
       entry.setOrganizationId(p.getOrganizationId());
       entry.setType(type);
       entry.setAmount(
-          type.equals("PLEDGE_CONFIRMED") ? p.getCashAmount() : p.getCashAmount().negate());
+        type.equals("PLEDGE_CONFIRMED") ? cashAmount : cashAmount.negate()
+      );
       entry.setReference(h.getReference());
       entry.setCreatedAt(clock.instant());
       ledger.save(entry);
     }
   }
+
 }

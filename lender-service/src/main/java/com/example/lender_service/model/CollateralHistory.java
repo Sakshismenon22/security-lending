@@ -12,6 +12,8 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class CollateralHistory {
+  @Column(name="cash_amount",precision=24,scale=6)
+  private java.math.BigDecimal cashAmount;
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   @Column(name = "id", nullable = false)
