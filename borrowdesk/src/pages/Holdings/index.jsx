@@ -43,7 +43,6 @@ function normalizeHoldings(holdings, securities, positions) {
     } else {
       result.push({ ...common, key: id + '-holding-' + index, ownership: '—', quantity: total, available: pick(raw, 'availableQuantity', 'available_quantity'), borrowedQty: borrowed || null, status: pick(raw, 'status') ?? '—', lender: null, maturity: null })
     }
-    if (source.includes('OWN') && borrowed > 0) result.push({ ...common, key: id + '-borrowed-' + index, ownership: 'Borrowed', quantity: borrowed, available: pick(raw, 'availableBorrowedQuantity', 'available_borrowed_quantity'), borrowedQty: borrowed, status: pick(raw, 'borrowStatus', 'borrow_status') ?? 'Active', lender: pick(raw, 'lenderName', 'lender_name'), maturity: pick(raw, 'maturityDate', 'maturity_date') })
   })
   return result
 }
