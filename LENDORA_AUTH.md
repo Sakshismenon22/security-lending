@@ -158,3 +158,42 @@ Keep Lendora on port 5176; the dev server now stops if it is occupied rather tha
 silently moving to a port that backend CORS does not allow. Stop the legacy test
 frontend if it is using 5176. Configuration errors returned as JSON are now displayed
 by the form, including missing provisioning keys and unreachable workspace services.
+
+## PostgreSQL: “sorry, too many clients already”
+
+PostgreSQL limits connections across the whole server, including all databases.
+Lendora shares that limit with the six existing service processes (including both
+FIX adapters), duplicate runs, pgAdmin and other applications. This error means no
+connection slot is available; creating another database does not increase the limit.
+
+1. Stop all running demo backend processes, including copies started manually or
+   from your IDE. Closing a browser tab does not stop its Java backend.
+2. Close unused pgAdmin/query sessions. If connections remain exhausted after the
+   applications are stopped, restart the local PostgreSQL service, then start only
+   one copy of the demo. Restarting PostgreSQL disconnects every client on that server.
+3. Run `start-lendora.cmd`. Restart **all** services to apply the smaller pool defaults;
+   restarting only Lendora leaves the older pools consuming their original budget.
+
+Each service process now allows at most **5** pooled connections and keeps only
+**1** idle connection. The normal seven-process setup therefore has a combined
+pool limit of **35**, plus migration/startup connections, database tools and other
+applications. PostgreSQL sessions are labeled with service name and port for diagnosis.
+For a particularly small local server, set `DB_POOL_MAX_SIZE=3` and
+`DB_POOL_MIN_IDLE=1` in the launcher terminal before starting the services. These
+settings are per process. Production pool sizes should match workload and the total
+connection budget.
+
+If you can connect in pgAdmin's Query Tool, inspect usage:
+
+```sql
+SHOW max_connections;
+SELECT datname, application_name, state, count(*) AS connections
+FROM pg_stat_activity
+WHERE backend_type = 'client backend'
+GROUP BY datname, application_name, state
+ORDER BY connections DESC;
+```
+
+Use these results to locate duplicate or idle applications. Increasing PostgreSQL's
+`max_connections` is an optional server tuning change that uses more resources and
+requires a restart; first remove duplicates and apply the pool limits above.
