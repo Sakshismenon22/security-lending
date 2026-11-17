@@ -21,3 +21,7 @@
 .collateral-page .ca-workspace.details-minimized>.ca-resizer{display:none}
 .collateral-page .ca-workspace.details-minimized>.ca-detail{flex:0 0 36px;min-height:36px;height:36px}
 @media(max-width:850px){.collateral-page .ca-workspace{overflow:auto}.collateral-page .ca-workspace>.ca-table-panel{flex:none;height:285px}.collateral-page .ca-workspace>.ca-detail{flex:none;height:310px}}
+
+
+/* Keep allocation summaries directly beneath the listed components. */
+.ca-allocation-card .ca-mini-table{flex:0 1 auto;max-height:45%;min-height:0;overflow:auto}
