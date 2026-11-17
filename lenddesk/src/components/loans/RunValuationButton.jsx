@@ -6,6 +6,7 @@ export default function RunValuationButton({
   pendingRunId = null,
   onFinished,
   label = 'Run valuation',
+  lastFailure = null,
 }) {
   const { organizationId } = useDataSource(),
     [state, setState] = useState({
@@ -31,8 +32,7 @@ export default function RunValuationButton({
   useEffect(() => {
     if (!ids) return
     const abort = new AbortController()
-    let timer,
-      attempt = 0
+    let timer
     async function poll() {
       try {
         const runs = await Promise.all(
@@ -50,7 +50,7 @@ export default function RunValuationButton({
           ['PENDING', 'ACCEPTED'].includes(r.status),
         )
         if (!waiting) {
-          const failed = runs.filter((r) => r.status === 'REJECTED')
+          const failed = runs.filter((r) => ['FAILED', 'REJECTED', 'CLOSED', 'CANCELLED'].includes(r.status))
           setState({
             ids: [],
             busy: false,
@@ -67,17 +67,6 @@ export default function RunValuationButton({
           retry.current = null
           busy.current = false
           callback.current?.()
-          return
-        }
-        if (++attempt >= 30) {
-          setState({
-            ids: [],
-            busy: false,
-            error: true,
-            message:
-              'Valuation is still queued. Check that lifecycle-service, Kafka and the lender outbox publisher are running, then refresh to check run status.',
-          })
-          busy.current = false
           return
         }
         timer = setTimeout(poll, 2000)
@@ -151,12 +140,12 @@ export default function RunValuationButton({
       >
         {state.busy || state.ids.length ? 'Valuation pending…' : label}
       </button>
-      {state.message && (
+      {(state.message || lastFailure) && (
         <span
-          role={state.error ? 'alert' : 'status'}
-          className={state.error ? 'valuation-error' : 'valuation-notice'}
+          role={(state.message ? state.error : !!lastFailure) ? 'alert' : 'status'}
+          className={(state.message ? state.error : !!lastFailure) ? 'valuation-error' : 'valuation-notice'}
         >
-          {state.message}
+          {state.message || lastFailure}
         </span>
       )}
     </span>

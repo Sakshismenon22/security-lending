@@ -81,3 +81,9 @@ FROM loan_return ORDER BY id DESC;
 ```
 
 Expected after a cancelled failed delivery: FAILED, assets_released=true, restored available shares/cash, unchanged loan outstanding quantity, and no delayed settlement of the old return.
+
+## Valuation delivery failures
+
+Exhausted valuation-command or valuation-result publication also marks its `lifecycle_request` as FAILED and stores `failure_reason`. The valuation-run status API returns that failure so the shared valuation button ends its pending state, displays the reason and allows another run. Polling continues until an authoritative terminal state; it no longer stops at an arbitrary one-minute frontend timeout before backend retries finish.
+
+A new valuation run closes exhausted predecessor runs and their failed queue entries. Retrying the original delivery from notifications instead reopens that same failed run as PENDING. An authoritative result that arrives after a transport timeout may still complete the failed run and clear its transport error; it cannot reopen an explicitly CLOSED run. Restart lender-service to apply the new failure-reason column.

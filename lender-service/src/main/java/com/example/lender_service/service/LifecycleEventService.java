@@ -107,9 +107,11 @@ public class LifecycleEventService {
       case "LIFECYCLE_REQUEST_ACCEPTED", "LIFECYCLE_REQUEST_REJECTED" -> {
         var r = found(requests.findByIdAndOrganizationId(e.referenceId(), e.organizationId()));
         require(
-            Set.of("PENDING", "ACCEPTED").contains(r.getStatus()),
+            Set.of("PENDING", "ACCEPTED").contains(r.getStatus())
+                || ("VALUATION_REQUESTED".equals(r.getType()) && "FAILED".equals(r.getStatus())),
             "Lifecycle request already completed");
         r.setStatus(e.type().endsWith("ACCEPTED") ? "ACCEPTED" : "REJECTED");
+        if("VALUATION_REQUESTED".equals(r.getType()))r.setFailureReason(null);
         if (Set.of("VALUATION_REQUESTED", "FEE_ACCRUAL_REQUESTED", "REBATE_ACCRUAL_REQUESTED")
                 .contains(r.getType())
             && e.type().endsWith("REJECTED")) {
@@ -210,7 +212,7 @@ public class LifecycleEventService {
                   && Objects.equals(request.getLoanId(), loan.getId())
                   && Objects.equals(request.getConnectionId(), loan.getConnectionId()),
               "Valuation request does not match loan");
-          if (!Set.of("PENDING", "ACCEPTED").contains(request.getStatus())) return;
+          if (!Set.of("PENDING", "ACCEPTED", "FAILED").contains(request.getStatus())) return;
         }
         var p =
             view(
@@ -512,6 +514,7 @@ public class LifecycleEventService {
                   number(e.data(), "lifecycleRequestId"), e.organizationId()));
       require(Objects.equals(r.getLoanId(), loan.getId()), "Lifecycle request loan mismatch");
       r.setStatus("COMPLETED");
+      r.setFailureReason(null);
     }
   }
 

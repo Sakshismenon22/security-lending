@@ -107,7 +107,7 @@ public class ValuationScreenService {
         "createdAt",
         r.getCreatedAt(),
         "failureReason",
-        payload.hasNonNull("failureReason") ? payload.get("failureReason").asText() : null);
+        r.getFailureReason()!=null?r.getFailureReason():payload.hasNonNull("failureReason") ? payload.get("failureReason").asText() : null);
   }
 
   public Map<String, Object> run(long org, long id) {

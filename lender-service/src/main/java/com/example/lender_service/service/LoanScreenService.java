@@ -204,6 +204,9 @@ public class LoanScreenService {
               var b = bb.get(l.getConnectionId());
               var s = ss.get(l.getSecurityId());
               var v = vv.get(l.getId());
+              var latestValuationRun = qq.stream()
+                  .filter(x -> x.getLoanId().equals(l.getId()) && "VALUATION_REQUESTED".equals(x.getType()))
+                  .max(Comparator.comparing(LifecycleRequest::getId)).orElse(null);
               BigDecimal value = v == null ? null : v.getLoanMarketValue(),
                   net = v == null ? null : v.getRecognizedCollateral(),
                   required = v == null ? null : v.getRequiredCollateral();
@@ -336,6 +339,12 @@ public class LoanScreenService {
                   pendingMargin,
                   "valuationId",
                   v == null ? null : v.getId(),
+                  "valuationRunStatus",
+                  latestValuationRun == null ? null : latestValuationRun.getStatus(),
+                  "valuationFailureReason",
+                  latestValuationRun != null && Set.of("FAILED", "REJECTED").contains(latestValuationRun.getStatus())
+                      ? latestValuationRun.getFailureReason() != null ? latestValuationRun.getFailureReason()
+                          : json.tree(latestValuationRun.getPayload()).path("failureReason").asText("Valuation failed") : null,
                   "pendingValuationRunId",
                   qq.stream()
                       .filter(

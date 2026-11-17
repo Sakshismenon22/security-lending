@@ -19,6 +19,7 @@ public class OutboxService {
   private final SimpMessagingTemplate websocket;
   private final Clock clock;
   private final boolean enabled;
+  @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
 
   @Value("${lender.outbox-max-attempts:20}")
   private int maxAttempts;
@@ -76,6 +77,7 @@ public class OutboxService {
       event.setNextAttemptAt(clock.instant().plusSeconds(5));
       if (event.getAttempts() >= maxAttempts) {
         event.setStatus("FAILED");
+        ValuationDeliveryState.fail(em,event,event.getLastError());
         var note = new com.example.lender_service.model.Notification();
         note.setOrganizationId(event.getOrganizationId());
         note.setType("REQUEST_DELIVERY_FAILED");

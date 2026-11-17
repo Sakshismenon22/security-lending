@@ -28,6 +28,7 @@ public class LifecycleRequestService {
   private final CollateralService collateral;
   private final MarginCallRepository marginCalls;
   private final Clock clock;
+  @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
 
   public Map<String, Boolean> marginGuardrail(long org) {
     return Map.of("enabled", tenants.marginShortfallGuardEnabled(org));
@@ -121,6 +122,7 @@ public class LifecycleRequestService {
                         && Set.of("PENDING", "ACCEPTED").contains(x.getStatus()))
             .findFirst();
     if (pending.isPresent()) return pending.get();
+    ValuationDeliveryState.retireFailed(em,org,loanId);
     return create(loan, "VALUATION_REQUESTED", request.clientRequestId(), request);
   }
 

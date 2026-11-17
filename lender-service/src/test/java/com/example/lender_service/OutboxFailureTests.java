@@ -57,4 +57,44 @@ class OutboxFailureTests {
     verify(notes, times(1)).save(any(Notification.class));
     verify(kafka, times(1)).send("commands", "7", "original");
   }
+
+  @Test
+  void valuationPublishExhaustionAlsoMarksTheBusinessRunFailed() {
+    var db = mock(OutboxEventRepository.class);
+    var notes = mock(NotificationRepository.class);
+    @SuppressWarnings("unchecked")
+    KafkaTemplate<String, String> kafka = mock(KafkaTemplate.class);
+    var em = mock(jakarta.persistence.EntityManager.class);
+    var query = mock(jakarta.persistence.Query.class, RETURNS_SELF);
+    when(em.createQuery(anyString())).thenReturn(query);
+    var service = new OutboxService(
+      db,
+      kafka,
+      mock(SimpMessagingTemplate.class),
+      Clock.systemUTC(),
+      true
+    );
+    ReflectionTestUtils.setField(service, "maxAttempts", 1);
+    ReflectionTestUtils.setField(service, "notifications", notes);
+    ReflectionTestUtils.setField(service, "em", em);
+    var event = new OutboxEvent();
+    event.setAttempts(0);
+    event.setWsSent(true);
+    event.setPublished(false);
+    event.setOrganizationId(7L);
+    event.setTopic("lender.lifecycle.commands.v1");
+    event.setEventId("valuation-request");
+    event.setPartitionKey("7");
+    event.setNextAttemptAt(Instant.EPOCH);
+    event.setPayload("{\"type\":\"VALUATION_REQUESTED\",\"referenceId\":9}");
+    when(db.lockHead(eq("7"), eq(true), any())).thenReturn(List.of(event));
+    when(kafka.send(event.getTopic(), "7", event.getPayload())).thenReturn(
+      CompletableFuture.failedFuture(new IllegalStateException("Kafka down"))
+    );
+    service.publishNext("7");
+    assertEquals("FAILED", event.getStatus());
+    verify(query).setParameter("org", 7L);
+    verify(query).setParameter("id", 9L);
+    verify(query).executeUpdate();
+  }
 }

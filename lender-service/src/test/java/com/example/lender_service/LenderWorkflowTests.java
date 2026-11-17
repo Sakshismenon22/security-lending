@@ -41,6 +41,7 @@ class LenderWorkflowTests {
   @Autowired LoanScreenService loanScreen;
   @Autowired ReturnCancellationService returnCancellations;
   @Autowired ValuationScreenService valuationScreens;
+  @Autowired jakarta.persistence.EntityManager valuationEm;
   @Autowired FeeRebateScreenService feeScreens;
   @Autowired CollateralScreenService collateralScreens;
   @Autowired OutboxService outbox;
@@ -354,6 +355,27 @@ class LenderWorkflowTests {
                 .content("{\"loanIds\":[],\"clientRequestId\":\"empty\"}"))
         .andExpect(status().isBadRequest());
     assertEquals(100, l.getOutstandingQuantity());
+  }
+
+  @Test
+  void failedValuationStopsBeingPendingAndANewRunRetiresItsBlockedDelivery() {
+    var o=organization();var c=connection(o);long sec=security("100");var loan=activeLoan(o,c,sec,true);
+    long loanId=loan.getId();
+    var request=lifecycleRequests.valuation(o.getId(),loanId,new LifecycleActionRequest("failed-run"));
+    long requestId=request.getId();
+    var event=events.findByOrganizationId(o.getId(),Pageable.unpaged()).getContent().stream()
+        .filter(e->json.tree(e.getPayload()).path("type").asText().equals("VALUATION_REQUESTED"))
+        .filter(e->json.tree(e.getPayload()).path("referenceId").asLong()==requestId).findFirst().orElseThrow();
+    long eventId=event.getId();event.setStatus("FAILED");valuationEm.flush();
+    ValuationDeliveryState.fail(valuationEm,event,"Kafka unavailable");valuationEm.clear();
+    assertEquals("FAILED",valuationScreens.run(o.getId(),requestId).get("status"));
+    assertEquals("Kafka unavailable",valuationScreens.run(o.getId(),requestId).get("failureReason"));
+    var row=(Map<?,?>)loanScreen.detail(o.getId(),loanId).get("loan");
+    assertNull(row.get("pendingValuationRunId"));assertEquals(false,row.get("valuationRunPending"));
+    var next=lifecycleRequests.valuation(o.getId(),loanId,new LifecycleActionRequest("new-run"));
+    assertNotEquals(requestId,next.getId());assertEquals("PENDING",next.getStatus());
+    assertEquals("CLOSED",valuationScreens.run(o.getId(),requestId).get("status"));
+    assertEquals("CLOSED",events.findById(eventId).orElseThrow().getStatus());
   }
 
   @Test

@@ -369,6 +369,7 @@ export function LiveLoanDetails({ id }) {
               key={`${organizationId}:${id}:${l.pendingValuationRunId ?? 0}`}
               loanIds={[id]}
               pendingRunId={l.pendingValuationRunId}
+              lastFailure={l.valuationFailureReason}
               onFinished={refresh}
             />
           )}

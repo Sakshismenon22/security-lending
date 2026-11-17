@@ -159,6 +159,7 @@ export default function LiveValuationsPage() {
                           key={`${organizationId}:${l.id}:${l.pendingValuationRunId ?? 0}`}
                           loanIds={[l.id]}
                           pendingRunId={l.pendingValuationRunId}
+                          lastFailure={l.valuationFailureReason}
                           onFinished={refresh}
                         />
                       ) : (
