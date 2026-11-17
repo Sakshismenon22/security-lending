@@ -217,14 +217,16 @@ public class CollateralService {
       approve ? "COLLATERAL_RELEASED" : "COLLATERAL_RELEASE_REJECTED",
       "collateral_position",
       p.getBorrowerPositionId(),
-      Map.of(
-        "reference",
-        reference,
-        "cashAmount",
-        releaseCash,
-        "quantity",
-        releaseQty
-      )
+      approve
+        ? Map.of(
+            "reference",
+            reference,
+            "cashAmount",
+            releaseCash,
+            "quantity",
+            releaseQty
+          )
+        : Map.of("reference", reference, "reason", reference)
     );
     events.local(org, "COLLATERAL_RELEASE_DECIDED", id, Map.of("position", p));
     return p;

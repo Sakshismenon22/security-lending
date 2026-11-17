@@ -15,6 +15,11 @@ import java.time.LocalDate;
 @Setter
 @NoArgsConstructor
 public class CollateralPosition {
+    @Column(name="release_request_status",length=30)
+    private String releaseRequestStatus;
+    @Column(name="release_rejection_reason",length=1000)
+    private String releaseRejectionReason;
+
     @Column(name="requested_release_cash",precision=24,scale=6)
     private BigDecimal requestedReleaseCash;
     @Column(name="requested_release_quantity")

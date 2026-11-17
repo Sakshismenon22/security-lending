@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { collateralApi } from "../../api/collateralApi";
 import "./CollateralReleaseRequest.css";
+import CollateralReleaseStatus from "./CollateralReleaseStatus";
 
 const number = (value) =>
   Number(value ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 6 });
@@ -14,6 +15,7 @@ export default function CollateralReleaseRequest({
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState(null);
   const [positionId, setPositionId] = useState("");
+  const [assetType, setAssetType] = useState("CASH");
   const [amount, setAmount] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,22 +26,46 @@ export default function CollateralReleaseRequest({
     setPreview(null);
     setError("");
     setPositionId("");
+    setAssetType("CASH");
     setAmount("");
-    collateralApi
-      .releasePreview(loanId)
-      .then((result) => {
+    let checking = false;
+    async function refreshPreview() {
+      if (checking || document.hidden) return;
+      checking = true;
+      try {
+        const result = await collateralApi.releasePreview(loanId);
         if (active) setPreview(result);
-      })
-      .catch((e) => {
+      } catch (e) {
         if (active) setError(e.message);
-      });
+      } finally {
+        checking = false;
+      }
+    }
+    refreshPreview();
+    const timer = setInterval(refreshPreview, 5000);
+    window.addEventListener("focus", refreshPreview);
     return () => {
       active = false;
+      clearInterval(timer);
+      window.removeEventListener("focus", refreshPreview);
     };
   }, [open, loanId]);
-  const positions = preview?.positions ?? [];
-  const selected = positions.find((p) => String(p.id) === positionId);
-  const cash = selected?.asset_type === "CASH";
+  const positions = (preview?.positions ?? []).map((p) => ({
+    ...p,
+    asset_type: p.asset_type ?? p.assetType,
+    security_id: p.security_id ?? p.securityId,
+    cash_amount: p.cash_amount ?? p.cashAmount,
+    requested_release_cash: p.requested_release_cash ?? p.requestedReleaseCash,
+    requested_release_quantity:
+      p.requested_release_quantity ?? p.requestedReleaseQuantity,
+  }));
+  const lots = positions.filter(
+    (p) => p.status === "POSTED" && p.asset_type === assetType,
+  );
+  const selected =
+    lots.find((p) => String(p.id) === positionId) ??
+    (lots.length === 1 ? lots[0] : null);
+  const cash = assetType === "CASH";
   const max = selected
     ? Number(cash ? selected.maxCashAmount : selected.maxQuantity)
     : 0;
@@ -50,7 +76,14 @@ export default function CollateralReleaseRequest({
   }
   async function submit(e) {
     e.preventDefault();
-    if (!selected || busy) return;
+    if (
+      !selected ||
+      busy ||
+      !(Number(amount) > 0) ||
+      Number(amount) > max ||
+      (!cash && !Number.isSafeInteger(Number(amount)))
+    )
+      return;
     setBusy(true);
     setError("");
     try {
@@ -137,50 +170,54 @@ export default function CollateralReleaseRequest({
                     <dd>₹{number(preview.availableExcess)}</dd>
                   </div>
                 </dl>
-                {positions
-                  .filter((p) => p.status === "RELEASE_REQUESTED")
-                  .map((p) => (
-                    <p key={p.id}>
-                      Lot {p.id}: release pending —{" "}
-                      {p.asset_type === "CASH"
-                        ? `₹${number(p.requested_release_cash ?? p.cash_amount)}`
-                        : `${number(p.requested_release_quantity ?? p.quantity)} units`}
-                    </p>
-                  ))}
+                <CollateralReleaseStatus positions={positions} />
                 <label>
-                  Collateral lot
+                  Collateral type
                   <select
-                    required
+                    aria-label="Collateral type"
+                    value={assetType}
                     disabled={busy}
-                    value={positionId}
+                    onChange={(e) => {
+                      setAssetType(e.target.value);
+                      setPositionId("");
+                      setAmount("");
+                    }}
+                  >
+                    <option value="CASH">Cash</option>
+                    <option value="SECURITY">Security</option>
+                  </select>
+                </label>
+                <label>
+                  {cash ? "Cash collateral lot" : "Security collateral"}
+                  <select
+                    aria-label={cash ? "Cash collateral lot" : "Security collateral"}
+                    required
+                    disabled={busy || !lots.length}
+                    value={selected ? String(selected.id) : ""}
                     onChange={(e) => {
                       setPositionId(e.target.value);
                       setAmount("");
                     }}
                   >
-                    <option value="">Select collateral</option>
-                    {positions
-                      .filter((p) => p.status === "POSTED")
-                      .map((p) => (
-                        <option
-                          key={p.id}
-                          value={p.id}
-                          disabled={
-                            Number(
-                              p.asset_type === "CASH"
-                                ? p.maxCashAmount
-                                : p.maxQuantity,
-                            ) <= 0
-                          }
-                        >
-                          Lot {p.id} ·{" "}
-                          {p.asset_type === "CASH"
-                            ? `Cash ₹${number(p.cash_amount)}`
-                            : `Security ${p.security_id} · ${number(p.quantity)} units`}
-                        </option>
-                      ))}
+                    <option value="">
+                      {cash ? "Select cash collateral" : "Select security"}
+                    </option>
+                    {lots.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {cash
+                          ? `Lot ${p.id} · ₹${number(p.cash_amount)} held`
+                          : `${p.securitySymbol ?? p.security_symbol ?? `Security ${p.security_id}`} ${p.exchange ?? ""} · Lot ${p.id} · ${number(p.quantity)} units held`}
+                      </option>
+                    ))}
                   </select>
                 </label>
+                {!lots.length && (
+                  <p>
+                    No posted {cash ? "cash" : "security"} collateral is
+                    available for this loan. Pending releases must be decided
+                    before that lot can be requested again.
+                  </p>
+                )}
                 {selected && (
                   <>
                     <label>
@@ -198,6 +235,14 @@ export default function CollateralReleaseRequest({
                         onChange={(e) => setAmount(e.target.value)}
                       />
                     </label>
+                    {max <= 0 && (
+                      <p className="release-error">
+                        {cash ? "No cash amount" : "No whole security units"}{" "}
+                        can currently be released from this lot without reducing
+                        required coverage. Other pending releases may be using
+                        the excess.
+                      </p>
+                    )}
                     <p>
                       Maximum for this lot: {cash ? "₹" : ""}
                       {number(max)}
@@ -223,7 +268,8 @@ export default function CollateralReleaseRequest({
                   busy ||
                   !selected ||
                   !(Number(amount) > 0) ||
-                  Number(amount) > max
+                  Number(amount) > max ||
+                  (!cash && !Number.isSafeInteger(Number(amount)))
                 }
               >
                 {busy ? "Sending…" : "Send release request"}

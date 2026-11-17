@@ -286,6 +286,12 @@ public class CollateralService {
         }
         var row = new LinkedHashMap<String, Object>(p);
         row.put("unitRecognizedValue", price.multiply(factor));
+        if (!cash) {
+          var security = db.row(SecurityMaster.class, n(p, "security_id"));
+          row.put("securitySymbol", security.get("symbol"));
+          row.put("securityName", security.get("name"));
+          row.put("exchange", security.get("exchange"));
+        }
         positions.add(row);
       }
       BigDecimal excess = recognized
@@ -392,6 +398,8 @@ public class CollateralService {
       );
       db.edit(CollateralPosition.class, id, entity -> {
         entity.setStatus("RELEASE_REQUESTED");
+        entity.setReleaseRequestStatus("PENDING");
+        entity.setReleaseRejectionReason(null);
         entity.setRequestedReleaseCash(requestedCash);
         entity.setRequestedReleaseQuantity(requestedQty);
       });
@@ -463,6 +471,10 @@ public class CollateralService {
         if (!full) {
           entity.setCashAmount(entity.getCashAmount().subtract(cash));
           entity.setQuantity(entity.getQuantity() - qty);
+        }
+        if (!rejectedLoan) {
+          entity.setReleaseRequestStatus("COMPLETED");
+          entity.setReleaseRejectionReason(null);
         }
         entity.setRequestedReleaseCash(null);
         entity.setRequestedReleaseQuantity(null);

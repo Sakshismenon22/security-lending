@@ -85,3 +85,19 @@
 .collateral-release-dialog .release-error {
   color: #b91c1c;
 }
+.collateral-release-status {
+  padding: 8px 12px;
+  background: var(--surface-muted, #f8f7ff);
+  border: 1px solid var(--border, #ddd6fe);
+  border-radius: 5px;
+  color: var(--ink, #25223a);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.collateral-release-status p {
+  margin: 3px 0;
+}
+.al-inline-detail .collateral-release-status,
+.ca-detail .collateral-release-status {
+  margin: 8px 12px;
+}

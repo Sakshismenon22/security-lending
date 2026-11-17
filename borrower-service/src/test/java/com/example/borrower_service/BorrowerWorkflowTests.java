@@ -984,6 +984,64 @@ class BorrowerWorkflowTests {
         "POSTED",
         db.owned(CollateralPosition.class, org, id).get("status")
       );
+      assertEquals(
+        "REJECTED",
+        db.owned(CollateralPosition.class, org, id).get("release_request_status")
+      );
+      assertEquals(
+        "Keep coverage buffer",
+        db
+          .owned(CollateralPosition.class, org, id)
+          .get("release_rejection_reason")
+      );
+      mvc
+        .perform(get("/api/v1/organizations/" + org + "/collateral"))
+        .andExpect(status().isOk())
+        .andExpect(
+          jsonPath("$.data.content[0].release_request_status").value("REJECTED")
+        )
+        .andExpect(
+          jsonPath("$.data.content[0].release_rejection_reason").value(
+            "Keep coverage buffer"
+          )
+        );
+      assertEquals(
+        0,
+        bd("1500").compareTo(
+          money(
+            db.matchingRow(TraderAccount.class, eq("organizationId", org)),
+            "pledged"
+          )
+        )
+      );
+      collateral.requestRelease(
+        org,
+        id,
+        new CollateralReleaseRequest(bd("450"), null)
+      );
+      assertEquals(
+        "PENDING",
+        db.owned(CollateralPosition.class, org, id).get("release_request_status")
+      );
+      assertNull(
+        db
+          .owned(CollateralPosition.class, org, id)
+          .get("release_rejection_reason")
+      );
+      // Older queued rejection envelopes stored their reason in reference.
+      apply(
+        org,
+        "COLLATERAL_RELEASE_REJECTED",
+        id,
+        4,
+        Map.of("reference", "Legacy rejection reason")
+      );
+      assertEquals(
+        "Legacy rejection reason",
+        db
+          .owned(CollateralPosition.class, org, id)
+          .get("release_rejection_reason")
+      );
     }
 
     @Test
@@ -1014,6 +1072,18 @@ class BorrowerWorkflowTests {
         n(cash, "id"),
         new CollateralReleaseRequest(bd("1700"), null)
       );
+      @SuppressWarnings("unchecked")
+      var releasePositions = (List<Map<String, Object>>) collateral
+        .releasePreview(org, loanId)
+        .get("positions");
+      var releaseSecurity = releasePositions
+        .stream()
+        .filter(x -> n(x, "id") == positionId)
+        .findFirst()
+        .orElseThrow();
+      assertEquals("DEMO" + sec, releaseSecurity.get("securitySymbol"));
+      assertEquals("NSE", releaseSecurity.get("exchange"));
+      assertEquals(1L, releaseSecurity.get("maxQuantity"));
       assertThrows(ResponseStatusException.class, () ->
         collateral.requestRelease(
           org,

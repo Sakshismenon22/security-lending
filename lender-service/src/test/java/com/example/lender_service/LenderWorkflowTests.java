@@ -1383,6 +1383,9 @@ class LenderWorkflowTests {
         () -> collateral.release(o.getId(), p.getId(), "TOO-EARLY", true));
     collateral.release(o.getId(), p.getId(), "Not enough cover", false);
     assertEquals("POSTED", p.getStatus());
+    var rejection=events.findByOrganizationId(o.getId(),Pageable.unpaged()).getContent().stream()
+        .map(e->json.tree(e.getPayload())).filter(e->"COLLATERAL_RELEASE_REJECTED".equals(e.path("type").asText())).findFirst().orElseThrow();
+    assertEquals("Not enough cover",rejection.path("data").path("reason").asText());
   }
 
   @Test

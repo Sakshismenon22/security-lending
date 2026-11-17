@@ -111,6 +111,11 @@ public class BorrowerEventProjectionService {
                         id,
                         entity -> {
                             entity.setStatus("POSTED");
+                            entity.setReleaseRequestStatus("REJECTED");
+                            String reason = String.valueOf(
+                                    d.getOrDefault("reason", d.getOrDefault("reference", "Rejected by lender")));
+                            entity.setReleaseRejectionReason(
+                                    reason.substring(0, Math.min(1000, reason.length())));
                             entity.setRequestedReleaseCash(null);
                             entity.setRequestedReleaseQuantity(null);
                         });
@@ -200,7 +205,9 @@ public class BorrowerEventProjectionService {
                         "BUY_IN_REPORTED",
                         "LOAN_SETTLED",
                         "RETURN_SETTLED",
-                        "REBATE_PAID")
+                        "REBATE_PAID",
+                        "COLLATERAL_RELEASED",
+                        "COLLATERAL_RELEASE_REJECTED")
                 .contains(event.type()))
             db.create(
                     Notification::new,
