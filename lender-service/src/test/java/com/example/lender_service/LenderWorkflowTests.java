@@ -1370,6 +1370,79 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void ledgerPagingFiltersTotalsAndSortingCoverTheWholeOrganization() throws Exception {
+    var org = organization();
+    var c = connection(org);
+    var linked = activeLoan(org, c, security("100"), true);
+    for (int i = 0; i < 230; i++) {
+      var row = new LenderAccountLedger();
+      row.setOrganizationId(org.getId());
+      row.setLoanId(linked.getId());
+      row.setType("TEST_ENTRY");
+      row.setAmount(bd("2"));
+      row.setReference(i == 0 ? "needle" : i == 5 ? "literal%" : "entry-" + i);
+      row.setCreatedAt(Instant.now());
+      valuationEm.persist(row);
+    }
+    valuationEm.flush();
+    String path =
+      "/api/v1/organizations/" + org.getId() + "/lenddesk/ledger/overview";
+    mvc
+      .perform(get(path).param("page", "0").param("size", "25"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.data.totalElements").value(231))
+      .andExpect(jsonPath("$.data.totalPages").value(10))
+      .andExpect(jsonPath("$.data.content.length()").value(25))
+      .andExpect(jsonPath("$.data.content[0].reference").value("entry-229"))
+      .andExpect(jsonPath("$.data.totalAmount").value(11460));
+    mvc
+      .perform(get(path).param("page", "9").param("size", "25"))
+      .andExpect(jsonPath("$.data.content.length()").value(6))
+      .andExpect(jsonPath("$.data.options.borrowers[0].id").value(c.getId()));
+    mvc
+      .perform(get(path).param("type", "TEST_ENTRY").param("q", "needle"))
+      .andExpect(jsonPath("$.data.totalElements").value(1))
+      .andExpect(jsonPath("$.data.content[0].reference").value("needle"))
+      .andExpect(jsonPath("$.data.totalAmount").value(2));
+    mvc
+      .perform(get(path).param("q", "%"))
+      .andExpect(jsonPath("$.data.totalElements").value(1));
+    mvc
+      .perform(
+        get(path)
+          .param("type", "TEST_ENTRY")
+          .param("sort", "id")
+          .param("direction", "asc")
+      )
+      .andExpect(jsonPath("$.data.content[0].reference").value("needle"));
+    mvc
+      .perform(
+        get(path)
+          .param("q", "LOAN-000" + linked.getId())
+          .param("connectionId", c.getId().toString())
+      )
+      .andExpect(jsonPath("$.data.totalElements").value(231));
+    mvc
+      .perform(get(path).param("size", "201"))
+      .andExpect(status().isBadRequest());
+    mvc
+      .perform(get(path).param("page", "-1"))
+      .andExpect(status().isBadRequest());
+    mvc
+      .perform(get(path).param("sort", "invalid"))
+      .andExpect(status().isBadRequest());
+    var other = organization();
+    mvc
+      .perform(
+        get(
+          "/api/v1/organizations/" + other.getId() + "/lenddesk/ledger/overview"
+        )
+      )
+      .andExpect(jsonPath("$.data.totalElements").value(0))
+      .andExpect(jsonPath("$.data.options.borrowers.length()").value(0));
+  }
+
+  @Test
   void settlementLedgerIncludesLocalLoanAndBorrowerAndKeepsTenantBoundaries() throws Exception {
     var org = organization();
     var c = connection(org);

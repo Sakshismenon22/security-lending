@@ -16,9 +16,20 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class LendDeskQueryController {
   private final ReadService read;
+  private final com.example.lender_service.service.LedgerScreenService ledgerScreen;
   private final com.example.lender_service.service.LoanScreenService loanScreen;
   private final com.example.lender_service.service.AgreementScreenService agreementScreen;
   private final com.example.lender_service.service.LocateScreenService locateScreen;
+
+  @GetMapping("/ledger/overview")
+  public ApiResponse<?> ledger(@PathVariable long org,
+      @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="25") int size,
+      @RequestParam(required=false) String account,@RequestParam(required=false) String type,
+      @RequestParam(required=false) Long connectionId,@RequestParam(required=false) Long loanId,
+      @RequestParam(required=false) String q,@RequestParam(required=false) String reference,
+      @RequestParam(defaultValue="id") String sort,@RequestParam(defaultValue="desc") String direction) {
+    return ApiResponse.ok(ledgerScreen.overview(org,page,size,account,type,connectionId,loanId,q,reference,sort,direction));
+  }
 
   @GetMapping("/dashboard")
   public ApiResponse<?> dashboard(@PathVariable long org) { return ApiResponse.ok(read.dashboard(org)); }
