@@ -34,7 +34,7 @@ export const categories = [
 export const actions = [
   ...["borrower", "lender"].flatMap(side => [
     op(`${side}-delivery-failures`, "Operations", "View failed deliveries", side, "GET", "/delivery-failures"),
-    op(`${side}-delivery-retry`, "Operations", "Retry failed delivery", side, "POST", "/delivery-failures/{id}/retry", {}, { note: "Use the failure ID from View failed deliveries. Reuses the original event ID." , deliveryFailureId: true }),
+    op(`${side}-delivery-retry`, "Operations", "Retry failed delivery", side, "POST", "/delivery-failures/{id}/retry", {}, { note: "Use the failure ID from View failed deliveries. Reuses the original event ID; a compensated return creates a newly reserved replacement." , deliveryFailureId: true }),
     op(`${side}-delivery-close`, "Operations", "Close failed delivery", side, "POST", "/delivery-failures/{id}/close", {}, { note: "Stops transport retries. Does not cancel financial activity; reconcile before replacing a request.", deliveryFailureId: true }),
   ]),
   b(

@@ -40,6 +40,7 @@ public class BorrowerCommandService {
   private final RecallService recalls;
   private final JsonService json;
   private final Clock clock;
+  private final ReturnCancellationRepository returnCancellations;
 
   @Transactional
   public void receive(String body, String counterpartyId) {
@@ -345,6 +346,8 @@ public class BorrowerCommandService {
     var r = json.data(command.data(), ReturnCommand.class);
     var loan = found(loans.findByConnectionIdAndBorrowerLoanId(c.getId(), r.loanId()));
     sameAgreement(loan.getMslaId(), c, command);
+    // A durable failure cancellation prevents delayed/replayed requests from settling restored assets.
+    if (returnCancellations.findByConnectionIdAndBorrowerReturnId(c.getId(), command.referenceId()).isPresent()) return;
     require(
         returns.findByConnectionIdAndBorrowerReturnId(c.getId(), command.referenceId()).isEmpty(),
         "Return request already exists");

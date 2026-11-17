@@ -288,6 +288,8 @@ public class LendingService {
                             Long.class,
                             eq("recallId", r.recallId()),
                             eq("status", "PENDING"));
+            pendingForRecall += db.sum(LoanReturn.class, "quantity", Long.class,
+                    eq("recallId", r.recallId()), eq("status", "FAILED"), eq("assetsReleased", false));
             require(
                     r.quantity()
                             <= n(recall, "quantity")
@@ -302,6 +304,8 @@ public class LendingService {
                         Long.class,
                         eq("loanId", loanId),
                         eq("status", "PENDING"));
+        pending += db.sum(LoanReturn.class, "quantity", Long.class,
+                eq("loanId", loanId), eq("status", "FAILED"), eq("assetsReleased", false));
         long outstanding = n(loan, "outstanding_quantity");
         require(
                 r.quantity() <= outstanding - pending,

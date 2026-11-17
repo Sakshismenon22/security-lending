@@ -12,7 +12,7 @@ const returnId = (id) => `RET-${String(id).padStart(6, '0')}`
 const loanId = (id) => `LOAN-${String(id).padStart(6, '0')}`
 const recallId = (id) => id == null ? '—' : `REC-${String(id).padStart(6, '0')}`
 const stamp = (value) => value ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value)).replace(',', '') : '—'
-const tone = (value) => /rejected|failed|overdue/i.test(value) ? 'risk' : /pending/i.test(value) ? 'warn' : 'good'
+const tone = (value) => /rejected|failed|cancelled|overdue/i.test(value) ? 'risk' : /pending/i.test(value) ? 'warn' : 'good'
 const State = ({ value }) => <Badge tone={tone(value)}>{label(value)}</Badge>
 
 function ReturnLifecycleTimeline({ row }) {

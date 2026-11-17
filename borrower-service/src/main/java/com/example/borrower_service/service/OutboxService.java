@@ -109,17 +109,22 @@ public class OutboxService {
       event.setNextAttemptAt(java.time.Instant.now().plusSeconds(retrySeconds));
       if (event.getAttempts() >= maxAttempts) {
         event.setStatus("FAILED");
-        db.create(Notification::new, n -> {
-          n.setOrganizationId(org);
-          n.setType("REQUEST_DELIVERY_FAILED");
-          n.setReference(String.valueOf(id));
-          n.setMessage(
-            event.getEventType() +
-              " delivery failed after " +
-              event.getAttempts() +
-              " attempts. Open Failed deliveries to retry or close."
-          );
-        });
+        if ("RETURN_REQUESTED".equals(event.getEventType())) {
+          var command = tools.jackson.databind.json.JsonMapper.builder()
+            .build()
+            .readTree(event.getPayload());
+          // Conditional update cannot overwrite a return already settled/rejected by its owner.
+          // No financial assets are released until the durable receiver cancellation is acknowledged.
+          entityManager
+            .createQuery(
+              "update LoanReturn r set r.status='FAILED', r.failureEventId=:event, r.failureReason=:reason where r.organizationId=:org and r.id=:id and r.status='PENDING'"
+            )
+            .setParameter("event", command.path("eventId").asText())
+            .setParameter("reason", event.getLastError())
+            .setParameter("org", org)
+            .setParameter("id", command.path("referenceId").asLong())
+            .executeUpdate();
+        }
       }
       if (
         failure instanceof InterruptedException

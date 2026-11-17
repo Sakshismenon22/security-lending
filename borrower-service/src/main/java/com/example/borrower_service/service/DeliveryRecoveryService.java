@@ -21,6 +21,10 @@ public class DeliveryRecoveryService {
 
   private final EntityManager em;
   private final Clock clock;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  private ReturnFailureRecoveryService returnRecovery;
+
   private final JsonMapper json = JsonMapper.builder().build();
 
   @Value("${recovery.borrower-adapter-url:http://localhost:8082}")
@@ -51,13 +55,30 @@ public class DeliveryRecoveryService {
       HttpStatus.NOT_FOUND,
       "Organization not found"
     );
-    return em
+    var listed = em
       .createQuery(
         "select f from DeliveryFailure f where f.organizationId=:org and f.status in ('FAILED','RETRYING') order by f.updatedAt desc",
         DeliveryFailure.class
       )
       .setParameter("org", org)
       .getResultList();
+    for (var row : listed)
+      if ("RETURN_REQUESTED".equals(row.getEventType())) {
+        var returned = em.find(
+          LoanReturn.class,
+          Long.parseLong(row.getReferenceId())
+        );
+        row.setAssetsReleased(returned.isAssetsReleased());
+        row.setCompensationStatus(
+          returned.isAssetsReleased()
+            ? "RELEASED"
+            : "SETTLED".equals(returned.getStatus())
+              ? "SETTLED"
+              : "AWAITING_LENDER_CANCELLATION"
+        );
+        row.setReplacementReferenceId(returned.getReplacementReturnId());
+      }
+    return listed;
   }
 
   private JsonNode unwrap(JsonNode node) {
@@ -80,6 +101,16 @@ public class DeliveryRecoveryService {
     int attempts,
     String error
   ) {
+    if (body(event).path("type").asText().equals("RETURN_REQUESTED")) {
+      if (
+        !returnRecovery.markFailed(
+          event.getOrganizationId(),
+          body(event).path("referenceId").asLong(),
+          eventId(event),
+          error
+        )
+      ) return;
+    }
     String key = source + ":" + stage + ":" + transportId;
     var row = em.find(
       DeliveryFailure.class,
@@ -88,11 +119,9 @@ public class DeliveryRecoveryService {
     );
     if (
       row != null &&
-      (row.getStatus().equals("CLOSED") || row.getStatus().equals("FAILED"))
+      Set.of("CLOSED", "FAILED", "REPLACED").contains(row.getStatus())
     ) return;
-    boolean notify =
-      !source.equals("OUTBOX") &&
-      (row == null || !row.getStatus().equals("FAILED"));
+    boolean notify = row == null || !row.getStatus().equals("FAILED");
     boolean fresh = row == null;
     if (fresh) {
       row = new DeliveryFailure();
@@ -193,6 +222,40 @@ public class DeliveryRecoveryService {
         /* Keep durable failures; try again next poll. */
       }
     }
+    for (var failure : em
+      .createQuery(
+        "select f from DeliveryFailure f where f.eventType='RETURN_REQUESTED' and f.compensationComplete=false and f.status in ('FAILED','CLOSED','REPLACED')",
+        DeliveryFailure.class
+      )
+      .getResultList()) {
+      var event = em.find(OutboxEvent.class, failure.getOutboxId());
+      returnRecovery.markFailed(
+        failure.getOrganizationId(),
+        Long.parseLong(failure.getReferenceId()),
+        failure.getEventId(),
+        failure.getLastError()
+      );
+      String business = returnRecovery.reconcile(event);
+      var returned = em.find(
+        LoanReturn.class,
+        Long.parseLong(failure.getReferenceId())
+      );
+      if (
+        returned.isAssetsReleased() ||
+        "SETTLED".equals(business) ||
+        "REJECTED".equals(business)
+      ) {
+        // The receiver fence makes any delayed original copy harmless. Stop retrying the old transport.
+        event.setStatus("CLOSED");
+        failure.setCompensationComplete(closeFencedTransport(failure));
+      }
+      if (returned.getReplacementReturnId() != null) failure.setStatus(
+        "REPLACED"
+      );
+      else if (
+        "SETTLED".equals(business) || "REJECTED".equals(business)
+      ) failure.setStatus("RECOVERED");
+    }
     // A late acknowledgement or a retry that succeeded must resolve the alert automatically.
     for (var row : em
       .createQuery(
@@ -202,6 +265,8 @@ public class DeliveryRecoveryService {
       .getResultList()) {
       em.refresh(row, LockModeType.PESSIMISTIC_WRITE);
       if (!Set.of("FAILED", "RETRYING").contains(row.getStatus())) continue;
+      // A failed return remains visible until a replacement is requested or the user closes it.
+      if ("RETURN_REQUESTED".equals(row.getEventType())) continue;
       try {
         String state;
         if (row.getSource().equals("OUTBOX")) state = em
@@ -230,6 +295,40 @@ public class DeliveryRecoveryService {
     }
   }
 
+  private boolean closeFencedTransport(DeliveryFailure failure) {
+    if (failure.getSource().equals("OUTBOX")) return true;
+    try {
+      var path =
+        "/api/v1/adapter/" +
+        failure.getStage() +
+        "/" +
+        failure.getTransportId();
+      String state = unwrap(
+        client(failure.getSource())
+          .get()
+          .uri(path)
+          .retrieve()
+          .body(JsonNode.class)
+      )
+        .path("state")
+        .asText();
+      if (
+        Set.of("CLOSED", "ACKNOWLEDGED", "PUBLISHED").contains(state)
+      ) return true;
+      if (Set.of("FAILED", "SUSPENDED").contains(state)) {
+        client(failure.getSource())
+          .post()
+          .uri(path + "/close")
+          .retrieve()
+          .toBodilessEntity();
+        return true;
+      }
+    } catch (org.springframework.web.client.RestClientException ignored) {
+      /* Retry after the adapter recovers. */
+    }
+    return false;
+  }
+
   @Transactional
   public DeliveryFailure decide(long org, String id, boolean retry) {
     var row = em.find(
@@ -247,7 +346,25 @@ public class DeliveryRecoveryService {
       HttpStatus.CONFLICT,
       "Only failed deliveries can be retried or closed; refresh status"
     );
-    if (row.getSource().equals("OUTBOX")) {
+    boolean failedReturn = "RETURN_REQUESTED".equals(row.getEventType());
+    if (failedReturn) {
+      var returned = em.find(
+        LoanReturn.class,
+        Long.parseLong(row.getReferenceId())
+      );
+      if (
+        !returned.isAssetsReleased() &&
+        !"SETTLED".equals(returned.getStatus()) &&
+        !"REJECTED".equals(returned.getStatus())
+      ) throw new ResponseStatusException(
+        HttpStatus.CONFLICT,
+        "Awaiting lender cancellation confirmation; reservations cannot be released yet"
+      );
+    }
+    // A compensated return must never resend its old event: assets have already been restored.
+    // Close the original failed transport first, then reserve a new return atomically below.
+    boolean transportRetry = retry && !failedReturn;
+    if (!failedReturn && row.getSource().equals("OUTBOX")) {
       var event = em.find(
         OutboxEvent.class,
         row.getOutboxId(),
@@ -259,13 +376,13 @@ public class DeliveryRecoveryService {
         HttpStatus.CONFLICT,
         "Delivery status changed; refresh"
       );
-      event.setStatus(retry ? "PENDING" : "CLOSED");
-      if (retry) {
+      event.setStatus(transportRetry ? "PENDING" : "CLOSED");
+      if (transportRetry) {
         event.setAttempts(0);
         event.setNextAttemptAt(clock.instant());
         event.setLastError(null);
       }
-    } else {
+    } else if (!failedReturn) {
       try {
         client(row.getSource())
           .post()
@@ -274,7 +391,7 @@ public class DeliveryRecoveryService {
               row.getStage() +
               "/" +
               row.getTransportId() +
-              (retry ? "/retry" : "/close")
+              (transportRetry ? "/retry" : "/close")
           )
           .retrieve()
           .toBodilessEntity();
@@ -292,7 +409,14 @@ public class DeliveryRecoveryService {
         );
       }
     }
-    row.setStatus(retry ? "RETRYING" : "CLOSED");
+    if (failedReturn && retry) {
+      long replacement = returnRecovery.retry(
+        org,
+        Long.parseLong(row.getReferenceId())
+      );
+      row.setReplacementReferenceId(replacement);
+      row.setStatus("REPLACED");
+    } else row.setStatus(retry ? "RETRYING" : "CLOSED");
     row.setUpdatedAt(clock.instant());
     return row;
   }

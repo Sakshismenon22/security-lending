@@ -39,6 +39,7 @@ class LenderWorkflowTests {
   @Autowired LifecycleEventService lifecycle;
   @Autowired ReadService read;
   @Autowired LoanScreenService loanScreen;
+  @Autowired ReturnCancellationService returnCancellations;
   @Autowired ValuationScreenService valuationScreens;
   @Autowired FeeRebateScreenService feeScreens;
   @Autowired CollateralScreenService collateralScreens;
@@ -537,6 +538,96 @@ class LenderWorkflowTests {
         .andExpect(jsonPath("$.data.totals[0].currency").value("INR"));
     mvc.perform(get(root + "/overview").param("coverage", "SHORTFALL"))
         .andExpect(jsonPath("$.data.loans.totalElements").value(0));
+  }
+
+  @Test
+  void cancelledUndeliveredReturnCannotBeCreatedByADelayedCommand() {
+    var org = organization();
+    var c = connection(org);
+    long sec = security("100");
+    var loan = activeLoan(org, c, sec, true);
+    String original = body(
+      org,
+      "RETURN_REQUESTED",
+      501,
+      10,
+      new ReturnCommand(300, 10, 0)
+    );
+    var result = json.tree(
+      json.write(returnCancellations.cancel(original, "BORROWER_DEMO"))
+    );
+    assertEquals("RETURN_REJECTED", result.path("type").asText());
+    assertEquals(
+      result,
+      json.tree(
+        json.write(returnCancellations.cancel(original, "BORROWER_DEMO"))
+      )
+    );
+    commands.receive(original, "BORROWER_DEMO");
+    assertTrue(
+      returns.findByConnectionIdAndBorrowerReturnId(c.getId(), 501L).isEmpty()
+    );
+    assertEquals(100, loan.getOutstandingQuantity());
+    command(org, "RETURN_REQUESTED", 502, 10, new ReturnCommand(300, 10, 0));
+    assertEquals(
+      "PENDING",
+      returns
+        .findByConnectionIdAndBorrowerReturnId(c.getId(), 502L)
+        .orElseThrow()
+        .getStatus()
+    );
+  }
+
+  @Test
+  void returnCancellationRejectsADifferentCounterparty() {
+    var org=organization();var c=connection(org);long sec=security("100");activeLoan(org,c,sec,true);
+    String original=body(org,"RETURN_REQUESTED",501,10,new ReturnCommand(300,10,0));
+    assertThrows(ResponseStatusException.class,()->returnCancellations.cancel(original,"ANOTHER_BORROWER"));
+    assertTrue(returns.findByConnectionIdAndBorrowerReturnId(c.getId(),501L).isEmpty());
+  }
+
+  @Test
+  void cancellationSerializesWithPendingAndAlreadySettledReturns() {
+    for (boolean settleFirst : List.of(false, true)) {
+      var org = organization();
+      var c = connection(org);
+      long sec = security("100");
+      var loan = activeLoan(org, c, sec, true);
+      String original = body(
+        org,
+        "RETURN_REQUESTED",
+        501,
+        10,
+        new ReturnCommand(300, 10, 0)
+      );
+      commands.receive(original, "BORROWER_DEMO");
+      var returned = returns
+        .findByConnectionIdAndBorrowerReturnId(c.getId(), 501L)
+        .orElseThrow();
+      if (settleFirst) loanService.returnDecision(
+        org.getId(),
+        returned.getId(),
+        true,
+        "received"
+      );
+      var confirmation = json.tree(
+        json.write(returnCancellations.cancel(original, "BORROWER_DEMO"))
+      );
+      assertEquals(
+        settleFirst ? "RETURN_SETTLED" : "RETURN_REJECTED",
+        confirmation.path("type").asText()
+      );
+      assertEquals(settleFirst ? "SETTLED" : "CANCELLED", returned.getStatus());
+      assertEquals(settleFirst ? 90 : 100, loan.getOutstandingQuantity());
+      if (!settleFirst) assertThrows(ResponseStatusException.class, () ->
+        loanService.returnDecision(
+          org.getId(),
+          returned.getId(),
+          true,
+          "late-receipt"
+        )
+      );
+    }
   }
 
   @Test

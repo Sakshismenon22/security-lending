@@ -22,6 +22,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
@@ -35,6 +37,7 @@ class BorrowerWorkflowTests {
     @Autowired DirectoryService directory;
     @Autowired MarketService market;
     @Autowired TradingService trading;
+    @Autowired ReturnFailureRecoveryService returnRecovery;
     @Autowired LendingService lending;
     @Autowired CollateralService collateral;
     @Autowired PaymentService payments;
@@ -695,6 +698,194 @@ class BorrowerWorkflowTests {
                         .stream()
                         .anyMatch(row -> Objects.equals(String.valueOf(row.get("aggregate_id")), String.valueOf(fee))));
     }
+
+  @Test
+  void exhaustedReturnRestoresExactReservationsOnceAndRetryReservesAFreshRequest() throws Exception {
+    long org = org(),
+      security = security("100"),
+      agreement = agreement(org, 0);
+    fund(org, "10000");
+    long loan = loan(org, security, agreement, 10);
+    var position = db
+      .rows(
+        CollateralPosition.class,
+        eq("organizationId", org),
+        eq("loanId", loan)
+      )
+      .get(0);
+    apply(org, "COLLATERAL_PLEDGED", n(position, "id"), 1, Map.of());
+    apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+    db.edit(Holding.class, new HoldingId(org, security), h -> {
+      h.setBorrowedQuantity(4L);
+      h.setOwnedQuantity(6L);
+      h.setAverageCost(bd("50"));
+    });
+    long fee = sequence.incrementAndGet();
+    apply(
+      org,
+      "FEE_BILL_ISSUED",
+      fee,
+      1,
+      Map.of(
+        "loanId",
+        loan,
+        "periodStart",
+        "2026-11-01",
+        "periodEnd",
+        "2026-11-02",
+        "rate",
+        "0.03",
+        "amount",
+        "100",
+        "dueDate",
+        "2026-11-03"
+      )
+    );
+    BigDecimal availableBefore = money(account(org), "available"),
+      blockedBefore = money(account(org), "blocked");
+    long ret = n(lending.requestReturn(org, loan, new ReturnRequest(10)), "id");
+    var outbound = db
+      .entities(
+        OutboxEvent.class,
+        Sort.unsorted(),
+        1,
+        eq("organizationId", org),
+        eq("eventType", "RETURN_REQUESTED"),
+        eq("aggregateId", String.valueOf(ret))
+      )
+      .get(0);
+    var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+    String eventId = mapper
+      .readTree(outbound.getPayload())
+      .path("eventId")
+      .asText();
+    returnRecovery.markFailed(org, ret, eventId, "Kafka retries exhausted");
+    assertEquals("FAILED", db.find(LoanReturn.class, ret).getStatus());
+    assertFalse(db.find(LoanReturn.class, ret).isAssetsReleased());
+    // Owned inventory purchased after the return was reserved must keep its correct cost.
+    db.edit(Holding.class, new HoldingId(org, security), h -> {
+      h.setOwnedQuantity(2L);
+      h.setAverageCost(bd("100"));
+    });
+    var confirmation = event(
+      org,
+      "RETURN_REJECTED",
+      ret,
+      1,
+      Map.of("recoveryEventId", eventId)
+    );
+    byte[] response = mapper
+      .writeValueAsString(Map.of("success",true,"data",confirmation))
+      .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    var server = com.sun.net.httpserver.HttpServer.create(
+      new java.net.InetSocketAddress("127.0.0.1", 0),
+      0
+    );
+    server.createContext("/api/v1/transport/returns/cancel", exchange -> {
+      exchange.getRequestBody().readAllBytes();
+      exchange.getResponseHeaders().add("Content-Type", "application/json");
+      exchange.sendResponseHeaders(200, response.length);
+      exchange.getResponseBody().write(response);
+      exchange.close();
+    });
+    server.start();
+    try {
+      ReflectionTestUtils.setField(
+        returnRecovery,
+        "lenderUrl",
+        "http://127.0.0.1:" + server.getAddress().getPort()
+      );
+      returnRecovery.reconcile(outbound);
+      returnRecovery.reconcile(outbound);
+    } finally {
+      server.stop(0);
+      ReflectionTestUtils.setField(
+        returnRecovery,
+        "lenderUrl",
+        "http://localhost:8084"
+      );
+    }
+    assertEquals("FAILED", db.find(LoanReturn.class, ret).getStatus());
+    assertTrue(db.find(LoanReturn.class, ret).isAssetsReleased());
+    var holding = db.find(Holding.class, new HoldingId(org, security));
+    assertEquals(4, holding.getBorrowedQuantity());
+    assertEquals(8, holding.getOwnedQuantity());
+    assertEquals(0, bd("62.5").compareTo(holding.getAverageCost()));
+    assertEquals(
+      0,
+      availableBefore.compareTo(money(account(org), "available"))
+    );
+    assertEquals(0, blockedBefore.compareTo(money(account(org), "blocked")));
+    assertEquals("DUE", db.find(LendingFee.class, fee).getStatus());
+    assertEquals("ACTIVE", db.find(Loan.class, loan).getStatus());
+    assertEquals(
+      "POSTED",
+      db.find(CollateralPosition.class, n(position, "id")).getStatus()
+    );
+    apply(org, "RETURN_REJECTED", ret, 2, Map.of());
+    assertEquals(8, holding.getOwnedQuantity());
+    long replacement = returnRecovery.retry(org, ret);
+    assertNotEquals(ret, replacement);
+    assertEquals(replacement, returnRecovery.retry(org, ret));
+    assertEquals("PENDING", db.find(LoanReturn.class, replacement).getStatus());
+    assertEquals(2, holding.getOwnedQuantity());
+    assertEquals(0, holding.getBorrowedQuantity());
+    assertEquals(
+      0,
+      blockedBefore.add(bd("100")).compareTo(money(account(org), "blocked"))
+    );
+  }
+
+  @Test
+  void failedReturnKeepsAssetsReservedUntilCancellationIsAcknowledged() {
+    long org = org(),
+      sec = security("100"),
+      agreement = agreement(org, 0);
+    fund(org, "10000");
+    long loan = loan(org, sec, agreement, 10);
+    apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+    long ret = n(lending.requestReturn(org, loan, new ReturnRequest(10)), "id");
+    returnRecovery.markFailed(
+      org,
+      ret,
+      "failed-event",
+      "FIX attempts exhausted"
+    );
+    assertEquals("FAILED", db.find(LoanReturn.class, ret).getStatus());
+    assertFalse(db.find(LoanReturn.class, ret).isAssetsReleased());
+    assertEquals(
+      0,
+      db.find(Holding.class, new HoldingId(org, sec)).getBorrowedQuantity()
+    );
+    assertThrows(ResponseStatusException.class, () ->
+      lending.requestReturn(org, loan, new ReturnRequest(10))
+    );
+    assertThrows(ResponseStatusException.class, () ->
+      returnRecovery.retry(org, ret)
+    );
+  }
+
+  @Test
+  void aReturnSettledBeforeFailureReconciliationNeverRestoresReturnedSecurities() {
+    long org = org(),
+      sec = security("100"),
+      agreement = agreement(org, 0);
+    fund(org, "10000");
+    long loan = loan(org, sec, agreement, 10);
+    apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+    long ret = n(lending.requestReturn(org, loan, new ReturnRequest(10)), "id");
+    returnRecovery.markFailed(org, ret, "failed-event", "receipt lost");
+    apply(org, "RETURN_SETTLED", ret, 1, Map.of());
+    assertEquals("SETTLED", db.find(LoanReturn.class, ret).getStatus());
+    assertEquals("CLOSED", db.find(Loan.class, loan).getStatus());
+    assertEquals(
+      0,
+      db.find(Holding.class, new HoldingId(org, sec)).getBorrowedQuantity()
+    );
+    assertFalse(
+      returnRecovery.markFailed(org, ret, "failed-event", "receipt lost")
+    );
+  }
 
     @Test
     void returnSettlementClosesLoanAndAcceptsTheLenderCollateralReleaseConfirmation() {

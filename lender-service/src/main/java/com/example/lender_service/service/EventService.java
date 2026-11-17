@@ -21,7 +21,7 @@ public class EventService {
   private final JsonService json;
   private final Clock clock;
 
-  public void confirm(
+  public Map<String, Object> confirm(
       BorrowerConnection connection,
       String type,
       String resource,
@@ -57,6 +57,7 @@ public class EventService {
         String.valueOf(connection.getBorrowerOrganizationId()),
         payload);
     audit(connection.getOrganizationId(), type, String.valueOf(borrowerReference));
+    return payload;
   }
 
   /**

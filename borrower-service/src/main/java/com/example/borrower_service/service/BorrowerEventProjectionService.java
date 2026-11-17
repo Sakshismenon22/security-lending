@@ -423,7 +423,10 @@ public class BorrowerEventProjectionService {
 
     private void returned(long org, long id, boolean settled) {
         var r = db.owned(LoanReturn.class, org, id);
-        require("PENDING".equals(r.get("status")), "Return is not pending");
+        var returned = db.find(LoanReturn.class, id);
+        if (returned.isAssetsReleased() && !settled) return;
+        require(("PENDING".equals(r.get("status")) || "FAILED".equals(r.get("status")))
+                && !returned.isAssetsReleased(), "Return is not awaiting settlement or cancellation");
         var loan = db.owned(Loan.class, org, n(r, "loan_id"));
         if (settled) {
             long remaining = n(loan, "outstanding_quantity") - n(r, "quantity");
@@ -484,12 +487,15 @@ public class BorrowerEventProjectionService {
                     LoanReturn.class,
                     id,
                     entity -> {
-                        entity.setStatus("REJECTED");
+                        entity.setStatus(entity.getFailureEventId() == null ? "REJECTED" : "FAILED");
+                        entity.setAssetsReleased(true);
                     });
         }
         if (n(db.owned(Loan.class, org, n(loan, "id")), "outstanding_quantity") > 0
                 && db.rows(LoanReturn.class, eq("loanId", n(loan, "id")), eq("status", "PENDING"))
-                        .isEmpty())
+                        .isEmpty()
+                && db.rows(LoanReturn.class, eq("loanId", n(loan, "id")),
+                        eq("status", "FAILED"), eq("assetsReleased", false)).isEmpty())
             db.editMatching(
                     Loan.class,
                     entity -> {

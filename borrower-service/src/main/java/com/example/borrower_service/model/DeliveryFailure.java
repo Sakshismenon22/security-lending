@@ -12,6 +12,18 @@ import lombok.Setter;
 @Setter
 public class DeliveryFailure {
 
+  @Column(name = "compensation_complete", nullable = false)
+  private boolean compensationComplete;
+
+  @Transient
+  private Boolean assetsReleased;
+
+  @Transient
+  private String compensationStatus;
+
+  @Column(name = "replacement_reference_id")
+  private Long replacementReferenceId;
+
   @Id
   @Column(length = 180)
   private String id;

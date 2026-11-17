@@ -52,7 +52,7 @@ export default function DeliveryFailures({
     setBusy(true);
     setError("");
     try {
-      await post(
+      const result = await post(
         `${base}/${encodeURIComponent(decision.row.id)}/${decision.action}`,
         {},
       );
@@ -62,7 +62,9 @@ export default function DeliveryFailures({
       onChanged?.();
       setNotice(
         decision.action === "retry"
-          ? "Retry queued using the original event ID."
+          ? result?.replacementReferenceId
+            ? `Return #${result.replacementReferenceId} created with a new delivery event and fresh asset reservations.`
+            : "Retry queued using the original event ID."
           : "Delivery closed. Check the current business state before creating another request.",
       );
     } catch (e) {
@@ -120,16 +122,31 @@ export default function DeliveryFailures({
                   {row.source} / {row.stage} · {row.attempts} attempt(s)
                 </small>
                 <p>{row.lastError || "Delivery attempts exhausted"}</p>
+                {row.compensationStatus && (
+                  <p role="status">
+                    {row.assetsReleased
+                      ? "Return securities and reserved fee cash restored. The request remains FAILED."
+                      : "Awaiting lender cancellation confirmation before releasing reserved assets."}
+                  </p>
+                )}
                 <code title={row.eventId}>{row.eventId}</code>
                 <footer>
                   <button
-                    disabled={busy || row.status !== "FAILED"}
+                    disabled={
+                      busy ||
+                      row.status !== "FAILED" ||
+                      row.compensationStatus === "AWAITING_LENDER_CANCELLATION"
+                    }
                     onClick={() => review(row, "retry")}
                   >
                     Retry
                   </button>
                   <button
-                    disabled={busy || row.status !== "FAILED"}
+                    disabled={
+                      busy ||
+                      row.status !== "FAILED" ||
+                      row.compensationStatus === "AWAITING_LENDER_CANCELLATION"
+                    }
                     onClick={() => review(row, "close")}
                   >
                     Close delivery
@@ -158,7 +175,9 @@ export default function DeliveryFailures({
         </p>
         <p>
           {decision?.action === "retry"
-            ? "The original event ID and payload will be reused so a duplicate delivery cannot create a second business request."
+            ? decision?.row.assetsReleased
+              ? "The failed return was cancelled and its assets restored. Retry creates a new return, reserves its assets again, and sends a new delivery event."
+              : "The original event ID and payload will be reused so a duplicate delivery cannot create a second business request."
             : "Stops further delivery attempts and retains the failed record for audit. This does not cancel or reverse a loan, cash block, or settlement. A timeout can occur after the receiver accepted the request: verify its current state before making a replacement."}
         </p>
         {error && (
