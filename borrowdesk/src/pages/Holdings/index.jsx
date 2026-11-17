@@ -35,7 +35,7 @@ function normalizeHoldings(holdings, securities, positions) {
     const isin = pick(security, 'isin') ?? pick(raw, 'isin')
     const assetClass = pick(security, 'assetClass', 'asset_class', 'type') ?? pick(raw, 'assetClass', 'asset_class') ?? 'Equity'
     const common = { id: id || String(index), symbol, securityName: pick(security, 'name', 'securityName', 'security_name') ?? pick(raw, 'securityName', 'security_name', 'name') ?? symbol, isin, assetClass, averageCost, price, marketValue: marketValue ?? (price != null ? num(price) * total : null), pnl, raw, security, position }
-    if (source.includes('BORROW') || (borrowed > 0 && owned === 0)) {
+    if (owned > 0 && borrowed > 0 && !source.includes('BORROW')) {\n      result.push({ ...common, key: id + '-owned-' + index, ownership: 'Owned', quantity: owned, available: pick(raw, 'availableOwnedQuantity', 'available_owned_quantity') ?? owned, borrowedQty: 0, status: pick(raw, 'status') ?? 'Available', lender: null, maturity: null })\n      result.push({ ...common, key: id + '-borrowed-' + index, ownership: 'Borrowed', quantity: borrowed, available: pick(raw, 'availableBorrowedQuantity', 'available_borrowed_quantity'), borrowedQty: borrowed, status: pick(raw, 'borrowStatus', 'borrow_status') ?? 'Active', lender: pick(raw, 'lenderName', 'lender_name'), maturity: pick(raw, 'maturityDate', 'maturity_date') })\n    } else if (source.includes('BORROW') || (borrowed > 0 && owned === 0)) {
       result.push({ ...common, key: id + '-borrowed-' + index, ownership: 'Borrowed', quantity: total || borrowed, available: pick(raw, 'availableQuantity', 'available_quantity') ?? pick(position, 'availableBorrowedQuantity', 'available_borrowed_quantity'), borrowedQty: total || borrowed, status: pick(raw, 'status', 'loanStatus', 'loan_status') ?? 'Active', lender: pick(raw, 'lenderName', 'lender_name'), maturity: pick(raw, 'maturityDate', 'maturity_date') })
     } else if (source.includes('OWN') || owned > 0 || (borrowed === 0 && total > 0)) {
       const qty = owned || total
@@ -71,7 +71,7 @@ export default function Holdings() {
     setData(next); setSelectedKey(current => current || null); setLoading(false)
   }, [])
   useEffect(() => { refresh(); const timer = window.setInterval(refresh, 30000); return () => window.clearInterval(timer) }, [refresh])
-  const rows = useMemo(() => normalizeHoldings(data.holdings, data.securities, data.positions), [data])
+  const rows = useMemo(() => normalizeHoldings(data.holdings.length ? data.holdings : data.positions, data.securities, data.positions), [data])
   const filtered = useMemo(() => rows.filter(row => {
     const q = search.trim().toLowerCase()
     if (q && ![row.symbol, row.securityName, row.isin, row.ownership, row.lender].join(' ').toLowerCase().includes(q)) return false
