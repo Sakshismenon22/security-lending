@@ -624,6 +624,31 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void marginGuardrailControlsBothSubmissionAndOwnerConfirmation() {
+    for (boolean shortfall : List.of(false, true)) {
+      for (boolean enableBeforeConfirmation : List.of(false, true)) {
+        var org = organization();
+        var c = connection(org);
+        long sec = security("100");
+        var loan = activeLoan(org, c, sec, true);
+        if (shortfall) market.quote(sec, bd("120"), Instant.now());
+        lifecycleRequests.setMarginGuardrail(org.getId(), false);
+        var due = Instant.now().plusSeconds(86400);
+        var pending = lifecycleRequests.margin(org.getId(), loan.getId(),
+            new MarginIssueRequest(bd("100"), due, "Demo", "guard-confirmation"));
+        if (enableBeforeConfirmation) lifecycleRequests.setMarginGuardrail(org.getId(), true);
+        lifecycle(org, "MARGIN_CALL_UPDATED", loan.getId(), 1,
+            Map.of("loanId", loan.getId(), "lifecycleRequestId", pending.getId(),
+                "externalId", "MARGIN-" + pending.getId(), "amount", "100",
+                "fulfilledAmount", "0", "dueAt", due.toString(), "reason", "Demo", "status", "OPEN"));
+        assertEquals(enableBeforeConfirmation ? "REJECTED" : "COMPLETED", pending.getStatus());
+        assertEquals(enableBeforeConfirmation ? 0 : 1,
+            calls.findByOrganizationId(org.getId(), Pageable.unpaged()).getTotalElements());
+      }
+    }
+  }
+
+  @Test
   void recallCapacityIncludesPendingRequestsWithoutChangingOutstanding() {
     var org = organization();
     var c = connection(org);

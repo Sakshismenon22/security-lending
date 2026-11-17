@@ -269,16 +269,18 @@ public class LifecycleEventService {
                       x ->
                           Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE")
                               .contains(x.getStatus()));
-          var currentShortfall =
-              (BigDecimal)
-                  collateralPreview
-                      .preview(e.organizationId(), loan.getId(), false, null)
-                      .get("shortfall");
+          boolean shortfallInvalid = false;
+          if (tenants.marginShortfallGuardEnabled(e.organizationId())) {
+            var currentShortfall =
+                (BigDecimal) collateralPreview
+                    .preview(e.organizationId(), loan.getId(), false, null).get("shortfall");
+            shortfallInvalid = currentShortfall.signum() <= 0
+                || decimal(d, "amount").compareTo(currentShortfall) < 0;
+          }
           if (open
               || !"ACTIVE".equals(loan.getStatus())
               || !instant(d, "dueAt").isAfter(clock.instant())
-              || currentShortfall.signum() <= 0
-              || decimal(d, "amount").compareTo(currentShortfall) < 0) {
+              || shortfallInvalid) {
             request.setStatus("REJECTED");
             return;
           }

@@ -87,13 +87,13 @@ public class LifecycleRequestService {
                     "MARGIN_CALL_REQUESTED".equals(x.getType())
                         && Set.of("PENDING", "ACCEPTED").contains(x.getStatus())),
         "A margin call request is already pending");
-    var preview = collateral.preview(org, loanId, false, null);
-    var shortfall = (java.math.BigDecimal) preview.get("shortfall");
-    require(!tenants.marginShortfallGuardEnabled(org) || shortfall.signum() > 0,
-        "Loan has no collateral shortfall");
-    require(
-        r.amount().compareTo(shortfall) >= 0, "Requested amount must cover the current shortfall");
-    if (!tenants.marginShortfallGuardEnabled(org)) {
+    boolean guardEnabled = tenants.marginShortfallGuardEnabled(org);
+    if (guardEnabled) {
+      var preview = collateral.preview(org, loanId, false, null);
+      var shortfall = (java.math.BigDecimal) preview.get("shortfall");
+      require(shortfall.signum() > 0, "Loan has no collateral shortfall");
+      require(r.amount().compareTo(shortfall) >= 0, "Requested amount must cover the current shortfall");
+    } else {
       events.audit(org, "DEMO_MARGIN_CALL_REQUESTED", "loan=" + loanId + ", request=" + r.clientRequestId());
     }
     return create(loan, "MARGIN_CALL_REQUESTED", r.clientRequestId(), r);
