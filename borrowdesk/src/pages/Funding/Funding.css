@@ -101,3 +101,8 @@
 .funding-page .funding-pagination button{height:27px;display:flex;align-items:center;gap:4px;padding:0 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--ink);font-size:11px}
 .funding-page .funding-pagination button:disabled{opacity:.4;cursor:not-allowed}
 .funding-page .funding-pagination svg{width:12px;height:12px}
+
+
+/* Let the transactions table fill all remaining viewport height. */
+.funding-page > .funding-table-panel{height:auto!important;min-height:0!important;max-height:none!important;flex:1 1 0!important;width:100%;}
+.funding-page > .funding-table-panel > .funding-table-scroll{flex:1 1 0;min-height:0;}
