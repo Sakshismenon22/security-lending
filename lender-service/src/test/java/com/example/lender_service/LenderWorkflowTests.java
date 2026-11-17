@@ -1370,6 +1370,107 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void settlementLedgerIncludesLocalLoanAndBorrowerAndKeepsTenantBoundaries() throws Exception {
+    var org = organization();
+    var c = connection(org);
+    var loan = activeLoan(org, c, security("100"), true);
+    for (String prefix : List.of("/ledger", "/lenddesk/ledger")) {
+      mvc
+        .perform(get("/api/v1/organizations/" + org.getId() + prefix))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content[0].loanId").value(loan.getId()))
+        .andExpect(jsonPath("$.data.content[0].borrowerLoanId").value(300))
+        .andExpect(jsonPath("$.data.content[0].connectionId").value(c.getId()))
+        .andExpect(
+          jsonPath("$.data.content[0].borrowerName").value(c.getName())
+        );
+    }
+    var other = organization();
+    var legacy = new LenderAccountLedger();
+    legacy.setOrganizationId(other.getId());
+    legacy.setType("LEGACY");
+    legacy.setAmount(bd("1"));
+    legacy.setReference("Unlinked historical posting");
+    legacy.setCreatedAt(Instant.now());
+    valuationEm.persist(legacy);
+    valuationEm.flush();
+    mvc
+      .perform(
+        get("/api/v1/organizations/" + other.getId() + "/lenddesk/ledger")
+      )
+      .andExpect(jsonPath("$.data.totalElements").value(1))
+      .andExpect(jsonPath("$.data.content[0].loanId").isEmpty())
+      .andExpect(jsonPath("$.data.content[0].borrowerName").isEmpty());
+    // Corrupt references must not disclose a different tenant's borrower details.
+    legacy.setLoanId(loan.getId());
+    valuationEm.flush();
+    mvc
+      .perform(get("/api/v1/organizations/" + other.getId() + "/ledger"))
+      .andExpect(jsonPath("$.data.content[0].loanId").isEmpty())
+      .andExpect(jsonPath("$.data.content[0].borrowerName").isEmpty());
+  }
+
+  @Test
+  void bothFeePaymentSourcesPreserveTheLedgerLoanContext() {
+    var org = organization();
+    var c = connection(org);
+    var loan = activeLoan(org, c, security("100"), true);
+    for (long bill : List.of(991101L, 991102L))
+      lifecycle(
+        org,
+        "FEE_BILL_ISSUED",
+        bill,
+        1,
+        Map.of(
+          "loanId",
+          loan.getId(),
+          "amount",
+          "10",
+          "rate",
+          "0.03",
+          "periodStart",
+          "2026-11-01",
+          "periodEnd",
+          "2026-11-02",
+          "dueDate",
+          "2026-11-30"
+        )
+      );
+    command(
+      org,
+      "FEE_PAYMENT_RECEIVED",
+      991101L,
+      10,
+      new FeePaymentCommand(300, bd("10"), 77)
+    );
+    lifecycle(
+      org,
+      "FEE_PAYMENT_RECEIVED",
+      991102L,
+      2,
+      Map.of(
+        "loanId",
+        loan.getId(),
+        "amount",
+        "10",
+        "borrowerPaymentRequestId",
+        88
+      )
+    );
+    var postings = valuationEm
+      .createQuery(
+        "select e from LenderAccountLedger e where e.organizationId=:org and e.type='FEE_PAYMENT_RECEIVED'",
+        LenderAccountLedger.class
+      )
+      .setParameter("org", org.getId())
+      .getResultList();
+    assertEquals(2, postings.size());
+    assertTrue(
+      postings.stream().allMatch(e -> loan.getId().equals(e.getLoanId()))
+    );
+  }
+
+  @Test
   void collateralReleaseWaitsForRequestAndCannotUndercollateralizeAnActiveLoan() {
     var o = organization();
     var c = connection(o);
@@ -1575,6 +1676,9 @@ class LenderWorkflowTests {
         0,
         bd("12.345678")
             .compareTo(accounts.findByOrganizationId(o.getId()).orElseThrow().getRebatePaid()));
+    mvc.perform(get("/api/v1/organizations/"+o.getId()+"/lenddesk/ledger"))
+        .andExpect(jsonPath("$.data.content[0].loanId").value(loan.getId()))
+        .andExpect(jsonPath("$.data.content[0].borrowerName").value(c.getName()));
     String path = "/api/v1/organizations/" + o.getId() + "/loans/" + loan.getId();
     for (String resource : List.of("rebate-accruals", "rebate-settlements", "rebate-payments")) {
       mvc.perform(get(path + "/" + resource))

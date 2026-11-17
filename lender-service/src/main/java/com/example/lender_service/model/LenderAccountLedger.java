@@ -13,6 +13,9 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class LenderAccountLedger {
+  @Column(name="loan_id")
+  private Long loanId;
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   @Column(name = "id", nullable = false)

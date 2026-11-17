@@ -3,6 +3,7 @@ package com.example.lender_service.service;
 import static com.example.lender_service.service.Checks.*;
 
 import com.example.lender_service.dto.AgreementExpanded;
+import com.example.lender_service.dto.LedgerSummary;
 import com.example.lender_service.dto.AgreementSummary;
 import com.example.lender_service.dto.FixMonitorEntry;
 import com.example.lender_service.dto.InventoryExpanded;
@@ -88,11 +89,66 @@ public class ReadService {
       case "defaults" -> PageResponse.from(loanDefault.findByOrganizationId(org, paging));
       case "buy-ins" -> PageResponse.from(buyIn.findByOrganizationId(org, paging));
       case "rebate-payments" -> PageResponse.from(rebatePayment.findByOrganizationId(org, paging));
-      case "ledger" -> PageResponse.from(lenderAccountLedger.findByOrganizationId(org, paging));
+      case "ledger" -> ledgerSummaries(org, paging);
       case "notifications" -> PageResponse.from(notification.findByOrganizationId(org, paging));
       case "audit" -> PageResponse.from(auditEvent.findByOrganizationId(org, paging));
       default -> throw new IllegalArgumentException("Unknown resource");
     };
+  }
+
+  private PageResponse<LedgerSummary> ledgerSummaries(
+    long org,
+    Pageable paging
+  ) {
+    var page = lenderAccountLedger.findByOrganizationId(org, paging);
+    var loansById = new HashMap<Long, Loan>();
+    loan
+      .findAllById(
+        page
+          .getContent()
+          .stream()
+          .map(LenderAccountLedger::getLoanId)
+          .filter(Objects::nonNull)
+          .distinct()
+          .toList()
+      )
+      .stream()
+      .filter(l -> l.getOrganizationId().equals(org))
+      .forEach(l -> loansById.put(l.getId(), l));
+    var borrowersById = new HashMap<Long, BorrowerConnection>();
+    borrowerConnection
+      .findAllById(
+        loansById
+          .values()
+          .stream()
+          .map(Loan::getConnectionId)
+          .distinct()
+          .toList()
+      )
+      .stream()
+      .filter(b -> b.getOrganizationId().equals(org))
+      .forEach(b -> borrowersById.put(b.getId(), b));
+    return PageResponse.from(
+      page.map(entry -> {
+        var linkedLoan = loansById.get(entry.getLoanId());
+        var borrower =
+          linkedLoan == null
+            ? null
+            : borrowersById.get(linkedLoan.getConnectionId());
+        return new LedgerSummary(
+          entry.getId(),
+          entry.getOrganizationId(),
+          entry.getType(),
+          entry.getAmount(),
+          entry.getReference(),
+          entry.getCreatedAt(),
+          linkedLoan == null ? null : linkedLoan.getId(),
+          borrower == null ? null : borrower.getId(),
+          borrower == null ? null : borrower.getName(),
+          linkedLoan == null ? null : linkedLoan.getBorrowerLoanId()
+        );
+      })
+    );
   }
 
   public Object agreement(long org, long id) {

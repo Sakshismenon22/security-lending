@@ -258,6 +258,7 @@ public class CollateralService {
     ) {
       var entry = new LenderAccountLedger();
       entry.setOrganizationId(p.getOrganizationId());
+      entry.setLoanId(p.getLoanId());
       entry.setType(type);
       entry.setAmount(
         type.equals("PLEDGE_CONFIRMED") ? cashAmount : cashAmount.negate()

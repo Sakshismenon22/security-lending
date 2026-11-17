@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useOutletContext, useSearchParams } from 'react-router-dom'
+import { Link, useOutletContext, useSearchParams } from 'react-router-dom'
 import ReferenceTable from '../components/reference/ReferenceTable'
 import ReferenceRegister from '../components/reference/ReferenceRegister'
 import { FinanceState, ReferenceFilters, ReferenceMetrics } from '../components/reference/ReferenceControls'
@@ -9,6 +9,7 @@ import './FinanceReferencePages.css'
 
 const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(value ?? 0))
 const label = (value) => String(value ?? '—').toLowerCase().replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase())
+const loanLabel = id => id == null ? '—' : `LOAN-${String(id).padStart(6, '0')}`
 const ledgerId = (id) => `LED-${String(id).padStart(6, '0')}`
 const timestamp = (value) => value ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value)).replace(',', '') : '—'
 const columns = [['timestamp', 'IST Timestamp'], ['id', 'Ledger ID'], ['account', 'Account'], ['type', 'Entry Type'], ['debit', 'Debit'], ['credit', 'Credit'], ['currency', 'Currency'], ['borrower', 'Borrower'], ['loan', 'Loan ID'], ['reference', 'Reference Type / ID'], ['payment', 'Payment Request'], ['settlement', 'Settlement State'], ['status', 'Status']]
@@ -26,7 +27,7 @@ function JournalDetails({ row }) {
   const journal = { title: '▱ Journal Lines (2)', headers: ['Line#', 'Account', 'Description', 'Debit', 'Credit', 'Currency'], rows: [[1, row.account, `Record ${row.type.toLowerCase()} from ${row.reference}`, money(row.amount), '—', row.currency], [2, 'Lender settlement control account', `Balance ${row.type.toLowerCase()} entry`, '—', money(row.amount), row.currency], ['Total', '(balanced)', '', money(row.amount), money(row.amount), row.currency]] }
   const lifecycle = { title: '♧ Linked Lifecycle Record', headers: ['Type', 'Record ID', 'Description', 'Amount', 'Currency', 'State'], rows: [[row.type, row.reference, 'Source lifecycle event recorded by the lender service', money(row.amount), row.currency, <FinanceState value={row.settlement} />]] }
   const table = tab === 'Journal lines' ? journal : lifecycle
-  return <div className="finance-details ledger-journal"><header><h2>▤ Journal Entry {row.id}</h2><FinanceState value="BALANCED" /><span>(2 lines, Δ ₹0.00)</span><small>Account: {row.account} | Entry Type: {row.type} | Posted: {row.timestamp} IST</small></header><div className="live-ledger-tabs" role="tablist"><button type="button" className={tab === 'Journal lines' ? 'active' : ''} aria-selected={tab === 'Journal lines'} onClick={() => setTab('Journal lines')}>Journal lines (2)</button><button type="button" className={tab === 'Lifecycle record' ? 'active' : ''} aria-selected={tab === 'Lifecycle record'} onClick={() => setTab('Lifecycle record')}>Linked lifecycle record</button></div><div className="live-ledger-detail-table"><ReferenceTable title={table.title} headers={table.headers} rows={table.rows} /></div><ReferenceTable title="◎ Audit Trail" headers={['IST Timestamp', 'Event', 'Actor', 'Details']} rows={[[row.timestamp, <FinanceState value="POSTED" />, 'lifecycle-service', `Ledger entry ${row.id} posted from source reference ${row.reference}.`]]} /></div>
+  return <div className="finance-details ledger-journal"><header><h2>▤ Journal Entry {row.id}</h2><FinanceState value="BALANCED" /><span>(2 lines, Δ ₹0.00)</span><small>Borrower: {row.borrower} | Loan: {row.loan} | Account: {row.account} | Entry Type: {row.type} | Posted: {row.timestamp} IST</small></header><div className="live-ledger-tabs" role="tablist"><button type="button" className={tab === 'Journal lines' ? 'active' : ''} aria-selected={tab === 'Journal lines'} onClick={() => setTab('Journal lines')}>Journal lines (2)</button><button type="button" className={tab === 'Lifecycle record' ? 'active' : ''} aria-selected={tab === 'Lifecycle record'} onClick={() => setTab('Lifecycle record')}>Linked lifecycle record</button></div><div className="live-ledger-detail-table"><ReferenceTable title={table.title} headers={table.headers} rows={table.rows} /></div><ReferenceTable title="◎ Audit Trail" headers={['IST Timestamp', 'Event', 'Actor', 'Details']} rows={[[row.timestamp, <FinanceState value="POSTED" />, 'lifecycle-service', `Ledger entry ${row.id} posted from source reference ${row.reference}.`]]} /></div>
 }
 
 export default function LiveLedgerPage() {
@@ -40,11 +41,12 @@ export default function LiveLedgerPage() {
   const entries = useMemo(() => (data ?? []).map((entry) => {
     const amount = Number(entry.amount ?? 0)
     const type = label(entry.type)
-    return { id: ledgerId(entry.id), rawId: entry.id, timestamp: timestamp(entry.createdAt), account: accountFor(type), type, debit: amount, credit: amount, amount, currency: 'INR', borrower: '—', loan: '—', reference: entry.reference ?? '—', payment: '—', settlement: 'SETTLED', status: 'POSTED' }
+    return { id: ledgerId(entry.id), rawId: entry.id, timestamp: timestamp(entry.createdAt), account: accountFor(type), type, debit: amount, credit: amount, amount, currency: 'INR', borrower: entry.borrowerName ?? '—', connectionId: entry.connectionId, loan: loanLabel(entry.loanId), loanId: entry.loanId, reference: entry.reference ?? '—', payment: '—', settlement: 'SETTLED', status: 'POSTED' }
   }), [data])
   const rows = useMemo(() => entries.filter((row) => Object.entries(filters).every(([key, value]) => !value || row[key] === value) && Object.values(row).join(' ').toLowerCase().includes(searchTerm.toLowerCase()) && (!reference || Object.values(row).join(' ').includes(reference))), [entries, filters, reference, searchTerm])
   const total = entries.reduce((sum, entry) => sum + entry.amount, 0)
   function cell(row, key) {
+    if (key === 'loan' && row.loanId != null) return <Link to={`/loans/${row.loanId}`}>{row.loan}</Link>
     if (['settlement', 'status'].includes(key)) return <FinanceState value={row[key]} />
     if (['debit', 'credit'].includes(key)) return <span className="finance-number">{money(row[key])}</span>
     return row[key]

@@ -439,7 +439,7 @@ public class LifecycleEventService {
         rebatePayments.save(payment);
         var account = found(accounts.findByOrganizationId(e.organizationId()));
         account.setRebatePaid(account.getRebatePaid().add(p.getAmount()));
-        ledger(e, "REBATE_PAID", p.getAmount());
+        ledger(e, loan, "REBATE_PAID", p.getAmount());
         completeRequest(e, loan);
         resource = "rebate";
       }
@@ -457,7 +457,7 @@ public class LifecycleEventService {
         p.setStatus("PAID");
         var account = found(accounts.findByOrganizationId(e.organizationId()));
         account.setFeeReceived(account.getFeeReceived().add(p.getAmount()));
-        ledger(e, "FEE_PAYMENT_RECEIVED", p.getAmount());
+        ledger(e, loan, "FEE_PAYMENT_RECEIVED", p.getAmount());
         events.confirm(
             connection,
             "PAYMENT_CONFIRMED",
@@ -518,9 +518,10 @@ public class LifecycleEventService {
     }
   }
 
-  private void ledger(LifecycleEvent e, String type, BigDecimal amount) {
+  private void ledger(LifecycleEvent e, Loan loan, String type, BigDecimal amount) {
     var l = new LenderAccountLedger();
     l.setOrganizationId(e.organizationId());
+    l.setLoanId(loan.getId());
     l.setType(type);
     l.setAmount(amount);
     l.setReference(e.eventId());
