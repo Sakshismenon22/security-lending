@@ -15,6 +15,9 @@ import java.time.LocalDate;
 @Setter
 @NoArgsConstructor
 public class Organization {
+    @Column(name="lendora_external_key",length=80)
+    private String lendoraExternalKey;
+
     @Id
     @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id",nullable=false)

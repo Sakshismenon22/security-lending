@@ -1,3 +1,6 @@
+> For Lendora signup/login and authenticated workspaces, use [LENDORA_AUTH.md](LENDORA_AUTH.md).
+> The legacy test launcher below explicitly disables Lendora authentication for its standalone test console; do not use that mode for authenticated operation.
+
 # Start the local lending demo
 
 All Java service settings live in their `src/main/resources/application*.properties` files. No environment variable setup is required. Database credentials are `postgres` / `postgres`, and Kafka is enabled at `localhost:9092`.

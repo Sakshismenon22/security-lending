@@ -39,6 +39,13 @@ async function post(path, body, signal) {
   return payload.data ?? payload;
 }
 export const authApi = {
+  me: async (signal) => {
+    const response = await fetch(`${base}/auth/me`, { credentials: "include", headers: { Accept: "application/json" }, signal });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.success) throw new Error(response.status === 401 ? "Please log in to continue." : "Account service is unavailable.");
+    return payload.data;
+  },
+  logout: (signal) => post("/auth/logout", {}, signal),
   login: (values, signal) => post("/auth/login", values, signal),
   register: (values, signal) => post("/organizations/register", values, signal),
   resetPassword: (values, signal) =>

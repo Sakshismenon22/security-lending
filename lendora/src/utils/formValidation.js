@@ -4,7 +4,7 @@ export const countries = [
   "United Kingdom",
   "Singapore",
 ];
-export const currencies = ["INR", "USD", "GBP", "SGD"];
+export const currencies = ["INR"];
 const emailValid = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 export function validateLogin(values) {
   const errors = {};

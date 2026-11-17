@@ -126,7 +126,7 @@ export default function SignupPage() {
                   "organizationName",
                   "Legal organization name",
                   "Enter registered organization name",
-                  { autoComplete: "organization", maxLength: 180 },
+                  { autoComplete: "organization", maxLength: 160 },
                 )}
                 <fieldset
                   className="organization-types"

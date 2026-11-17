@@ -15,9 +15,9 @@ export default defineConfig({
       args: ["--no-sandbox"],
     },
   },
-  webServer: {
-    command: "npm run dev -- --host 127.0.0.1 --port 5176 --strictPort",
-    url: "http://localhost:5176",
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: [
+    { command: "npm run dev -- --host 127.0.0.1 --port 5176 --strictPort", url: "http://localhost:5176", reuseExistingServer: !process.env.CI },
+    { command: "npm --prefix ../lenddesk run dev -- --host 127.0.0.1 --port 5175 --strictPort", url: "http://localhost:5175", reuseExistingServer: !process.env.CI },
+    { command: "npm --prefix ../borrowdesk run dev -- --host 127.0.0.1 --port 5173 --strictPort", url: "http://localhost:5173", reuseExistingServer: !process.env.CI }
+  ],
 });

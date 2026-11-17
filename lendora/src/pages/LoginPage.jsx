@@ -11,6 +11,7 @@ import { authApi } from "../api/authApi";
 import useAuthSubmission from "../hooks/useAuthSubmission";
 import { validateLogin } from "../utils/formValidation";
 import "../styles/auth.css";
+import { workspaceUrl } from "../utils/workspace";
 
 export default function LoginPage() {
   const location = useLocation();
@@ -32,8 +33,14 @@ export default function LoginPage() {
       return;
     }
     const response = await submit({ ...values, email: values.email.trim() });
-    if (response) setResult(response);
-    else requestAnimationFrame(() => summary.current?.focus());
+    if (response) {
+      setValues((current) => ({ ...current, password: "" }));
+      setResult(response);
+      const target = workspaceUrl(
+        response.organization?.type ?? response.workspace,
+      );
+      if (target) window.location.assign(target);
+    } else requestAnimationFrame(() => summary.current?.focus());
   }
   function change(event) {
     setValues((current) => ({
@@ -42,12 +49,7 @@ export default function LoginPage() {
     }));
   }
   const workspace = result?.organization?.type ?? result?.workspace;
-  const workspaceUrl =
-    workspace === "LENDER"
-      ? import.meta.env.VITE_LENDDESK_URL
-      : workspace === "BORROWER"
-        ? import.meta.env.VITE_BORROWDESK_URL
-        : null;
+  const destination = workspaceUrl(workspace);
   return (
     <div className="auth-page">
       <Header variant="login" />
@@ -80,8 +82,8 @@ export default function LoginPage() {
                     : ""}
                   .
                 </p>
-                {workspaceUrl ? (
-                  <a className="button primary" href={workspaceUrl}>
+                {destination ? (
+                  <a className="button primary" href={destination}>
                     Open {workspace === "LENDER" ? "LendDesk" : "BorrowDesk"}
                     <Icon name="arrow" />
                   </a>

@@ -30,34 +30,27 @@ The project follows the other frontend applications in the repository:
 - `src/styles`: shared theme tokens and responsive marketing/authentication layouts.
 - `src/utils`: form validation.
 
-## Account-service integration
+## Signup, login and workspace access
 
-The repository does **not** currently provide an authentication or combined
-organization/admin registration service. The frontend contains an API adapter;
-real account creation, credential verification, sessions, password-reset delivery,
-workspace authorization, and final legal policies still require backend integration.
-The UI never reports account creation or login success until the service confirms it.
-The policy routes provide onboarding information, not finalized legal agreements.
+The `lendora-service` backend now implements signup, login, current-session lookup
+and logout **without Spring Security**. See [LENDORA_AUTH.md](../LENDORA_AUTH.md) for
+service startup, database/key configuration, endpoints and tests.
 
-`VITE_AUTH_API_URL` defaults to `/api/v1`. The adapter expects the following **new
-account-service contract**, which is not an existing borrower/lender-service API:
+There are exactly two types: **LENDER → LendDesk** and **BORROWER → BorrowDesk**.
+Signup provisions the organization's business account and first administrator;
+login uses the stored type and automatically opens the matching workspace.
+Both workspaces verify the session and use its actual organization ID. Passwords
+are hashed by the backend; the browser uses an HttpOnly cookie and stores no tokens.
 
-| POST path | JSON request |
-| --- | --- |
-| `/auth/login` | `{ email, password, rememberMe }` |
-| `/organizations/register` | `{ organization: { name, type, registrationNumber, country, baseCurrency, registeredAddress }, administrator: { fullName, email, password }, acceptedTerms }` |
-| `/auth/password-reset` | `{ email }` |
+`VITE_AUTH_API_URL` defaults to `/api/v1`. The development server proxies it to
+`lendora-service` on port 8086. `VITE_LENDDESK_URL` and `VITE_BORROWDESK_URL` default
+to `http://localhost:5175` and `http://localhost:5173` respectively. Current business
+services support INR, so signup's base-currency selector is limited to INR.
 
-`type` is `LENDER` or `BORROWER`. Successful responses must be JSON with
-`{ "success": true, "data": { ... } }`. Login data may contain
-`{ organization: { name, type } }` or `{ workspace: "LENDER" | "BORROWER" }`.
-Errors may return `{ success: false, message }` or an HTTP error with `detail`.
-Requests include cookies; the service should manage sessions securely. The frontend
-stores no passwords or session tokens in local storage. Password confirmation is
-validated locally and is not sent to the server.
-
-Set `VITE_LENDDESK_URL` and `VITE_BORROWDESK_URL` to the existing workspace URLs.
-Only the workspace matching the authenticated response is linked after login.
+The API adapter exposes `/organizations/register`, `/auth/login`, `/auth/me`, and
+`/auth/logout`. Password recovery remains unavailable until mail/reset delivery is
+implemented; the interface never reports that an email was sent when the service
+is unavailable. Policy pages remain onboarding information, not finalized agreements.
 
 ## Verification
 
@@ -69,7 +62,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Browser tests mock the proposed account API and cover desktop/mobile routes,
+Browser tests mock the account API and cover desktop/mobile routes,
 preview controls, validation, pending/error/success states, and password recovery.
 For an installed Chromium binary, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
-These mocks do not verify a real authentication backend.
+Backend behavior is covered by the account service integration tests.

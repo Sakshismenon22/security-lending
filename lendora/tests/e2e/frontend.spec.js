@@ -116,6 +116,7 @@ test("signup validates fields and confirms creation only after the API succeeds"
 test("login shows API errors, supports visibility and remember-me, and permits a retry", async ({
   page,
 }) => {
+  await page.route("http://localhost:5175/**", route=>route.fulfill({contentType:"text/html",body:"<h1>LendDesk</h1>"}));
   let attempts = 0,
     body;
   await page.route("**/api/v1/auth/login", async (route) => {
@@ -164,9 +165,7 @@ test("login shows API errors, supports visibility and remember-me, and permits a
     page.getByRole("heading", { name: "Welcome back." }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(
-    page.getByText("You are signed in to Example Capital."),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/^http:\/\/localhost:5175\/?$/);
   expect(body.rememberMe).toBe(true);
 });
 test("password recovery validates email and handles service failure and success", async ({
@@ -268,3 +267,60 @@ test("policy links, register alias and unknown routes resolve", async ({
     page.getByRole("heading", { name: "Let’s get you back." }),
   ).toBeVisible();
 });
+
+test('borrower login opens BorrowDesk', async ({ page }) => {
+  await page.route('http://localhost:5173/**', route=>route.fulfill({contentType:'text/html',body:'<h1>BorrowDesk</h1>'}))
+  await page.route('**/api/v1/auth/login', route=>route.fulfill({json:{success:true,data:{organization:{type:'BORROWER',name:'Example Borrower'}}}}))
+  await page.goto('/login')
+  await page.getByLabel('Work email',{exact:true}).fill('borrower@example.com')
+  await page.getByLabel('Password',{exact:true}).fill('valid-passphrase-2026')
+  await page.getByRole('button',{name:'Log in',exact:true}).click()
+  await expect(page).toHaveURL(/^http:\/\/localhost:5173\/?$/)
+})
+
+test('LendDesk pins the logged-in lender organization and supports logout', async ({ page }) => {
+  const calls=[]
+  await page.addInitScript(()=>{localStorage.setItem('lenddesk-data-mode','demo');localStorage.setItem('lenddesk-organization-id','999')})
+  await page.route('http://localhost:8086/api/v1/auth/**', route=>route.fulfill({json:{success:true,data:route.request().method()==='POST'?{loggedOut:true}:{organization:{type:'LENDER',name:'Actual lender',platformOrganizationId:37},user:{fullName:'Actual Admin'}}}}))
+  await page.route('http://localhost:8084/**', route=>{
+    calls.push(new URL(route.request().url()).pathname)
+    const data=route.request().url().includes('/ledger/overview')?{content:[],page:0,size:25,totalElements:0,totalPages:0,totalAmount:0,options:{types:[],borrowers:[],loans:[]}}:[]
+    return route.fulfill({json:{success:true,data}})
+  })
+  await page.goto('http://localhost:5175/ledger')
+  await expect(page.getByText('Actual lender · Actual Admin')).toBeVisible()
+  await expect(page.getByText('0–0 of 0 entries',{exact:true})).toBeVisible()
+  expect(calls.some(path=>path.includes('/organizations/37/'))).toBe(true)
+  expect(calls.some(path=>path.includes('/organizations/999/'))).toBe(false)
+  await page.getByRole('button',{name:'Log out',exact:true}).click()
+  await expect(page).toHaveURL(/localhost:5176\/login$/)
+})
+
+test('BorrowDesk binds API URLs after resolving the logged-in organization', async ({ page }) => {
+  const calls=[], loan={id:1,security_id:1,msla_id:1,outstanding_quantity:10,original_quantity:10,status:'ACTIVE'}
+  await page.route('http://localhost:8086/api/v1/auth/me', route=>route.fulfill({json:{success:true,data:{organization:{type:'BORROWER',name:'Actual borrower',platformOrganizationId:38},user:{fullName:'Borrower Admin'}}}}))
+  await page.route('http://localhost:8081/**', route=>{
+    const path=new URL(route.request().url()).pathname;calls.push(path)
+    let data=[]
+    if(path.endsWith('/loans'))data={content:[loan]}
+    else if(path.endsWith('/loans/1'))data={loan,collateral_position:[]}
+    else if(path.endsWith('/securities'))data=[{id:1,symbol:'INFY',price:100}]
+    return route.fulfill({json:{success:true,data}})
+  })
+  await page.goto('http://localhost:5173/loans')
+  await expect(page.getByText('Actual borrower · Borrower Admin')).toBeVisible()
+  await expect(page.getByRole('heading',{name:'Active Loans',exact:true})).toBeVisible()
+  expect(calls.some(path=>path.includes('/organizations/38/'))).toBe(true)
+  expect(calls.some(path=>path.includes('/organizations/1/'))).toBe(false)
+})
+
+test('wrong workspace and missing sessions redirect without loading tenant data', async ({ page }) => {
+  let unauthenticated=false
+  await page.route('http://localhost:8086/api/v1/auth/me', route=>route.fulfill(unauthenticated?{status:401,json:{success:false}}:{json:{success:true,data:{organization:{type:'LENDER',platformOrganizationId:37},user:{fullName:'Admin'}}}}))
+  await page.route('http://localhost:5175/**', route=>route.fulfill({contentType:'text/html',body:'<h1>LendDesk</h1>'}))
+  await page.goto('http://localhost:5173/loans')
+  await expect(page).toHaveURL(/^http:\/\/localhost:5175\/?$/)
+  unauthenticated=true
+  await page.goto('http://localhost:5173/loans')
+  await expect(page).toHaveURL(/localhost:5176\/login$/)
+})

@@ -40,14 +40,14 @@ $services = @(
         Folder = 'borrower-service'
         Port = 8081
         ReadyPath = '/actuator/health'
-        Command = 'call mvnw.cmd spring-boot:run'
+        Command = 'call mvnw.cmd spring-boot:run -Dspring-boot.run.arguments=--lendora.auth-enabled=false'
     },
     @{
         Name = 'Lender service'
         Folder = 'lender-service'
         Port = 8084
         ReadyPath = '/actuator/health'
-        Command = 'call mvnw.cmd spring-boot:run'
+        Command = 'call mvnw.cmd spring-boot:run -Dspring-boot.run.arguments=--lendora.auth-enabled=false'
     },
     @{
         Name = 'Lifecycle service'
