@@ -888,6 +888,221 @@ class BorrowerWorkflowTests {
   }
 
     @Test
+    void partialCashReleaseIsLimitedToExcessAndCreditsOnlyTheConfirmedAmount() throws Exception {
+      long org = org(),
+        sec = security("100");
+      fund(org, "10000");
+      long loanId = loan(org, sec, agreement(org, 0), 10);
+      var p = db.rows(CollateralPosition.class, eq("loanId", loanId)).get(0);
+      long id = n(p, "id");
+      apply(org, "COLLATERAL_PLEDGED", id, 1, Map.of());
+      apply(org, "LOAN_SETTLED", loanId, 1, Map.of());
+      assertEquals(
+        0,
+        bd("950").compareTo(
+          (BigDecimal) collateral
+            .releasePreview(org, loanId)
+            .get("availableExcess")
+        )
+      );
+      assertThrows(ResponseStatusException.class, () ->
+        collateral.requestRelease(
+          org,
+          id,
+          new CollateralReleaseRequest(bd("951"), null)
+        )
+      );
+      assertThrows(ResponseStatusException.class, () ->
+        collateral.requestRelease(org, id, new CollateralReleaseRequest(null, 1L))
+      );
+      BigDecimal cashBefore = money(
+        db.matchingRow(TraderAccount.class, eq("organizationId", org)),
+        "available"
+      );
+      mvc
+        .perform(
+          post("/api/v1/organizations/" + org + "/collateral/" + id + "/release")
+            .contentType("application/json")
+            .content("{\"cashAmount\":500}")
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.requested_release_cash").value(500));
+      assertEquals(
+        0,
+        bd("450").compareTo(
+          (BigDecimal) collateral
+            .releasePreview(org, loanId)
+            .get("availableExcess")
+        )
+      );
+      assertEquals(
+        0,
+        cashBefore.compareTo(
+          money(
+            db.matchingRow(TraderAccount.class, eq("organizationId", org)),
+            "available"
+          )
+        )
+      );
+      var confirmation = event(
+        org,
+        "COLLATERAL_RELEASED",
+        id,
+        2,
+        Map.of("cashAmount", bd("500"), "quantity", 0)
+      );
+      projections.apply(confirmation);
+      projections.apply(confirmation);
+      var after = db.owned(CollateralPosition.class, org, id);
+      assertEquals("POSTED", after.get("status"));
+      assertEquals(0, bd("1500").compareTo(money(after, "cash_amount")));
+      var account = db.matchingRow(
+        TraderAccount.class,
+        eq("organizationId", org)
+      );
+      assertEquals(
+        0,
+        cashBefore.add(bd("500")).compareTo(money(account, "available"))
+      );
+      assertEquals(0, bd("1500").compareTo(money(account, "pledged")));
+      collateral.requestRelease(
+        org,
+        id,
+        new CollateralReleaseRequest(bd("450"), null)
+      );
+      apply(
+        org,
+        "COLLATERAL_RELEASE_REJECTED",
+        id,
+        3,
+        Map.of("reason", "Keep coverage buffer")
+      );
+      assertNull(
+        db.owned(CollateralPosition.class, org, id).get("requested_release_cash")
+      );
+      assertEquals(
+        "POSTED",
+        db.owned(CollateralPosition.class, org, id).get("status")
+      );
+    }
+
+    @Test
+    void securityReleaseUsesHaircutAdjustedWholeUnitsAndUnpledgesOnlyConfirmedUnits() {
+      long org = org(),
+        sec = security("100");
+      fund(org, "10000");
+      long loanId = loan(org, sec, agreement(org, sec), 10);
+      var cash = db.rows(CollateralPosition.class, eq("loanId", loanId)).get(0);
+      apply(org, "COLLATERAL_PLEDGED", n(cash, "id"), 1, Map.of());
+      apply(org, "LOAN_SETTLED", loanId, 1, Map.of());
+      db.holding(org, sec);
+      db.editMatching(
+        Holding.class,
+        h -> h.setOwnedQuantity(10L),
+        eq("organizationId", org),
+        eq("securityId", sec)
+      );
+      var securities = collateral.post(
+        org,
+        loanId,
+        new AllocationRequest("SECURITY", sec, 10, BigDecimal.ZERO)
+      );
+      long positionId = n(securities, "id");
+      apply(org, "COLLATERAL_PLEDGED", positionId, 1, Map.of());
+      collateral.requestRelease(
+        org,
+        n(cash, "id"),
+        new CollateralReleaseRequest(bd("1700"), null)
+      );
+      assertThrows(ResponseStatusException.class, () ->
+        collateral.requestRelease(
+          org,
+          positionId,
+          new CollateralReleaseRequest(null, 2L)
+        )
+      );
+      collateral.requestRelease(
+        org,
+        positionId,
+        new CollateralReleaseRequest(null, 1L)
+      );
+      apply(
+        org,
+        "COLLATERAL_RELEASED",
+        positionId,
+        2,
+        Map.of("cashAmount", BigDecimal.ZERO, "quantity", 1)
+      );
+      assertEquals(
+        9,
+        n(db.owned(CollateralPosition.class, org, positionId), "quantity")
+      );
+      assertEquals(
+        9,
+        n(
+          db.matchingRow(
+            Holding.class,
+            eq("organizationId", org),
+            eq("securityId", sec)
+          ),
+          "pledged_quantity"
+        )
+      );
+    }
+
+    @Test
+    void pendingReleasesConsumeExcessAcrossLotsAndUnconfirmedPledgesDoNotCount() {
+      long org = org(),
+        sec = security("100");
+      fund(org, "10000");
+      long loanId = loan(org, sec, agreement(org, 0), 10);
+      var initial = db
+        .rows(CollateralPosition.class, eq("loanId", loanId))
+        .get(0);
+      apply(org, "COLLATERAL_PLEDGED", n(initial, "id"), 1, Map.of());
+      apply(org, "LOAN_SETTLED", loanId, 1, Map.of());
+      var second = collateral.post(
+        org,
+        loanId,
+        new AllocationRequest("CASH", null, 0, bd("500"))
+      );
+      assertEquals(
+        0,
+        bd("950").compareTo(
+          (BigDecimal) collateral
+            .releasePreview(org, loanId)
+            .get("availableExcess")
+        )
+      );
+      apply(org, "COLLATERAL_PLEDGED", n(second, "id"), 1, Map.of());
+      collateral.requestRelease(
+        org,
+        n(initial, "id"),
+        new CollateralReleaseRequest(bd("1200"), null)
+      );
+      assertThrows(ResponseStatusException.class, () ->
+        collateral.requestRelease(
+          org,
+          n(second, "id"),
+          new CollateralReleaseRequest(bd("251"), null)
+        )
+      );
+      collateral.requestRelease(
+        org,
+        n(second, "id"),
+        new CollateralReleaseRequest(bd("250"), null)
+      );
+      assertEquals(
+        0,
+        (
+          (BigDecimal) collateral
+            .releasePreview(org, loanId)
+            .get("availableExcess")
+        ).signum()
+      );
+    }
+
+    @Test
     void returnSettlementClosesLoanAndAcceptsTheLenderCollateralReleaseConfirmation() {
         long org = org(), security = security("100");
         fund(org, "20000");

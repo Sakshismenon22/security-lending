@@ -404,6 +404,7 @@ function CollateralDecision({ position: p }) {
           ? 'Review requested collateral release'
           : 'Review collateral pledge'}
       </h3>
+      {p.status === 'RELEASE_REQUESTED' && <p>Requested release: {p.assetType === 'CASH' ? money(p.requestedReleaseCash ?? p.cashAmount, p.currency) : `${num(p.requestedReleaseQuantity ?? p.quantity)} units`}. Current coverage is checked again before acceptance.</p>}
       <label>
         Decision
         <select value={action} onChange={(e) => setAction(e.target.value)}>

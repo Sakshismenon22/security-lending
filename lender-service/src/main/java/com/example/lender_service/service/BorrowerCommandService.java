@@ -86,6 +86,19 @@ public class BorrowerCommandService {
                     connection.getId(), command.referenceId()));
         sameAgreement(p.getMslaId(), connection, command);
         require("POSTED".equals(p.getStatus()), "Collateral is not posted");
+        boolean cash = "CASH".equals(p.getAssetType());
+        BigDecimal requestedCash = command.data().hasNonNull("cashAmount")
+            ? command.data().path("cashAmount").decimalValue()
+            : cash ? p.getCashAmount() : BigDecimal.ZERO;
+        long requestedQty = command.data().hasNonNull("quantity")
+            ? command.data().path("quantity").asLong() : cash ? 0L : p.getQuantity();
+        require(cash
+            ? requestedCash.signum() > 0 && requestedCash.scale() <= 6
+                && requestedCash.compareTo(p.getCashAmount()) <= 0 && requestedQty == 0
+            : requestedCash.signum() == 0 && requestedQty > 0 && requestedQty <= p.getQuantity(),
+            "Invalid collateral release amount");
+        p.setRequestedReleaseCash(requestedCash);
+        p.setRequestedReleaseQuantity(requestedQty);
         p.setStatus("RELEASE_REQUESTED");
         events.local(
             organization.getId(), "COLLATERAL_RELEASE_REQUESTED", p.getId(), Map.of("position", p));

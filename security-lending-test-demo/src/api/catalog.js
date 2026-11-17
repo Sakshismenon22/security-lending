@@ -383,7 +383,9 @@ export const actions = [
     "Collateral & risk",
     "Request collateral release",
     "/collateral/{id}/release",
+    { cashAmount: 100 },
   ),
+  op("collateral-release-preview", "Collateral & risk", "Check available excess for release", "borrower", "GET", "/loans/{id}/collateral-release-preview"),
   l(
     "collateral-release-confirm",
     "Collateral & risk",

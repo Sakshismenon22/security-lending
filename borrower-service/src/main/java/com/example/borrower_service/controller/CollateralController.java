@@ -1,6 +1,7 @@
 package com.example.borrower_service.controller;
 
 import com.example.borrower_service.dto.AllocationRequest;
+import com.example.borrower_service.dto.CollateralReleaseRequest;
 import com.example.borrower_service.response.ApiResponse;
 import com.example.borrower_service.service.*;
 import jakarta.validation.Valid;
@@ -18,5 +19,6 @@ public class CollateralController {
     @PostMapping("/margin-calls/{id}/collateral") public ApiResponse<?> respond(@PathVariable long org,@PathVariable long id,@Valid @RequestBody AllocationRequest r) {return ApiResponse.ok(collateral.respondToMarginCall(org,id,r));}
     @GetMapping("/loans/{id}/valuation") public ApiResponse<?> valuation(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(portfolio.authoritativeValuation(org,id));}
     @GetMapping("/loans/{id}/collateral-preview") public ApiResponse<?> preview(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(collateral.preview(org,id));}
-    @PostMapping("/collateral/{id}/release") public ApiResponse<?> release(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(collateral.requestRelease(org,id));}
+    @GetMapping("/loans/{id}/collateral-release-preview") public ApiResponse<?> releasePreview(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(collateral.releasePreview(org,id));}
+    @PostMapping("/collateral/{id}/release") public ApiResponse<?> release(@PathVariable long org,@PathVariable long id,@Valid @RequestBody(required=false) CollateralReleaseRequest r) {return ApiResponse.ok(collateral.requestRelease(org,id,r));}
 }

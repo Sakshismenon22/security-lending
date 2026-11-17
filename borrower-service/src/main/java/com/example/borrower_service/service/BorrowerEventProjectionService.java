@@ -97,7 +97,10 @@ public class BorrowerEventProjectionService {
                     returned(org, id, event.type().equals("RETURN_SETTLED"));
             case "COLLATERAL_PLEDGED" -> collateral.applyPledgeConfirmation(org, id);
             case "COLLATERAL_REJECTED" -> collateral.applyReleaseConfirmation(org, id, true);
-            case "COLLATERAL_RELEASED" -> collateral.applyReleaseConfirmation(org, id, false);
+            case "COLLATERAL_RELEASED" -> collateral.applyReleaseConfirmation(
+                    org, id, false,
+                    d.get("cashAmount") != null ? decimal(d, "cashAmount") : null,
+                    d.get("quantity") != null ? Long.valueOf(d.get("quantity").toString()) : null);
             case "COLLATERAL_RELEASE_REJECTED" -> {
                 var p = db.owned(CollateralPosition.class, org, id);
                 require(
@@ -108,6 +111,8 @@ public class BorrowerEventProjectionService {
                         id,
                         entity -> {
                             entity.setStatus("POSTED");
+                            entity.setRequestedReleaseCash(null);
+                            entity.setRequestedReleaseQuantity(null);
                         });
             }
             case "PAYMENT_CONFIRMED", "PAYMENT_REJECTED" ->

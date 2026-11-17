@@ -84,6 +84,7 @@ function LiveEditor({ kind, data, organizationId }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [success, setSuccess] = useState('')
+  const selectedRelease = data.collateral.find(c => String(c.id) === action.split(':')[1] && action.startsWith('collateralRelease'))
   const [guardEnabled, setGuardEnabled] = useState(data.marginGuardEnabled !== false)
   useEffect(() => {
     mounted.current = true
@@ -128,7 +129,7 @@ function LiveEditor({ kind, data, organizationId }) {
   function automaticSettlementReference() {
     const key = `${l.id}:${action}`
     if (!settlementReferences.current.has(key)) {
-      const operation = action === 'settle' ? 'SECURITY-DELIVERY' : action.startsWith('collateralConfirm:') ? 'COLLATERAL-RECEIPT' : 'RETURN-RECEIPT'
+      const operation = action === 'settle' ? 'SECURITY-DELIVERY' : action.startsWith('collateralConfirm:') ? 'COLLATERAL-RECEIPT' : action.startsWith('collateralRelease:') ? 'COLLATERAL-RELEASE' : 'RETURN-RECEIPT'
       const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '')
       const suffix = globalThis.crypto?.randomUUID?.().slice(0, 8) ?? Math.random().toString(36).slice(2, 10)
       settlementReferences.current.set(key, `LENDDESK-${operation}-${l.id}-${timestamp}-${suffix}`)
@@ -158,13 +159,17 @@ function LiveEditor({ kind, data, organizationId }) {
         ? `/returns/${action.split(':')[1]}/settle`
         : action.startsWith('returnReject:')
           ? `/returns/${action.split(':')[1]}/reject`
+          : action.startsWith('collateralRelease:')
+            ? `/collateral/${action.split(':')[1]}/release-confirmations`
+            : action.startsWith('collateralReleaseReject:')
+              ? `/collateral/${action.split(':')[1]}/release-rejections`
           : action.startsWith('collateralConfirm:')
             ? `/collateral/${action.split(':')[1]}/confirm`
             : action.startsWith('collateralReject:')
               ? `/collateral/${action.split(':')[1]}/reject`
           : `/loans/${l.id}/${action}`
       body =
-        action === 'reject' || action.startsWith('returnReject:') || action.startsWith('collateralReject:')
+        action === 'reject' || action.startsWith('returnReject:') || action.startsWith('collateralReject:') || action.startsWith('collateralReleaseReject:')
           ? { reason: reason.trim() }
           : action === 'approve'
             ? {}
@@ -355,6 +360,8 @@ function LiveEditor({ kind, data, organizationId }) {
                           )}
                           {data.collateral.filter((c) => c.status === 'PLEDGE_PENDING').map((c) => <option key={`confirm-${c.id}`} value={`collateralConfirm:${c.id}`}>Confirm collateral receipt {c.id}</option>)}
                           {data.collateral.filter((c) => c.status === 'PLEDGE_PENDING').map((c) => <option key={`reject-collateral-${c.id}`} value={`collateralReject:${c.id}`}>Reject collateral pledge {c.id}</option>)}
+                          {data.collateral.filter(c => c.status === 'RELEASE_REQUESTED').map(c => <option key={`release-${c.id}`} value={`collateralRelease:${c.id}`}>Accept collateral release {c.id} ({c.assetType === 'CASH' ? money(c.requestedReleaseCash ?? c.cashAmount) : `${num(c.requestedReleaseQuantity ?? c.quantity)} units`})</option>)}
+                          {data.collateral.filter(c => c.status === 'RELEASE_REQUESTED').map(c => <option key={`release-reject-${c.id}`} value={`collateralReleaseReject:${c.id}`}>Reject collateral release {c.id}</option>)}
                           {data.returns
                             .filter((r) => r.status === 'PENDING')
                             .map((r) => (
@@ -375,6 +382,11 @@ function LiveEditor({ kind, data, organizationId }) {
                             ))}
                         </select>
                       </label>
+                      {data.collateral.some(c => c.status === 'RELEASE_REQUESTED') && <div className="wf-notice">
+                        <b>Borrower collateral release requests</b>
+                        {data.collateral.filter(c => c.status === 'RELEASE_REQUESTED').map(c => <p key={c.id}>Lot {c.id}: requested {c.assetType === 'CASH' ? money(c.requestedReleaseCash ?? c.cashAmount) : `${num(c.requestedReleaseQuantity ?? c.quantity)} units`}, held {c.assetType === 'CASH' ? money(c.cashAmount) : `${num(c.quantity)} units`}.</p>)}
+                        <p>Accepting checks current prices and required coverage in the backend. If the excess has fallen, acceptance is blocked and the request can be rejected.</p>
+                      </div>}
                       <div className="al-live-actions">
                         {l.status === 'ACTIVE' && (
                           <Link to={`/margin-calls/${loanId(l.id)}/issue`}>
@@ -393,7 +405,7 @@ function LiveEditor({ kind, data, organizationId }) {
                   {(isMargin ||
                     isRecall ||
                     action === 'reject' ||
-                    action.startsWith('returnReject:')) && (
+                    action.startsWith('returnReject:') || action.startsWith('collateralReleaseReject:')) && (
                     <label>
                       Reason / borrower message
                       <textarea
@@ -552,7 +564,9 @@ function LiveEditor({ kind, data, organizationId }) {
                 ? `${money(amount, l.currency)} by ${dueAt.replace('T', ' ')} IST`
                 : isRecall
                   ? `${num(quantity)} shares`
-                  : display(action)}
+                  : selectedRelease
+                    ? `${action.startsWith('collateralReleaseReject:') ? 'Reject' : 'Accept'} release for lot ${selectedRelease.id}: ${selectedRelease.assetType === 'CASH' ? money(selectedRelease.requestedReleaseCash ?? selectedRelease.cashAmount) : `${num(selectedRelease.requestedReleaseQuantity ?? selectedRelease.quantity)} units`}`
+                    : display(action)}
             </p>
             {reason && <p>{reason}</p>}
             {(action === 'settle' || action.startsWith('return:') || action.startsWith('collateralConfirm:')) && <p>An internal settlement audit reference will be assigned automatically.</p>}
