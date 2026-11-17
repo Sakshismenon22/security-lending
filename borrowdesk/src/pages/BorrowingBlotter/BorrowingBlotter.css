@@ -388,3 +388,9 @@
 .blotter-selected-row.details-minimized .blotter-detail-grid { display:none !important; }
 .detail-size-toggle { min-width:82px; justify-content:center; }
 .detail-size-toggle svg { width:12px; height:12px; }
+
+/* Request type badges in the Overview table. */
+.borrow-blotter .request-type-badge{display:inline-flex;align-items:center;padding:3px 7px;border-radius:3px;font-size:10px;line-height:12px;font-weight:750;white-space:nowrap}
+.borrow-blotter .request-type-badge.locate{background:#eee7ff;color:#6236a5;border:1px solid #d9cafa}
+.borrow-blotter .request-type-badge.loan{background:#dff3e8;color:#187347;border:1px solid #bde5ce}
+.borrow-blotter .request-type-badge.reservation{background:#e1efff;color:#245d9e;border:1px solid #c5dcfa}
