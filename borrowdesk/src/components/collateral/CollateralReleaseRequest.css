@@ -74,9 +74,13 @@
   cursor: pointer;
 }
 .collateral-release-dialog button[type="submit"] {
-  background: #e96812;
+  background: var(--primary);
   color: #fff;
-  border-color: #e96812;
+  border-color: var(--primary);
+}
+.collateral-release-dialog button[type="submit"]:hover:not(:disabled) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
 }
 .collateral-release-dialog button:disabled {
   opacity: 0.5;
