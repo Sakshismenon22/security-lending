@@ -306,7 +306,8 @@ public class BorrowerCommandService {
     boolean eligible =
         "ACTIVE".equals(reservation.getStatus())
             && reservation.getExpiresAt().isAfter(clock.instant())
-            && r.quantity() <= reservation.getRemainingQuantity();
+            && r.quantity() <= reservation.getRemainingQuantity()
+            && (r.maturityAt() == null || r.maturityAt().isAfter(clock.instant()));
     var l = new Loan();
     l.setOrganizationId(c.getOrganizationId());
     l.setConnectionId(c.getId());
@@ -314,6 +315,7 @@ public class BorrowerCommandService {
     l.setReservationId(reservation.getId());
     l.setSecurityId(reservation.getSecurityId());
     l.setBorrowerLoanId(command.referenceId());
+    l.setMaturityAt(r.maturityAt());
     l.setQuantity(r.quantity());
     l.setOutstandingQuantity(eligible ? r.quantity() : 0L);
     l.setStatus(eligible ? "PENDING_REVIEW" : "REJECTED");

@@ -329,7 +329,7 @@ function LiveEditor({ kind, data, organizationId }) {
                     <>
                       <p>
                         Review the current loan and settle confirmed borrower
-                        requests. Loan-specific amendments and maturity are not
+                        requests. Loan-specific amendments are not
                         supported by the current contract; MSLA terms are
                         read-only here.
                       </p>

@@ -154,6 +154,27 @@ class LenderWorkflowTests {
     return loans.findByConnectionIdAndBorrowerLoanId(c.getId(), 300L).orElseThrow();
   }
 
+  @Test
+  void loanMaturitySurvivesBorrowerCommandAndAppearsInScreenAndRawApis() throws Exception {
+    var org = organization();
+    var c = connection(org);
+    long sec = security("100");
+    inventory.create(org.getId(), new InventoryRequest(sec, 1000, "Initial custody"));
+    agreement(org, c, 0, true);
+    reservation(org, c, sec, 100);
+    var maturity = Instant.now().plusSeconds(86400).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+    command(org, "LOAN_REQUESTED", 300, 10,
+        new LoanCommand(200, 100, List.of(new AllocationRequest("CASH", null, 0, bd("11000"), null)), maturity));
+    var loan = loans.findByConnectionIdAndBorrowerLoanId(c.getId(), 300L).orElseThrow();
+    assertEquals(maturity, loan.getMaturityAt());
+    var row = (Map<?, ?>) loanScreen.detail(org.getId(), loan.getId()).get("loan");
+    assertEquals(maturity, row.get("maturityAt"));
+    assertEquals(maturity, row.get("maturity"));
+    mvc.perform(get("/api/v1/organizations/" + org.getId() + "/loans"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content[0].maturityAt").value(maturity.toString()));
+  }
+
   Loan activeLoan(Organization o, BorrowerConnection c, long security, boolean recallAllowed) {
     inventory.create(o.getId(), new InventoryRequest(security, 1000, "Initial custody"));
     agreement(o, c, 0, recallAllowed);

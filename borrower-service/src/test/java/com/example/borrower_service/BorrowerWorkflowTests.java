@@ -153,6 +153,38 @@ class BorrowerWorkflowTests {
                 "id");
     }
 
+    @Test
+    void loanMaturityIsPersistedPublishedAndExposedInBothReadEndpoints() throws Exception {
+        long org = org(), security = security("100"), agreement = agreement(org, 0);
+        fund(org, "10000");
+        long reservation = reservation(org, security, agreement, 10);
+        Instant maturity = Instant.now().plusSeconds(86400).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        var request = new LoanRequest(reservation, 10,
+                List.of(new AllocationRequest("CASH", null, 0, bd("2000"))), maturity);
+        long id = n(lending.createLoan(org, request), "id");
+        assertEquals(maturity, db.find(Loan.class, id).getMaturityAt());
+        var event = db.rows(OutboxEvent.class, eq("organizationId", org),
+                eq("eventType", "LOAN_REQUESTED"), eq("aggregateId", String.valueOf(id))).get(0);
+        assertTrue(event.get("payload").toString().contains(maturity.toString()));
+        mvc.perform(get("/api/v1/organizations/" + org + "/loans"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].maturityAt").value(maturity.toString()));
+        mvc.perform(get("/api/v1/organizations/" + org + "/loans/" + id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.maturityAt").value(maturity.toString()));
+    }
+
+    @Test
+    void pastLoanMaturityDoesNotConsumeReservation() {
+        long org = org(), security = security("100"), agreement = agreement(org, 0);
+        long reservation = reservation(org, security, agreement, 10);
+        assertThrows(ResponseStatusException.class, () -> lending.createLoan(org,
+                new LoanRequest(reservation, 10,
+                    List.of(new AllocationRequest("CASH", null, 0, bd("2000"))),
+                    Instant.now().minusSeconds(60))));
+        assertEquals(10, n(db.owned(Reservation.class, org, reservation), "remaining_quantity"));
+    }
+
     Map<String, Object> account(long org) {
         return db.matchingRow(TraderAccount.class, eq("organizationId", org));
     }

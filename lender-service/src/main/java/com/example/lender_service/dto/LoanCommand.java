@@ -8,4 +8,9 @@ import java.util.List;
 public record LoanCommand(
     @Positive long reservationId,
     @Positive long quantity,
-    @NotEmpty List<@Valid AllocationRequest> collateral) {}
+    @NotEmpty List<@Valid AllocationRequest> collateral,
+    Instant maturityAt) {
+  public LoanCommand(long reservationId, long quantity, List<AllocationRequest> collateral) {
+    this(reservationId, quantity, collateral, null);
+  }
+}

@@ -135,3 +135,7 @@ Quantity must be a positive integer. Type is `LIMIT` or `MARKET`; limit orders r
 `POST /api/v1/organizations/{org}/orders/{id}/cancel` cancels the unfilled order and releases its reservation. Both operations verify organization ownership and reject orders that have executions or are no longer pending. Updates atomically replace cash/share reservations; failed updates roll back the original order and reservation. Trading, updates and cancellation share the organization lock. Audit events record order updates and cancellations.
 
 BorrowDesk exposes edit and cancel icons in Orders. Filled holdings remain positions; cancellation changes an order's status rather than deleting its history.
+
+## Loan maturity
+
+Loan creation accepts an optional `maturityAt` ISO-8601 timestamp, for example `2026-12-01T09:30:00Z` (3:00 PM IST). BorrowDesk requires a future maturity when converting a reservation and sends it as UTC. Borrower-service stores it and forwards it in `LOAN_REQUESTED`; lender-service persists the same timestamp. Loan list/detail APIs expose `maturityAt`, and lender loan screens also expose `maturity` for the register. Existing loans and older API clients may omit the field. Maturity is a contractual timestamp; reaching it does not itself confirm securities return or close the loan.

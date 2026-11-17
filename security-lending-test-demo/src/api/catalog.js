@@ -312,7 +312,7 @@ export const actions = [
     "Loans & returns",
     "Request loan with collateral",
     "/loans",
-    { reservationId: 1, quantity: 100, collateral: [allocation] },
+    { reservationId: 1, quantity: 100, collateral: [allocation], maturityAt: "$tomorrow" },
     {
       note: "Requires a confirmed reservation and available borrower cash or owned securities. For security collateral use assetType SECURITY, its securityId, quantity, and cashAmount 0.",
     },

@@ -280,7 +280,7 @@ export default function LiveLoansPage() {
                         ? 'Not valued'
                         : `${num(l.coverage)}%`}
                     </td>
-                    <td>—</td>
+                    <td>{date(l.maturityAt ?? l.maturity)}</td>
                     <td>
                       {l.openMarginCount ? (
                         <LoanBadge>Margin open</LoanBadge>
@@ -402,7 +402,7 @@ export function LiveLoanDetails({ id }) {
             ['MSLA rebate', `${num(l.rebateBps)} bps`],
             ['Day count', `Actual/${l.dayBasis}`],
             ['Start date IST', date(l.settledAt)],
-            ['Maturity', 'Not recorded'],
+            ['Maturity IST', date(l.maturityAt ?? l.maturity)],
           ]}
         />
         <article className="al-card">

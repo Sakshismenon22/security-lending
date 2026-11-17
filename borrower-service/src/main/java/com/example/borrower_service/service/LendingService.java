@@ -211,6 +211,8 @@ public class LendingService {
 
     public Map<String, Object> createLoan(long org, LoanRequest r) {
         db.lock(org);
+        require(r.maturityAt() == null || r.maturityAt().isAfter(Instant.now()),
+                "Loan maturity must be in the future");
         var reservation = db.owned(Reservation.class, org, r.reservationId());
         require(
                 "ACTIVE".equals(reservation.get("status"))
@@ -235,6 +237,7 @@ public class LendingService {
                             entity.setOrganizationId(org);
                             entity.setMslaId(n(a, "id"));
                             entity.setReservationId(r.reservationId());
+                            entity.setMaturityAt(r.maturityAt());
                             entity.setSecurityId(n(reservation, "security_id"));
                             entity.setQuantity(r.quantity());
                             entity.setOutstandingQuantity(r.quantity());
