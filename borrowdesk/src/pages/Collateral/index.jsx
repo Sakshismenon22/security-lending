@@ -1,7 +1,7 @@
 import CollateralReleaseRequest from '../../components/collateral/CollateralReleaseRequest';
 import useCollateralReleaseUpdates from '../../hooks/useCollateralReleaseUpdates';
 import CollateralReleaseStatus from '../../components/collateral/CollateralReleaseStatus';
-import{useCallback,useEffect,useMemo,useState}from'react';
+import{useCallback,useEffect,useMemo,useRef,useState}from'react';
 import{Download,Plus,SlidersHorizontal,RotateCcw,RefreshCw,Search,X,Wallet,ShieldCheck,Clock3,CheckCircle2,AlertTriangle,ArrowLeftRight,FileText,Maximize2,Minimize2}from'lucide-react';
 import{collateralApi}from'../../api/collateralApi';
 import{lendingApi}from'../../api/lendingApi';
