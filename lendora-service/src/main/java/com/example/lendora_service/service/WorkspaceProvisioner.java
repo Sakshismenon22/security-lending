@@ -4,6 +4,8 @@ import com.example.lendora_service.dto.AuthContracts.ProvisionRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.JsonNode;
@@ -26,7 +28,7 @@ public class WorkspaceProvisioner {
   public long provision(String type, ProvisionRequest request) {
     if (key.isBlank()) throw new ResponseStatusException(
       HttpStatus.SERVICE_UNAVAILABLE,
-      "Organization registration is not configured. Contact the platform administrator."
+      "Organization registration is not configured. Set the same LENDORA_PROVISIONING_KEY on all three backend services and restart them."
     );
     var factory =
       new org.springframework.http.client.SimpleClientHttpRequestFactory();
@@ -51,6 +53,29 @@ public class WorkspaceProvisioner {
         "Invalid workspace provisioning response"
       );
       return response.path("data").path("organizationId").asLong();
+    } catch (HttpClientErrorException e) {
+      if (
+        e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403
+      ) {
+        throw new ResponseStatusException(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          "Workspace provisioning was denied. Configure the same LENDORA_PROVISIONING_KEY on lendora-service, lender-service and borrower-service, then restart them.",
+          e
+        );
+      }
+      throw new ResponseStatusException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "Workspace registration was rejected by the business service. Check its provisioning configuration.",
+        e
+      );
+    } catch (ResourceAccessException e) {
+      throw new ResponseStatusException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "Cannot reach " +
+          (type.equals("BORROWER") ? "borrower-service" : "lender-service") +
+          ". Start the service and check the corresponding LENDORA_BORROWER_SERVICE_URL or LENDORA_LENDER_SERVICE_URL setting.",
+        e
+      );
     } catch (Exception e) {
       throw new ResponseStatusException(
         HttpStatus.SERVICE_UNAVAILABLE,

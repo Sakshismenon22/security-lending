@@ -1,4 +1,5 @@
 > For Lendora signup/login and authenticated workspaces, use [LENDORA_AUTH.md](LENDORA_AUTH.md).
+> On Windows use `start-lendora.cmd` for Lendora, BorrowDesk and LendDesk; create `lendora_db` first.
 > The legacy test launcher below explicitly disables Lendora authentication for its standalone test console; do not use that mode for authenticated operation.
 
 # Start the local lending demo

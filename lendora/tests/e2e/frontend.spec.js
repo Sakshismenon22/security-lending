@@ -324,3 +324,37 @@ test('wrong workspace and missing sessions redirect without loading tenant data'
   await page.goto('http://localhost:5173/loans')
   await expect(page).toHaveURL(/localhost:5176\/login$/)
 })
+
+test("signup reports backend configuration and gateway failures", async ({
+  page,
+}) => {
+  let response = {
+    status: 503,
+    json: {
+      success: false,
+      message:
+        "Organization registration is not configured. Set the same LENDORA_PROVISIONING_KEY on all three backend services and restart them.",
+    },
+  };
+  await page.route("**/api/v1/organizations/register", (route) =>
+    route.fulfill(response),
+  );
+  await page.goto("/signup");
+  await completeRegistration(page);
+  await page
+    .getByRole("button", { name: "Create organization & admin account" })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "LENDORA_PROVISIONING_KEY",
+  );
+  response = { status: 502, contentType: "text/html", body: "Bad Gateway" };
+  await page
+    .getByRole("button", { name: "Create organization & admin account" })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Start lendora-service on port 8086",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Your organization is ready." }),
+  ).toHaveCount(0);
+});

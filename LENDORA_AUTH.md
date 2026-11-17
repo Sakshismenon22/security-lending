@@ -6,6 +6,19 @@ stores the type at signup; login cannot select or override it.
 
 ## Start the services
 
+On Windows, create `lendora_db` in PostgreSQL, stop any old demo backend windows
+and the test frontend on port 5176, then run **`start-lendora.cmd`** from the repo
+root (equivalent to `start-demo.cmd -Lendora`). This mode starts the existing demo
+services plus `lendora-service`, BorrowDesk, LendDesk and Lendora. It enables account
+authentication and shares a generated local provisioning key across the three
+backends, saved in ignored `runtime/lendora-provisioning.key`. If you already set
+`LENDORA_PROVISIONING_KEY`, the launcher uses that value instead. Keep the saved key
+private. Database credentials still come from each service's properties/environment.
+`start-lendora.cmd -Plan` lists the components without starting them or writing a key.
+The original `start-demo.cmd` continues to launch the legacy test console.
+
+For manual startup:
+
 Use a full JDK 17+ and PostgreSQL. Create `lendora_db` in addition to the existing
 `lender_db` and `borrower_db` databases. Defaults are postgres/postgres; deployment
 settings can be overridden with the variables in `lendora-service/src/main/resources/application.properties`.
@@ -119,3 +132,29 @@ The broader workflow suites have two existing collateral-release failures, repro
 on the unchanged parent commit: lender `partialReleaseRechecksMarketCoverageAndPreservesImmutableCashMovements`
 (cash comparison) and borrower `partialCashReleaseIsLimitedToExcessAndCreditsOnlyTheConfirmedAmount`
 (expected snake_case response field). The remaining 84 workflow tests passed.
+
+## Create organization shows a gateway error
+
+Lendora's dev server forwards `/api` to `http://127.0.0.1:8086`. A gateway error
+means an upstream connection failed; it does not mean signup completed. The legacy
+`start-demo.cmd` launcher does **not** start `lendora-service`; use
+`start-lendora.cmd` (or `start-demo.cmd -Lendora`) for the complete account flow.
+
+1. Create `lendora_db` in PostgreSQL, configure its credentials, and start
+   `lendora-service` with `./mvnw spring-boot:run` (`.\mvnw.cmd spring-boot:run`
+   on Windows). Resolve any database/Flyway startup error in that terminal.
+2. Open `http://localhost:8086/api/v1/auth/me`. A JSON **401** before login is
+   expected and confirms the service is reachable. Connection refused or a gateway
+   error indicates it is not reachable at that address.
+3. Start `borrower-service` on 8081 and `lender-service` on 8084. Set the same
+   `LENDORA_PROVISIONING_KEY` on all three backends before starting them. Missing or
+   mismatched keys prevent registration.
+4. If the account backend runs on a different host or port, set `LENDORA_PROXY_TARGET`
+   in `lendora/.env.local` to that address and restart Vite. For a production build,
+   configure the hosting reverse proxy for `/api` or set `VITE_AUTH_API_URL` before
+   building; Vite's development proxy is not part of the production bundle.
+
+Keep Lendora on port 5176; the dev server now stops if it is occupied rather than
+silently moving to a port that backend CORS does not allow. Stop the legacy test
+frontend if it is using 5176. Configuration errors returned as JSON are now displayed
+by the form, including missing provisioning keys and unreachable workspace services.
