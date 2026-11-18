@@ -47,7 +47,7 @@ function Badge({ value }) {
     </span>
   );
 }
-function Pagination({ page, pages, total, pageSize, onPage, onPageSize }) {
+function Pagination({ page, pages, total, pageSize = 10, onPage, onPageSize }) {
   return (
     <div
       className="fd-pagination"
@@ -58,7 +58,7 @@ function Pagination({ page, pages, total, pageSize, onPage, onPageSize }) {
         {total ? `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)}` : "0"}{" "}
         of {total}
       </span>
-      <label>Rows per page <select value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></label>
+      {onPageSize && <label>Rows per page <select value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></label>}
       <button disabled={!page} onClick={() => onPage(page - 1)}>
         Previous
       </button>
@@ -643,7 +643,9 @@ export default function FeesRebates() {
           page={page}
           pages={pages}
           total={filtered.length}
+          pageSize={pageSize}
           onPage={(value) => update("page", value)}
+          onPageSize={(size) => { const next = new URLSearchParams(params); next.set("size", String(size)); next.delete("page"); setParams(next, { replace: true }); }}
         />
       </section>
     </main>
