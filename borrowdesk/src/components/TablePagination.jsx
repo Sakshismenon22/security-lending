@@ -1,4 +1,5 @@
 import React from 'react';
+import './TablePagination.css';
 
 export default function TablePagination({page,pageSize,total,onPageChange,onPageSizeChange}) {
   const pages=Math.max(1,Math.ceil(total/pageSize));
