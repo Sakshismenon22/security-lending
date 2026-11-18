@@ -65,6 +65,8 @@ class LenderWorkflowTests {
   @Autowired BuyinOrderService buyinOrders;
   @Autowired BuyinOrderRepository buyinOrderRows;
   @Autowired BuyinInventoryService buyinReceipts;
+  @Autowired BuyinLoanCloseoutService buyinCloseouts;
+  @Autowired BuyinLoanCloseoutRepository buyinCloseoutRows;
   @Autowired BuyInRepository buyinReports;
   @Autowired InventoryHistoryRepository inventoryHistory;
   @Autowired LenderAccountLedgerRepository purchaseLedger;
@@ -2677,6 +2679,254 @@ class LenderWorkflowTests {
     var other = organization();
     assertThrows(ResponseStatusException.class, () ->
       buyinReceipts.receive(other.getId(), report.getId(), "CUSTODY-42")
+    );
+  }
+
+  BuyIn receivedBuyinForCloseout(
+    Organization org,
+    Loan loan,
+    LoanDefault def,
+    long quantity,
+    String price
+  ) {
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("close-parent-" + ids.incrementAndGet())
+    );
+    var data = new LinkedHashMap<String, Object>(
+      Map.of(
+        "loanId",
+        loan.getId(),
+        "defaultId",
+        def.getOwnerReferenceId(),
+        "quantity",
+        quantity,
+        "price",
+        price,
+        "costs",
+        "5",
+        "collateralApplied",
+        "0",
+        "residualBalance",
+        "0",
+        "status",
+        "EXECUTED",
+        "lifecycleRequestId",
+        parent.getId()
+      )
+    );
+    long owner = ids.incrementAndGet();
+    lifecycle(org, "BUY_IN_REPORTED", owner, 1, data);
+    var report = buyinReports
+      .findByOrganizationIdAndOwnerReferenceId(org.getId(), owner)
+      .orElseThrow();
+    buyinReceipts.receive(org.getId(), report.getId(), "receipt-" + owner);
+    return report;
+  }
+
+  @Test
+  void buyinLoanCloseoutAppliesCostReleasesSurplusAndQueuesFinalBillingExactlyOnce() throws Exception {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var receipt = receivedBuyinForCloseout(org, loan, def, 100, "100");
+    assertThrows(ResponseStatusException.class, () ->
+      lifecycle(
+        org,
+        "BUY_IN_REPORTED",
+        receipt.getOwnerReferenceId(),
+        2,
+        Map.of(
+          "loanId",
+          loan.getId(),
+          "defaultId",
+          def.getOwnerReferenceId(),
+          "quantity",
+          100,
+          "price",
+          "200",
+          "costs",
+          "5",
+          "collateralApplied",
+          "0",
+          "residualBalance",
+          "0",
+          "status",
+          "EXECUTED"
+        )
+      )
+    );
+    var stockRow = inventory.position(org.getId(), loan.getSecurityId());
+    assertEquals(1100, stockRow.getTotalQuantity());
+    long available = stockRow.getAvailableQuantity();
+    assertEquals(
+      true,
+      buyinCloseouts.preview(org.getId(), def.getId()).get("eligible")
+    );
+    String path =
+      "/api/v1/organizations/" +
+      org.getId() +
+      "/defaults/" +
+      def.getId() +
+      "/close-loan";
+    mvc
+      .perform(
+        post(path)
+          .contentType("application/json")
+          .content("{\"reference\":\"CLOSE-42\"}")
+      )
+      .andExpect(status().isOk());
+    var closed = buyinCloseouts.close(org.getId(), def.getId(), "CLOSE-42");
+    assertEquals(
+      1,
+      buyinCloseoutRows
+        .findAll()
+        .stream()
+        .filter(c -> c.getLoanId().equals(loan.getId()))
+        .count()
+    );
+    assertEquals("CLOSED", loan.getStatus());
+    assertEquals(0, loan.getOutstandingQuantity());
+    assertNotNull(loan.getClosedAt());
+    assertEquals(100, receipt.getCloseoutQuantity());
+    assertEquals(1000, stockRow.getTotalQuantity());
+    assertEquals(0, stockRow.getLoanedQuantity());
+    assertEquals(available, stockRow.getAvailableQuantity());
+    assertEquals(0, bd("10005").compareTo(closed.getCashCollateralApplied()));
+    assertEquals(0, bd("995").compareTo(closed.getCashCollateralReturned()));
+    assertEquals(
+      0,
+      accounts
+        .findByOrganizationId(org.getId())
+        .orElseThrow()
+        .getCashCollateralHeld()
+        .signum()
+    );
+    assertEquals("RESOLVED", def.getStatus());
+    assertTrue(
+      positions
+        .findByLoanId(loan.getId())
+        .stream()
+        .allMatch(p -> Set.of("APPLIED", "RELEASED").contains(p.getStatus()))
+    );
+    var all = events
+      .findByOrganizationId(org.getId(), Pageable.unpaged())
+      .getContent();
+    assertEquals(
+      1,
+      all
+        .stream()
+        .filter(e ->
+          json.tree(e.getPayload()).path("type").asText().equals("LOAN_CLOSED")
+        )
+        .count()
+    );
+    assertEquals(
+      1,
+      all
+        .stream()
+        .filter(e ->
+          json
+            .tree(e.getPayload())
+            .path("type")
+            .asText()
+            .equals("COLLATERAL_APPLIED")
+        )
+        .count()
+    );
+    assertTrue(
+      all
+        .stream()
+        .anyMatch(
+          e ->
+            json
+              .tree(e.getPayload())
+              .path("type")
+              .asText()
+              .equals("LOAN_STATUS_UPDATED") &&
+            json
+              .tree(e.getPayload())
+              .path("data")
+              .path("buyinCloseout")
+              .asBoolean()
+        )
+    );
+    assertThrows(ResponseStatusException.class, () ->
+      buyinCloseouts.close(org.getId(), def.getId(), "ANOTHER")
+    );
+    var other = organization();
+    mvc
+      .perform(
+        post(
+          "/api/v1/organizations/" +
+            other.getId() +
+            "/defaults/" +
+            def.getId() +
+            "/close-loan"
+        )
+          .contentType("application/json")
+          .content("{\"reference\":\"CLOSE-42\"}")
+      )
+      .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void buyinLoanCloseoutBlocksPartialReceiptAndInsufficientCashWithoutChangingBalances() {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    receivedBuyinForCloseout(org, loan, def, 20, "100");
+    assertEquals(
+      false,
+      buyinCloseouts.preview(org.getId(), def.getId()).get("eligible")
+    );
+    assertThrows(ResponseStatusException.class, () ->
+      buyinCloseouts.close(org.getId(), def.getId(), "partial")
+    );
+    assertEquals("ACTIVE", loan.getStatus());
+    assertEquals(100, loan.getOutstandingQuantity());
+    var another = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    receivedBuyinForCloseout(org, loan, another, 80, "200");
+    assertEquals(
+      false,
+      buyinCloseouts.preview(org.getId(), another.getId()).get("eligible")
+    );
+    assertThrows(ResponseStatusException.class, () ->
+      buyinCloseouts.close(org.getId(), another.getId(), "cash-shortfall")
+    );
+    assertEquals(
+      0,
+      accounts
+        .findByOrganizationId(org.getId())
+        .orElseThrow()
+        .getCashCollateralHeld()
+        .compareTo(bd("11000"))
+    );
+    assertEquals(
+      0,
+      buyinCloseoutRows
+        .findAll()
+        .stream()
+        .filter(c -> c.getLoanId().equals(loan.getId()))
+        .count()
     );
   }
 

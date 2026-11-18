@@ -77,7 +77,8 @@ request and expose a reason; existing Failed deliveries Retry/Close actions appl
 An external trade report does **not** confirm custody/cash settlement or loan close-out.
 `collateralApplied` remains zero; the reported amount before settlement is the
 quantity times execution price plus costs. The obligation stays open until its
-actual return/collateral fulfillment or loan closure is confirmed. The repository
+actual return/collateral fulfillment or explicit loan closure is confirmed. Use the
+Close loan after buy-in workflow below to perform that closure. The repository
 has no external broker routing or collateral-liquidation integration; internal demo
 orders and securities receipts are described below. Sample preview continues to use isolated local fixtures.
 
@@ -147,8 +148,8 @@ loaned quantities stay unchanged: these are new purchased securities, not a retu
 of the borrower's original securities. For example, total 1,000 / loaned 100 /
 available 900 becomes total 1,020 / loaned 100 / available 920 after a 20-unit buy-in.
 The original loan's outstanding quantity, status, collateral, fees and rebates
-remain unchanged. Loan close-out and collateral/cash settlement require a separate
-settlement workflow.
+remain unchanged. Loan close-out and collateral settlement require the explicit **Close loan after
+buy-in** workflow described below.
 
 External trade reports still use **Record execution**, then **Receive securities**
 after custody receipt. The confirmation calls:
@@ -179,3 +180,62 @@ Restart lender-service to apply **V16** before using these features. Optional
 settings are `BUYIN_ORDER_POLL_MS` (default 5000) and
 `BUYIN_QUOTE_MAX_AGE_SECONDS` (default 300). A missing/stale quote never fills an
 order. Market-data refresh must be operational for pending orders to progress.
+
+## Close the loan after a buy-in
+
+On the same **Defaults & Buy-ins** page, a case with received securities exposes
+**Close loan after buy-in**. The dialog loads an authoritative eligibility preview:
+
+- `GET /api/v1/organizations/{org}/defaults/{id}/loan-closeout-preview`
+- `POST /api/v1/organizations/{org}/defaults/{id}/close-loan`
+  with `{ "reference": "unique-closeout-reference" }`.
+
+Closure covers the **entire remaining loan quantity**. The server rechecks tenant
+ownership, all received buy-ins for that loan, pending returns/orders/obligation
+requests, pending collateral pledges, and enough confirmed **cash collateral** to
+pay the allocated purchase price plus costs. Security-only collateral or a cash
+shortfall blocks closure; securities liquidation and external deficit payments
+are not fabricated. Resolve those conditions before closing. Partial buy-ins may
+be accumulated across cases, but a partial loan close-out is not offered here.
+
+A successful close commits the following together under the organization lock:
+
+1. Allocate received buy-in quantities to the remaining loan, FIFO by report ID.
+   Costs are allocated proportionally if only part of a report is needed; unused
+   purchased securities remain owned inventory with their remaining payable.
+2. Write off the original on-loan securities claim by reducing both total and
+   loaned inventory by the closed quantity. **Available inventory does not increase
+   again**: it was credited when the purchased securities arrived. For example,
+   after receipt, total 1,100 / loaned 100 / available 1,000 becomes total 1,000 /
+   loaned 0 / available 1,000 on closure.
+3. Apply cash collateral to the allocated buy-in cost, record the collateral
+   movement and payable settlement, and release the remaining cash and eligible
+   security collateral through the existing release-confirmation workflow.
+4. Set outstanding quantity to zero and persist CLOSED/closed-at, the closeout
+   quantity, costs, applied/returned cash and reference. Resolve loan default cases
+   and cancel remaining recall/margin obligations rather than treating the buy-in
+   as a physical borrower return.
+5. Publish BorrowDesk confirmations and queue `LOAN_CLOSED` for lifecycle's existing
+   final fee and rebate processing. Actual fee/rebate payment statuses update only
+   when their authoritative confirmations arrive, according to the MSLA schedule.
+
+BorrowDesk applies consumed cash to its pledged balance without refunding it, and
+refunds only the collateral surplus. The loan closes with a timestamp. Pending
+borrowed-security orders for the same security are cancelled; retained unsold
+borrowed shares become owned shares, and any corresponding open short lots are
+closed using the buy-in price. Failed/in-flight local return reservations are
+released before applying the closeout so they cannot later reserve securities on
+an already closed loan. Confirmation replay is idempotent.
+
+There is one durable closeout per organization/loan. Repeating the same reference
+returns it without another inventory/cash movement or billing command. A different
+reference for an already closed loan is rejected. Received trade economics cannot
+be amended without a reversal. The closed record is available from **View loan
+closure** after reload, with audit and inventory/collateral histories preserving
+the closure reference.
+
+Restart the stack to apply lender migration **V17** and load the updated
+borrower-service, lifecycle cash-history query, and **both FIX adapters** (the new
+`COLLATERAL_APPLIED` confirmation is required). `start-lendora.cmd` can restart the
+stack after existing processes are stopped. Leaving an old FIX adapter running
+will prevent the collateral-application confirmation from reaching BorrowDesk.

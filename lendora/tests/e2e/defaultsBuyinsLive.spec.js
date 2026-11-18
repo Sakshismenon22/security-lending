@@ -229,3 +229,62 @@ test('unmatched limit order can be cancelled and an external receipt requires co
   expect(receipts).toEqual([{ reference: 'buyin-receipt-41' }])
   await expect(page.getByRole('button', { name: /^Receive securities/ })).toHaveCount(0)
 })
+
+test('received buy-in can close the loan from the same page and preserves closure after reload', async ({ page }) => {
+  await session(page)
+  const rows = snapshot()
+  rows[0].loan.status = 'ACTIVE'
+  rows[0].buyIns = [{ id: 41, quantity: 100, price: 100, costs: 5, status: 'EXECUTED', inventoryReceivedAt: '2026-11-18T10:00:00Z', inventoryReference: 'receipt-41' }]
+  rows[0].requests = [{ id: 333, type: 'BUY_IN_REQUESTED', status: 'COMPLETED' }]
+  await page.route(rowPath, route => route.fulfill({ json: { success: true, data: rows } }))
+  const preview = { loanId: 9, loanStatus: 'ACTIVE', outstandingQuantity: 100, receivedQuantity: 100, purchaseCost: 10005, cashCollateralHeld: 11000, cashCollateralToReturn: 995, eligible: true, blockers: [], closeout: null }
+  await page.route('**/api/v1/organizations/37/defaults/5/loan-closeout-preview', route => route.fulfill({ json: { success: true, data: preview } }))
+  const calls = []
+  await page.route('**/api/v1/organizations/37/defaults/5/close-loan', route => {
+    calls.push(route.request().postDataJSON())
+    rows[0].loan.status = 'CLOSED'
+    rows[0].loan.outstandingQuantity = 0
+    rows[0].default.status = 'RESOLVED'
+    preview.eligible = false
+    preview.loanStatus = 'CLOSED'
+    preview.closeout = { reference: calls[0].reference, createdAt: '2026-11-18T10:10:00Z' }
+    return route.fulfill({ json: { success: true, data: preview.closeout } })
+  })
+  await page.goto('http://localhost:5175/defaults-buyins')
+  await page.getByRole('button', { name: 'Close loan after buy-in', exact: true }).click()
+  let dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('10,005')
+  await expect(dialog).toContainText('995')
+  await expect(dialog).toContainText('Inventory will not be credited again')
+  await dialog.getByRole('button', { name: 'Confirm loan closure' }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(calls).toHaveLength(1)
+  expect(calls[0].reference).toMatch(/^close-buyin-/)
+  await expect(page.getByRole('button', { name: 'View loan closure', exact: true })).toBeVisible()
+  await page.reload()
+  await page.getByRole('button', { name: 'View loan closure', exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText(calls[0].reference)
+  await expect(dialog.getByRole('button', { name: 'Confirm loan closure' })).toHaveCount(0)
+})
+
+test('closure preview blocks insufficient receipts and revalidates changed collateral', async ({ page }) => {
+  await session(page)
+  const rows = snapshot()
+  rows[0].buyIns = [{ id: 41, quantity: 15, price: 100, costs: 5, status: 'EXECUTED', inventoryReceivedAt: '2026-11-18T10:00:00Z' }]
+  await page.route(rowPath, route => route.fulfill({ json: { success: true, data: rows } }))
+  const preview = { loanStatus: 'ACTIVE', outstandingQuantity: 100, receivedQuantity: 15, purchaseCost: 1505, cashCollateralHeld: 11000, cashCollateralToReturn: 9495, eligible: false, blockers: ['Received buy-in quantity must cover the full outstanding loan'] }
+  await page.route('**/api/v1/organizations/37/defaults/5/loan-closeout-preview', route => route.fulfill({ json: { success: true, data: preview } }))
+  await page.goto('http://localhost:5175/defaults-buyins')
+  await page.getByRole('button', { name: 'Close loan after buy-in', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('full outstanding loan')
+  await expect(dialog.getByRole('button', { name: 'Confirm loan closure' })).toBeDisabled()
+  preview.eligible = true; preview.blockers = []; preview.receivedQuantity = 100
+  await dialog.getByRole('button', { name: 'Refresh checks' }).click()
+  await expect(dialog.getByRole('button', { name: 'Confirm loan closure' })).toBeEnabled()
+  await page.route('**/api/v1/organizations/37/defaults/5/close-loan', route => route.fulfill({ status: 409, json: { detail: 'Insufficient cash collateral to settle buy-in costs' } }))
+  await dialog.getByRole('button', { name: 'Confirm loan closure' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('Insufficient cash collateral')
+  await expect(dialog).toBeVisible()
+})

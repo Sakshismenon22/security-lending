@@ -1,3 +1,4 @@
+import BuyinLoanCloseout from "./BuyinLoanCloseout";
 import { useRef, useState } from "react";
 import { canReportBuyin, defaultsBuyinsApi } from "../api/defaultsBuyinsApi";
 import { number, rupees, caseDate } from "../data/defaultsBuyinsData";
@@ -60,6 +61,11 @@ export default function BuyinOrderPanel({ record, organizationId, onRefresh }) {
   );
   return (
     <section className="db-buyin-orders" aria-label="Buy-in orders">
+      <BuyinLoanCloseout
+        record={record}
+        organizationId={organizationId}
+        onRefresh={onRefresh}
+      />
       {canReportBuyin(record) && (
         <button
           className="db-button db-primary"

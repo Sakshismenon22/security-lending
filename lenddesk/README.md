@@ -44,7 +44,9 @@ trade's price, costs and reference. Use **Place buy-in order** for internal demo
 fills credit purchased inventory once; external trades expose **Receive securities**
 for custody confirmation. Inventory history, purchase payable ledger and audit
 records share the execution reference. Purchases do not automatically close the
-original loan or settle cash/collateral. See [Defaults and buy-ins](../DEFAULTS_BUYINS.md) for
+original loan or settle cash/collateral. After receipt, **Close loan after buy-in**
+previews and validates full quantity coverage and cash collateral, then applies
+costs, releases the surplus, closes the loan, and queues final fee/rebate processing. See [Defaults and buy-ins](../DEFAULTS_BUYINS.md) for
 rules, endpoints, restart instructions and tests.
 
 The **Sample preview** link opens `/defaults-buyins/preview`. This retains the

@@ -15,8 +15,14 @@ public class BuyinOrderController {
 
   private final BuyinOrderService orders;
   private final BuyinInventoryService receipts;
+  private final BuyinLoanCloseoutService closeouts;
 
   public record ReceiptRequest(@NotBlank @Size(max = 120) String reference) {}
+
+  @GetMapping("/defaults/{id}/loan-closeout-preview")
+  public ApiResponse<?> closeoutPreview(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(closeouts.preview(org,id));}
+  @PostMapping("/defaults/{id}/close-loan")
+  public ApiResponse<?> closeLoan(@PathVariable long org,@PathVariable long id,@Valid @RequestBody ReceiptRequest r) {return ApiResponse.ok(closeouts.close(org,id,r.reference()));}
 
   @PostMapping("/defaults/{id}/buy-in-orders")
   public ApiResponse<?> place(

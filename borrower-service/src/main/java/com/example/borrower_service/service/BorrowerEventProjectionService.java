@@ -7,6 +7,7 @@ import com.example.borrower_service.model.*;
 import com.example.borrower_service.repository.BorrowerRepository;
 
 import jakarta.validation.Validator;
+import org.springframework.data.domain.Sort;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,6 +35,7 @@ public class BorrowerEventProjectionService {
     private final PaymentService payments;
     private final EventWriter events;
     private final Validator validator;
+    private final TradingService trading;
 
     public Map<String, Object> apply(BorrowerEvent event) {
         log.info(
@@ -97,6 +99,7 @@ public class BorrowerEventProjectionService {
                     returned(org, id, event.type().equals("RETURN_SETTLED"));
             case "COLLATERAL_PLEDGED" -> collateral.applyPledgeConfirmation(org, id);
             case "COLLATERAL_REJECTED" -> collateral.applyReleaseConfirmation(org, id, true);
+            case "COLLATERAL_APPLIED" -> collateralApplied(org,id,d);
             case "COLLATERAL_RELEASED" -> collateral.applyReleaseConfirmation(
                     org, id, false,
                     d.get("cashAmount") != null ? decimal(d, "cashAmount") : null,
@@ -137,6 +140,7 @@ public class BorrowerEventProjectionService {
             case "BUY_IN_REPORTED" -> buyInView(org, id, d);
             case "LOAN_STATUS_UPDATED" -> {
                 var loan = db.owned(Loan.class, org, id);
+                if(Boolean.TRUE.equals(d.get("buyinCloseout"))) {buyinClosed(org,id,d,event.occurredAt());break;}
                 String status = text(d, "status");
                 require(
                         Set.of("DEFAULTED", "RECOVERED", "CLOSED").contains(status),
@@ -207,6 +211,8 @@ public class BorrowerEventProjectionService {
                         "RETURN_SETTLED",
                         "REBATE_PAID",
                         "COLLATERAL_RELEASED",
+                        "COLLATERAL_APPLIED",
+                        "LOAN_STATUS_UPDATED",
                         "COLLATERAL_RELEASE_REJECTED")
                 .contains(event.type()))
             db.create(
@@ -391,6 +397,129 @@ public class BorrowerEventProjectionService {
                         entity.setRemainingQuantity(0L);
                     });
         }
+    }
+
+    private void collateralApplied(long org, long id, Map<String, Object> d) {
+      var p = db.owned(CollateralPosition.class, org, id);
+      BigDecimal applied = decimal(d, "amount");
+      require(
+        "CASH".equals(p.get("asset_type")) &&
+          Set.of("POSTED", "RELEASE_REQUESTED").contains(p.get("status")) &&
+          applied.signum() > 0 &&
+          applied.compareTo(money(p, "cash_amount")) <= 0,
+        "Invalid buy-in collateral application"
+      );
+      db.edit(CollateralPosition.class, id, e -> {
+        e.setCashAmount(e.getCashAmount().subtract(applied));
+        if (e.getCashAmount().signum() == 0) {
+          e.setStatus("APPLIED");
+          e.setReleaseRequestStatus("COMPLETED");
+          e.setRequestedReleaseCash(null);
+        }
+      });
+      db.editMatching(
+        TraderAccount.class,
+        e -> {
+          require(
+            e.getPledged().compareTo(applied) >= 0,
+            "Pledged cash is inconsistent"
+          );
+          e.setPledged(e.getPledged().subtract(applied));
+        },
+        eq("organizationId", org)
+      );
+    }
+
+    private void buyinClosed(
+      long org,
+      long id,
+      Map<String, Object> d,
+      Instant at
+    ) {
+      var loan = db.owned(Loan.class, org, id);
+      long quantity = number(d, "closedQuantity"),
+        security = n(loan, "security_id");
+      require(
+        "CLOSED".equals(text(d, "status")) &&
+          number(d, "outstandingQuantity") == 0 &&
+          quantity == n(loan, "outstanding_quantity") &&
+          quantity > 0,
+        "Buy-in closeout quantity does not match the loan"
+      );
+      for (var r : db.rows(
+        LoanReturn.class,
+        eq("organizationId", org),
+        eq("loanId", id),
+        oneOf("status", "PENDING", "FAILED"),
+        eq("assetsReleased", false)
+      ))
+        returned(org, n(r, "id"), false);
+      for (var order : db.rows(
+        TradeOrder.class,
+        eq("organizationId", org),
+        eq("securityId", security),
+        eq("source", "BORROWED"),
+        eq("status", "PENDING")
+      ))
+        trading.cancel(org, n(order, "id"));
+      var h = db.find(Holding.class, new HoldingId(org, security));
+      require(h != null, "Loan holding is missing");
+      long converted = Math.min(
+        quantity,
+        h.getBorrowedQuantity() - h.getBlockedBorrowed()
+      );
+      require(converted >= 0, "Borrowed holding is inconsistent");
+      BigDecimal price = decimal(d, "buyinPrice");
+      long total = Math.addExact(h.getOwnedQuantity(), converted);
+      if (converted > 0) {
+        h.setAverageCost(
+          h
+            .getAverageCost()
+            .multiply(BigDecimal.valueOf(h.getOwnedQuantity()))
+            .add(price.multiply(BigDecimal.valueOf(converted)))
+            .divide(BigDecimal.valueOf(total), 6, RoundingMode.HALF_UP)
+        );
+        h.setOwnedQuantity(total);
+        h.setBorrowedQuantity(h.getBorrowedQuantity() - converted);
+      }
+      long shortQuantity = quantity - converted;
+      BigDecimal pnl = BigDecimal.ZERO;
+      for (var lot : db.rows(
+        ShortLot.class,
+        Sort.by("id"),
+        Integer.MAX_VALUE,
+        eq("organizationId", org),
+        eq("securityId", security),
+        greaterThan("openQuantity", 0L)
+      )) {
+        long covered = Math.min(shortQuantity, n(lot, "open_quantity"));
+        pnl = pnl.add(
+          money(lot, "price")
+            .subtract(price)
+            .multiply(BigDecimal.valueOf(covered))
+        );
+        db.edit(ShortLot.class, n(lot, "id"), e ->
+          e.setOpenQuantity(e.getOpenQuantity() - covered)
+        );
+        shortQuantity -= covered;
+        if (shortQuantity == 0) break;
+      }
+      h.setRealizedPnl(h.getRealizedPnl().add(amount(pnl)));
+      db.edit(Loan.class, id, e -> {
+        e.setStatus("CLOSED");
+        e.setOutstandingQuantity(0L);
+        e.setClosedAt(
+          d.get("closedAt") == null ? at : Instant.parse(text(d, "closedAt"))
+        );
+      });
+      for (var r : db.rows(
+        Recall.class,
+        eq("organizationId", org),
+        eq("loanId", id),
+        oneOf("status", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE")
+      ))
+        db.edit(Recall.class, n(r, "id"), e -> e.setStatus("CANCELLED"));
+      events.write(org, "LOAN_BUY_IN_CLOSED", id, d);
     }
 
     private void settled(long org, long id, Instant at) {

@@ -13,6 +13,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class BuyIn implements LifecycleProjection {
+  @Column(name="closeout_quantity",nullable=false) private Long closeoutQuantity=0L;
   @Column(name="inventory_received_at") private Instant inventoryReceivedAt;
   @Column(name="inventory_reference") private String inventoryReference;
   @Id

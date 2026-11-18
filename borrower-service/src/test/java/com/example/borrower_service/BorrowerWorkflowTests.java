@@ -157,6 +157,140 @@ class BorrowerWorkflowTests {
     }
 
     @Test
+    void buyinClosureAppliesCashAndClosesLoanWithoutCreditingOrDebitingCashTwice() {
+      long org = org(),
+        security = security("100");
+      fund(org, "10000");
+      long loan = loan(org, security, agreement(org, 0), 10);
+      long position = n(
+        db.rows(CollateralPosition.class, eq("loanId", loan)).get(0),
+        "id"
+      );
+      apply(org, "COLLATERAL_PLEDGED", position, 1, Map.of());
+      apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+      var application = event(
+        org,
+        "COLLATERAL_APPLIED",
+        position,
+        2,
+        Map.of("amount", "1500", "reference", "BUYIN-CLOSE")
+      );
+      projections.apply(application);
+      projections.apply(application);
+      assertEquals(
+        0,
+        bd("500").compareTo(db.find(TraderAccount.class, org).getPledged())
+      );
+      assertEquals(
+        0,
+        bd("8000").compareTo(db.find(TraderAccount.class, org).getAvailable())
+      );
+      apply(
+        org,
+        "COLLATERAL_RELEASED",
+        position,
+        3,
+        Map.of("cashAmount", "500", "quantity", 0, "reference", "BUYIN-CLOSE")
+      );
+      var close = event(
+        org,
+        "LOAN_STATUS_UPDATED",
+        loan,
+        2,
+        Map.of(
+          "status",
+          "CLOSED",
+          "outstandingQuantity",
+          0,
+          "buyinCloseout",
+          true,
+          "closedQuantity",
+          10,
+          "buyinPrice",
+          "150",
+          "closedAt",
+          Instant.now().toString(),
+          "reference",
+          "BUYIN-CLOSE"
+        )
+      );
+      projections.apply(close);
+      projections.apply(close);
+      assertEquals("CLOSED", db.find(Loan.class, loan).getStatus());
+      assertEquals(0, db.find(Loan.class, loan).getOutstandingQuantity());
+      assertNotNull(db.find(Loan.class, loan).getClosedAt());
+      var holding = db.find(Holding.class, new HoldingId(org, security));
+      assertEquals(0, holding.getBorrowedQuantity());
+      assertEquals(10, holding.getOwnedQuantity());
+      assertEquals(0, bd("150").compareTo(holding.getAverageCost()));
+      assertEquals(0, db.find(TraderAccount.class, org).getPledged().signum());
+      assertEquals(
+        0,
+        bd("8500").compareTo(db.find(TraderAccount.class, org).getAvailable())
+      );
+    }
+
+    @Test
+    void buyinClosureCoversSoldShortLotsAndCancelsPendingBorrowedOrders() {
+      long org = org(),
+        security = security("100");
+      fund(org, "10000");
+      long loan = loan(org, security, agreement(org, 0), 10);
+      long position = n(
+        db.rows(CollateralPosition.class, eq("loanId", loan)).get(0),
+        "id"
+      );
+      apply(org, "COLLATERAL_PLEDGED", position, 1, Map.of());
+      apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+      trading.order(
+        org,
+        new OrderRequest(security, "SELL", "MARKET", "BORROWED", 6, null)
+      );
+      long pending = n(
+        trading.order(
+          org,
+          new OrderRequest(security, "SELL", "LIMIT", "BORROWED", 4, bd("200"))
+        ),
+        "id"
+      );
+      apply(
+        org,
+        "LOAN_STATUS_UPDATED",
+        loan,
+        2,
+        Map.of(
+          "status",
+          "CLOSED",
+          "outstandingQuantity",
+          0,
+          "buyinCloseout",
+          true,
+          "closedQuantity",
+          10,
+          "buyinPrice",
+          "110",
+          "reference",
+          "SHORT-CLOSE"
+        )
+      );
+      assertEquals("CANCELLED", db.find(TradeOrder.class, pending).getStatus());
+      assertEquals(
+        0L,
+        db.sum(
+          ShortLot.class,
+          "openQuantity",
+          Long.class,
+          eq("organizationId", org),
+          eq("securityId", security)
+        )
+      );
+      var holding = db.find(Holding.class, new HoldingId(org, security));
+      assertEquals(0, holding.getBorrowedQuantity());
+      assertEquals(4, holding.getOwnedQuantity());
+      assertEquals(0, bd("-60").compareTo(holding.getRealizedPnl()));
+    }
+
+    @Test
     void loanMaturityIsPersistedPublishedAndExposedInBothReadEndpoints() throws Exception {
         long org = org(), security = security("100"), agreement = agreement(org, 0);
         fund(org, "10000");

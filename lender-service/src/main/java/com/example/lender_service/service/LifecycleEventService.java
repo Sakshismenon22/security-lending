@@ -478,6 +478,7 @@ public class LifecycleEventService {
                     e.organizationId(), e.referenceId()),
                 LoanDefault::new);
         if (p == null) return;
+        if("CLOSED".equals(loan.getStatus())) p.setStatus("RESOLVED");
         p.setObligationId(number(d, "obligationId"));
         p.setObligationType(text(d, "obligationType"));
         p.setReason(text(d, "reason"));
@@ -485,6 +486,10 @@ public class LifecycleEventService {
         events.audit(e.organizationId(), "DEFAULT_"+p.getStatus(), String.valueOf(p.getId()));
       }
       case "BUY_IN_REPORTED" -> {
+        var previous=buyIns.findByOrganizationIdAndOwnerReferenceId(e.organizationId(),e.referenceId());
+        if(previous.isPresent() && previous.get().getInventoryReceivedAt()!=null && e.version()>previous.get().getSourceVersion()) {
+          var booked=previous.get();require(booked.getQuantity()==number(d,"quantity") && booked.getPrice().compareTo(decimal(d,"price"))==0 && booked.getCosts().compareTo(decimal(d,"costs"))==0 && booked.getDefaultReferenceId()==number(d,"defaultId") && Set.of("EXECUTED","COMPLETED","SETTLED").contains(text(d,"status")),"Received buy-in economics cannot be amended without a reversal");
+        }
         var p =
             view(
                 e,
@@ -512,6 +517,7 @@ public class LifecycleEventService {
     if (forward) {
       var data = new LinkedHashMap<>(json.map(d));
       data.put("loanId", loan.getBorrowerLoanId());
+      if("CLOSED".equals(loan.getStatus()) && "DEFAULT_REPORTED".equals(e.type())) data.put("status","RESOLVED");
       events.confirm(connection, e.type(), resource, e.referenceId(), data);
     }
   }

@@ -49,6 +49,14 @@ class DefaultLifecyclePersistenceTests {
   @Autowired
   ObjectMapper json;
 
+  @Autowired CashCollateralMovementRepository cashMovements;
+
+  @Test void buyinCollateralApplicationReducesTheRebateCashBalanceInThePersistedQuery() {
+    em.createNativeQuery("insert into collateral_position(id,organization_id,connection_id,msla_id,loan_id,borrower_loan_id,borrower_position_id,asset_id,asset_type,quantity,cash_amount,haircut,status,created_at) values(900,1,1,1,77,1,1,1,'CASH',0,0,0,'APPLIED',:at)").setParameter("at",Instant.parse("2026-11-18T10:00:00Z")).executeUpdate();
+    for(int i=0;i<3;i++) em.createNativeQuery("insert into collateral_history(id,position_id,type,cash_amount,created_at) values(:id,900,:type,:amount,:at)").setParameter("id",901+i).setParameter("type",new String[]{"PLEDGE_CONFIRMED","BUY_IN_COST_APPLIED","RELEASE_CONFIRMED"}[i]).setParameter("amount",new java.math.BigDecimal[]{new java.math.BigDecimal("11000"),new java.math.BigDecimal("10005"),new java.math.BigDecimal("995")}[i]).setParameter("at",Instant.parse("2026-11-18T10:00:00Z").plusSeconds(i)).executeUpdate();
+    var changes=cashMovements.cashChangesBefore(77,Instant.parse("2026-11-18T11:00:00Z"));assertEquals(3,changes.size());assertEquals(0,new java.math.BigDecimal("-10005").compareTo(changes.get(1).balanceChange()));assertEquals(0,changes.stream().map(com.example.lifecycle_service.dto.CashCollateralChange::balanceChange).reduce(java.math.BigDecimal.ZERO,java.math.BigDecimal::add).signum());
+  }
+
   @Test
   void defaultAndBuyinSurvivePersistenceAndDuplicateCommandDelivery() throws Exception {
     em.createNativeQuery(

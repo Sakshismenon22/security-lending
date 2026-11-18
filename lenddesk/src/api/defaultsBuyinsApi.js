@@ -50,6 +50,8 @@ export function liveDefaultRecord(row) {
     id: label("DEF", def.id),
     loanId: label("LOAN", row.loan.id),
     backendLoanId: row.loan.id,
+    loanStatus: row.loan.status,
+    loanClosedAt: row.loan.closedAt,
     borrower: row.borrowerName || "—",
     security: row.security?.symbol || "—",
     quantity,
@@ -124,6 +126,14 @@ export function liveDefaultRecord(row) {
   };
 }
 export const defaultsBuyinsApi = {
+  closeoutPreview: (org, id) =>
+    lenderGet(
+      `/api/v1/organizations/${org}/defaults/${id}/loan-closeout-preview`,
+    ),
+  closeLoan: (org, id, reference) =>
+    lenderPost(`/api/v1/organizations/${org}/defaults/${id}/close-loan`, {
+      reference,
+    }),
   placeOrder: (org, id, payload) =>
     lenderPost(
       `/api/v1/organizations/${org}/defaults/${id}/buy-in-orders`,
