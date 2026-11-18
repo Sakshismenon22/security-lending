@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ClipboardCheck } from "lucide-react";
 import { get, orgUrl, unwrapRows } from "../../api/apiClient";
 import { fundingApi } from "../../api/fundingApi";
 import "./AdminDepositRequests.css";
@@ -74,7 +75,7 @@ export default function AdminDepositRequests({ onApproved }) {
   return (
     <>
       <button
-        className="funding-btn"
+        className="funding-btn outline"
         type="button"
         onClick={() => {
           setOpen(true);
@@ -82,6 +83,7 @@ export default function AdminDepositRequests({ onApproved }) {
           setError("");
         }}
       >
+        <ClipboardCheck aria-hidden="true" />
         Deposit requests
       </button>
       {open && (
