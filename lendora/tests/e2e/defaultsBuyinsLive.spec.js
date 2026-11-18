@@ -179,7 +179,7 @@ test('demo market buy-in order is persisted and received inventory appears after
   await dialog.getByLabel('Additional execution fees (₹)', { exact: true }).fill('5')
   await expect(dialog.getByRole('definition').filter({hasText:'₹1,505'})).toBeVisible()
   await expect(dialog).toContainText('Execution fees are optional and may be ₹0')
-  await dialog.getByRole('button', { name: 'Place demo order', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Place order', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   expect(bodies[0]).toMatchObject({ buyinRequestId: 333, type: 'MARKET', quantity: 15, limitPrice: null, costs: 5 })
   await expect(page.getByRole('region', { name: 'Buy-in orders' })).toContainText('EXECUTION_PENDING')
@@ -226,7 +226,7 @@ test('unmatched limit order can be cancelled and an external receipt requires co
   let dialog = page.getByRole('dialog')
   await dialog.getByLabel('Order type').selectOption('LIMIT')
   await dialog.getByLabel('Limit price (₹)').fill('90')
-  await dialog.getByRole('button', { name: 'Place demo order', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Place order', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   await page.getByRole('button', { name: 'Cancel order #10', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Buy-in orders' })).toContainText('CANCELLED')
@@ -393,5 +393,26 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 800, height: 900
       expect(row.amountHeight).toBeLessThan(24)
       if (index) expect(row.top).toBeGreaterThanOrEqual(layout.rows[index - 1].bottom - 1)
     }
+  })
+}
+
+for (const width of [1440, 800, 390]) {
+  test(`buy-in order details stay readable without horizontal scrolling at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    await session(page)
+    const rows = snapshot()
+    rows[0].requests = [{ id: 333, type: 'BUY_IN_REQUESTED', status: 'ACCEPTED' }]
+    rows[0].orders = [{ id: 10, type: 'MARKET', quantity: 15, status: 'EXECUTION_PENDING', executionPrice: 1363, quoteAt: '2026-11-17T10:00:00Z', executionReference: 'DEMO-BUYIN-837b9059-85d4-4c65-b414-c7819e5df1e9' }]
+    await page.route(rowPath, route => route.fulfill({ json: { success: true, data: rows } }))
+    await page.goto('http://localhost:5175/defaults-buyins')
+    const card = page.getByRole('article', { name: 'Order #10', exact: true })
+    await expect(card).toContainText('Price matched. Awaiting execution confirmation.')
+    await expect(card).toContainText(rows[0].orders[0].executionReference)
+    const layout = await card.evaluate(el => {
+      const facts = [...el.querySelectorAll('dl > div')].map(row => ({ label: row.querySelector('dt').getBoundingClientRect().bottom, value: row.querySelector('dd').getBoundingClientRect().top }))
+      return { scrollWidth: el.scrollWidth, width: el.clientWidth, facts }
+    })
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width + 1)
+    for (const fact of layout.facts) expect(fact.value).toBeGreaterThanOrEqual(fact.label)
   })
 }

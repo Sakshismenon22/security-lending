@@ -127,8 +127,8 @@ After the buy-in request is accepted, **Place buy-in order** submits:
 This is the application's **internal demo matcher**, not an external broker or
 exchange. MARKET orders omit `limitPrice`; LIMIT orders require a positive limit.
 The quantity covers the complete outstanding default obligation. Matching uses a
-fresh cached market quote, with maximum age 300 seconds by default. Limits match
-only at or below their limit; unmatched/stale-quote orders remain PENDING. The
+latest available cached market quote without an age cutoff. Limits match
+only at or below their limit; unmatched limit orders remain PENDING. The
 background matcher runs every five seconds and revalidates the default, parent
 request and remaining loan quantity. Limits have no partial-fill simulation.
 
@@ -176,10 +176,10 @@ trade references and receipt status after refresh/reload. Its activity list incl
 order and inventory receipt timestamps; inventory history and the settlement
 ledger expose the same reference for reconciliation.
 
-Restart lender-service to apply **V16** before using these features. Optional
-settings are `BUYIN_ORDER_POLL_MS` (default 5000) and
-`BUYIN_QUOTE_MAX_AGE_SECONDS` (default 300). A missing/stale quote never fills an
-order. Market-data refresh must be operational for pending orders to progress.
+Restart lender-service to apply **V16** before using these features. The optional
+`BUYIN_ORDER_POLL_MS` setting defaults to 5000. Missing, nonpositive and
+future-dated prices cannot fill an order. Quote age does not block matching;
+market-data refresh updates the cached price independently.
 
 ## Close the loan after a buy-in
 
@@ -336,3 +336,18 @@ panel shows the purchase value, additional fees and total; after closure it uses
 the allocated closeout values across that loan's buy-ins, including actual cash
 collateral applied and returned. It shows Loan closed / buy-in settled after
 confirmation instead of continuing to describe the purchase as cash payable.
+
+### Buy-in quote policy
+
+Internal demo market orders match using the latest cached positive market price.
+There is no quote-age cutoff, so an available price can be used outside market
+hours. The original quote timestamp is stored on the order and shown in its
+details; an older quote is never relabeled as fresh. Missing, nonpositive or
+future-dated quotes cannot execute. Limit orders still wait for a price at or
+below their limit. Existing pending orders are checked by the normal matcher
+(default every five seconds), or using **Check order**. Lifecycle confirmation
+is still required before an order becomes FILLED and inventory is credited.
+
+The order form submits with **Place order**. Order cards show quantities, prices,
+status, quote time and trade references separately, with wrapping action buttons.
+Restart lender-service and rebuild/reload LendDesk after updating.

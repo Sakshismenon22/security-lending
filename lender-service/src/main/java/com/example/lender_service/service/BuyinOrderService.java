@@ -9,7 +9,6 @@ import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,9 +31,6 @@ public class BuyinOrderService {
   private final EventService events;
   private final JsonService json;
   private final Clock clock;
-
-  @Value("${lender.buyin-quote-max-age-seconds:300}")
-  private long quoteMaxAge;
 
   public BuyinOrder place(long org, long defaultId, BuyinOrderRequest r) {
     tenants.lock(org);
@@ -203,12 +199,15 @@ public class BuyinOrderService {
       return order;
     }
     if (
-      quote.at().isAfter(clock.instant()) ||
-      Duration.between(quote.at(), clock.instant()).getSeconds() > quoteMaxAge
+      quote.value() == null ||
+      quote.value().signum() <= 0 ||
+      quote.at() == null ||
+      quote.at().isAfter(clock.instant())
     ) {
-      order.setFailureReason("Waiting for a fresh market quote");
+      order.setFailureReason("Waiting for a valid market quote");
       return order;
     }
+    // Internal demo orders use the latest cached price, preserving its actual timestamp.
     order.setFailureReason(null);
     if (
       "LIMIT".equals(order.getType()) &&

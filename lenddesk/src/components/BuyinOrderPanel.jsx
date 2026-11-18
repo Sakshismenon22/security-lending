@@ -123,86 +123,95 @@ export default function BuyinOrderPanel({
         </p>
       )}
       {!!record.buyinOrders?.length && (
-        <div className="db-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Type / limit</th>
-                <th>Qty</th>
-                <th>Fill price</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {record.buyinOrders.map((order) => (
-                <tr key={order.id}>
-                  <td>
-                    #{order.id}
-                    <small className="db-reference">
-                      {order.executionReference}
-                    </small>
-                  </td>
-                  <td>
-                    {order.type}
-                    {order.limitPrice != null
-                      ? ` / ${rupees(order.limitPrice)}`
-                      : ""}
-                  </td>
-                  <td>{number(order.quantity)}</td>
-                  <td>
-                    {rupees(order.executionPrice)}
-                    <small className="db-reference">
-                      {caseDate(order.filledAt)}
-                    </small>
-                  </td>
-                  <td>
-                    {order.status}
-                    {order.failureReason && (
-                      <small className="db-reference">
-                        {order.failureReason}
-                      </small>
-                    )}
-                  </td>
-                  <td>
-                    {order.status === "PENDING" && (
-                      <>
-                        <button
-                          className="db-button"
-                          disabled={busy}
-                          onClick={() =>
-                            perform(() =>
-                              defaultsBuyinsApi.matchOrder(
-                                organizationId,
-                                order.id,
-                              ),
-                            )
-                          }
-                        >
-                          Check order #{order.id}
-                        </button>
-                        <button
-                          className="db-button"
-                          disabled={busy}
-                          onClick={() =>
-                            perform(() =>
-                              defaultsBuyinsApi.cancelOrder(
-                                organizationId,
-                                order.id,
-                              ),
-                            )
-                          }
-                        >
-                          Cancel order #{order.id}
-                        </button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="db-buyin-order-list">
+          {record.buyinOrders.map((order) => (
+            <article
+              className="db-buyin-order"
+              key={order.id}
+              aria-label={`Order #${order.id}`}
+            >
+              <div className="db-buyin-order-heading">
+                <b>Order #{order.id}</b>
+                <span>{order.status}</span>
+              </div>
+              <dl className="db-buyin-order-facts">
+                <div>
+                  <dt>Order type</dt>
+                  <dd>{order.type}</dd>
+                </div>
+                <div>
+                  <dt>Quantity</dt>
+                  <dd>{number(order.quantity)}</dd>
+                </div>
+                {order.limitPrice != null && (
+                  <div>
+                    <dt>Limit price</dt>
+                    <dd>{rupees(order.limitPrice)}</dd>
+                  </div>
+                )}
+                <div>
+                  <dt>Execution price</dt>
+                  <dd>{rupees(order.executionPrice)}</dd>
+                </div>
+              </dl>
+              {order.failureReason && (
+                <p className="db-buyin-order-message">{order.failureReason}</p>
+              )}
+              {order.status === "EXECUTION_PENDING" && (
+                <p className="db-buyin-order-message">
+                  Price matched. Awaiting execution confirmation.
+                </p>
+              )}
+              {order.status === "PENDING" &&
+                order.type === "LIMIT" &&
+                !order.failureReason && (
+                  <p className="db-buyin-order-message">
+                    Waiting for the market price to reach your limit.
+                  </p>
+                )}
+              {order.quoteAt && (
+                <p className="db-buyin-order-reference">
+                  Price quoted: {caseDate(order.quoteAt)}
+                </p>
+              )}
+              {order.filledAt && (
+                <p className="db-buyin-order-reference">
+                  Executed: {caseDate(order.filledAt)}
+                </p>
+              )}
+              {order.executionReference && (
+                <p className="db-buyin-order-reference">
+                  Trade reference: {order.executionReference}
+                </p>
+              )}
+              {order.status === "PENDING" && (
+                <div className="db-buyin-actions">
+                  <button
+                    className="db-button"
+                    disabled={busy}
+                    onClick={() =>
+                      perform(() =>
+                        defaultsBuyinsApi.matchOrder(organizationId, order.id),
+                      )
+                    }
+                  >
+                    Check order #{order.id}
+                  </button>
+                  <button
+                    className="db-button"
+                    disabled={busy}
+                    onClick={() =>
+                      perform(() =>
+                        defaultsBuyinsApi.cancelOrder(organizationId, order.id),
+                      )
+                    }
+                  >
+                    Cancel order #{order.id}
+                  </button>
+                </div>
+              )}
+            </article>
+          ))}
         </div>
       )}
       {receipts.map((report) => (
@@ -223,7 +232,7 @@ export default function BuyinOrderPanel({
       {modal === "order" && (
         <DefaultsBuyinsModal
           title="Place buy-in order"
-          description="Internal demo execution using fresh market quotes. A market order matches at the quoted price; a limit order waits until that price is at or below your limit. No external broker order is sent."
+          description="Internal demo execution using the latest available market price, including outside market hours. Quote age does not prevent execution. A market order matches at the quoted price; a limit order waits until that price is at or below your limit. No external broker order is sent."
           onClose={busy ? null : () => setModal(null)}
         >
           <form onSubmit={submit}>
@@ -347,7 +356,7 @@ export default function BuyinOrderPanel({
                 Cancel
               </button>
               <button className="db-button db-primary" disabled={busy}>
-                {busy ? "Submitting…" : "Place demo order"}
+                {busy ? "Submitting…" : "Place order"}
               </button>
             </footer>
           </form>

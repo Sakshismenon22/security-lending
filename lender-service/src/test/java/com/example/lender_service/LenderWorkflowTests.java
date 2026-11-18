@@ -2305,7 +2305,7 @@ class LenderWorkflowTests {
   }
 
   @Test
-  void buyinMarketOrderCreditsPurchasedInventoryAndAuditsExactlyOnce() throws Exception {
+  void buyinMarketOrderUsesOlderQuoteCreditsInventoryAndAuditsExactlyOnce() throws Exception {
     var org = organization();
     var conn = connection(org);
     var loan = activeLoan(org, conn, security("100"), true);
@@ -2327,6 +2327,10 @@ class LenderWorkflowTests {
       1,
       Map.of("loanId", loan.getId())
     );
+    var cachedQuote = securityMasterForScreenTest
+      .findById(loan.getSecurityId())
+      .orElseThrow();
+    cachedQuote.setPriceAt(Instant.now().minusSeconds(86400));
     var stockBefore = inventory.position(org.getId(), loan.getSecurityId());
     long total = stockBefore.getTotalQuantity(),
       available = stockBefore.getAvailableQuantity(),
@@ -2364,6 +2368,8 @@ class LenderWorkflowTests {
         .asLong()
     );
     assertEquals("EXECUTION_PENDING", order.getStatus());
+    assertEquals(cachedQuote.getPriceAt(), order.getQuoteAt());
+    assertNull(order.getFailureReason());
     assertEquals(
       order.getId(),
       buyinOrders.place(org.getId(), def.getId(), request).getId()
@@ -2562,7 +2568,7 @@ class LenderWorkflowTests {
   }
 
   @Test
-  void buyinRejectsStaleQuotesAndChangedObligationsWithoutCreditingInventory() {
+  void buyinLimitUsesOlderQuoteAndRejectsChangedObligationsWithoutCreditingInventory() {
     var org = organization();
     var conn = connection(org);
     var loan = activeLoan(org, conn, security("100"), true);
@@ -2597,14 +2603,14 @@ class LenderWorkflowTests {
       new BuyinOrderRequest(
         "stale-order",
         parent.getId(),
-        "MARKET",
+        "LIMIT",
         20,
-        null,
+        bd("90"),
         bd("0")
       )
     );
     assertEquals("PENDING", order.getStatus());
-    assertTrue(order.getFailureReason().contains("fresh"));
+    assertNull(order.getFailureReason());
     assertNull(order.getExecutionRequestId());
     loan.setOutstandingQuantity(10L);
     market.quote(loan.getSecurityId(), bd("100"), Instant.now());
