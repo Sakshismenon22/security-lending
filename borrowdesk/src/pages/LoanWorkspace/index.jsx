@@ -111,7 +111,7 @@ function CollateralTable({positions,securities,full=false}){
  const [page,setPage]=useState(1),[pageSize,setPageSize]=useState(25),pages=Math.max(1,Math.ceil(positions.length/pageSize)),visible=positions.slice((page-1)*pageSize,page*pageSize);
  useEffect(()=>setPage(1),[positions,pageSize]);useEffect(()=>{if(page>pages)setPage(pages)},[page,pages]);
  const lotValues=p=>{
-  const asset=state(val(p,'assetType','asset_type'))==='CASH';
+  const asset=String(val(p,'assetType','asset_type')||'').toUpperCase()==='CASH';
   const sec=securities.find(s=>key(val(s,'id','securityId','security_id'))===key(val(p,'securityId','security_id')));
   const quantity=val(p,'quantity','allocatedQuantity','allocated_quantity');
   const cash=val(p,'cashAmount','cash_amount','amount');
