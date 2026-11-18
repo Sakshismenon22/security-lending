@@ -6,6 +6,7 @@ import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.*;
 
 public interface BuyInRepository extends JpaRepository<BuyIn, Long> {
+  java.util.Optional<BuyIn> findByOrganizationIdAndInventoryReference(Long organizationId,String reference);
   Page<BuyIn> findByOrganizationId(Long organizationId, Pageable pageable);
 
   Optional<BuyIn> findByIdAndOrganizationId(Long id, Long organizationId);

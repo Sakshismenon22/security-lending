@@ -1,3 +1,4 @@
+import BuyinOrderPanel from "./BuyinOrderPanel";
 import { canReportBuyin } from "../api/defaultsBuyinsApi";
 import { number, rupees, caseDate } from "../data/defaultsBuyinsData";
 
@@ -8,7 +9,14 @@ const Status = ({ children }) => (
     {children}
   </span>
 );
-export function LiveBuyinExecution({ record, onRequest, onReport, allowed }) {
+export function LiveBuyinExecution({
+  record,
+  onRequest,
+  onReport,
+  allowed,
+  organizationId,
+  onRefresh,
+}) {
   return (
     <article className="db-card">
       <h3>Buy-in reports &amp; requests</h3>
@@ -35,6 +43,11 @@ export function LiveBuyinExecution({ record, onRequest, onReport, allowed }) {
           Record execution
         </button>
       )}
+      <BuyinOrderPanel
+        record={record}
+        organizationId={organizationId}
+        onRefresh={onRefresh}
+      />
       {record.reports.length ? (
         <div className="db-scroll">
           <table>
@@ -45,6 +58,7 @@ export function LiveBuyinExecution({ record, onRequest, onReport, allowed }) {
                 <th>Reported price</th>
                 <th>Costs</th>
                 <th>Trade reference</th>
+                <th>Inventory receipt</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -56,6 +70,11 @@ export function LiveBuyinExecution({ record, onRequest, onReport, allowed }) {
                   <td>{rupees(report.price)}</td>
                   <td>{rupees(report.costs)}</td>
                   <td>{report.executionReference || "—"}</td>
+                  <td>
+                    {report.inventoryReceivedAt
+                      ? `Received · ${caseDate(report.inventoryReceivedAt)}`
+                      : "Awaiting receipt"}
+                  </td>
                   <td>
                     <Status>{report.status}</Status>
                   </td>
@@ -74,8 +93,10 @@ export function LiveBuyinExecution({ record, onRequest, onReport, allowed }) {
         </p>
       )}
       <p className="db-footnote">
-        Execution reports do not confirm custody movement, collateral
-        liquidation or cash settlement.
+        Inventory is credited once securities receipt is confirmed. Internal
+        demo orders include simulated receipt; external trade reports require
+        receipt confirmation. Cash settlement and the original loan remain
+        separate.
       </p>
       {allowed && (
         <button className="db-button" onClick={onRequest}>
@@ -115,10 +136,15 @@ export function LiveBuyinRecovery({ record }) {
       </table>
       <div className="db-card-bottom">
         <b>Settlement confirmation</b>
-        <Status>Not supplied by this report</Status>
+        <Status>
+          {report?.inventoryReceivedAt
+            ? "Inventory received · cash payable"
+            : "Awaiting securities receipt"}
+        </Status>
       </div>
       <p className="db-footnote">
-        No ledger movements or loan close-out are inferred from a buy-in report.
+        Received purchases create a payable ledger entry. They do not
+        automatically close the original loan or settle cash.
       </p>
     </article>
   );

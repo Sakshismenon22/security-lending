@@ -21,6 +21,7 @@ public class DefaultBuyinScreenService {
   private final TenantService tenants;
   private final LoanDefaultRepository defaults;
   private final BuyInRepository buyIns;
+  private final BuyinOrderRepository orders;
   private final LoanRepository loans;
   private final BorrowerConnectionRepository borrowers;
   private final SecurityMasterRepository securities;
@@ -52,6 +53,7 @@ public class DefaultBuyinScreenService {
       .stream()
       .collect(Collectors.toMap(SecurityMaster::getId, Function.identity()));
     var allBuyIns = buyIns.findByOrganizationId(org, paging).getContent();
+    var allOrders=orders.findByOrganizationId(org);
     var allRequests = requests.findByOrganizationId(org, paging).getContent();
     var allRecalls = recalls.findByOrganizationId(org, paging).getContent();
     var allMargins = margins.findByOrganizationId(org, paging).getContent();
@@ -62,6 +64,7 @@ public class DefaultBuyinScreenService {
         var row = new LinkedHashMap<String, Object>();
         var loan = found(Optional.ofNullable(allLoans.get(def.getLoanId())));
         row.put("default", def);
+        row.put("orders",allOrders.stream().filter(o->o.getDefaultId().equals(def.getId())).sorted(Comparator.comparing(BuyinOrder::getId).reversed()).toList());
         row.put("reportedData", json.tree(def.getSourceData()));
         row.put("loan", loan);
         row.put(

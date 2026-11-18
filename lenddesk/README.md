@@ -40,8 +40,11 @@ price. Manual default creation and notice delivery are not supported in live mod
 Lifecycle now detects overdue recall, maturity and margin obligations, accepts or
 rejects buy-in requests, and verifies operator-entered trade confirmations. Once a
 securities buy-in is accepted, use **Record execution** to submit the completed
-trade's price, costs and reference. The report does not imply cash/custody
-settlement or loan close-out. See [Defaults and buy-ins](../DEFAULTS_BUYINS.md) for
+trade's price, costs and reference. Use **Place buy-in order** for internal demo market/limit execution. Confirmed demo
+fills credit purchased inventory once; external trades expose **Receive securities**
+for custody confirmation. Inventory history, purchase payable ledger and audit
+records share the execution reference. Purchases do not automatically close the
+original loan or settle cash/collateral. See [Defaults and buy-ins](../DEFAULTS_BUYINS.md) for
 rules, endpoints, restart instructions and tests.
 
 The **Sample preview** link opens `/defaults-buyins/preview`. This retains the

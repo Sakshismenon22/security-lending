@@ -21,6 +21,7 @@ public class LifecycleRequestService {
   private final RebateRepository rebates;
   private final LoanDefaultRepository defaults;
   private final BuyInRepository buyIns;
+  private final BuyinOrderRepository buyinOrders;
   private final RecallService recalls;
   private final LifecycleRequestRepository requests;
   private final TenantService tenants;
@@ -289,7 +290,8 @@ public class LifecycleRequestService {
             parent.getId()
       )
       .findFirst();
-    if (pending.isPresent()) return pending.get();
+    if (pending.isPresent()) return same(pending.get(),"BUY_IN_EXECUTION_REQUESTED",json.write(payload),def.getLoanId());
+    require(buyinOrders.findByOrganizationIdAndDefaultId(org,id).stream().filter(o->Set.of("PENDING","EXECUTION_PENDING").contains(o.getStatus())).allMatch(o->o.getExecutionReference().equals(r.executionReference()) && o.getQuantity()==r.quantity() && o.getExecutionPrice()!=null && o.getExecutionPrice().compareTo(r.price())==0 && o.getCosts().compareTo(r.costs())==0),"A buy-in order already reserves this execution");
     BuyinDeliveryState.retireFailed(
       em,
       org,

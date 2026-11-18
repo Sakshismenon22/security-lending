@@ -15,6 +15,9 @@ export const canReportBuyin = (record) =>
   record.rawStatus === "OPEN" &&
   record.request?.status === "ACCEPTED" &&
   !pending(record.executionRequest?.status) &&
+  !(record.buyinOrders || []).some((order) =>
+    ["PENDING", "EXECUTION_PENDING", "FILLED"].includes(order.status),
+  ) &&
   !record.reports.some((report) => !failed(report.status));
 
 export function liveDefaultRecord(row) {
@@ -74,6 +77,9 @@ export function liveDefaultRecord(row) {
     ),
     notices: [],
     reports,
+    buyinOrders: row.orders || [],
+    marketPrice: row.security?.price ?? null,
+    quoteAt: row.security?.priceAt ?? null,
     request,
     requests,
     reported,
@@ -87,6 +93,18 @@ export function liveDefaultRecord(row) {
         }
       : null,
     activities: [
+      ...(row.orders || []).map((order) => ({
+        time: order.filledAt || order.createdAt,
+        event: `Buy-in order #${order.id} · ${order.status}`,
+        reference: order.failureReason || order.executionReference,
+      })),
+      ...reports
+        .filter((report) => report.inventoryReceivedAt)
+        .map((report) => ({
+          time: report.inventoryReceivedAt,
+          event: "Purchased securities received into inventory",
+          reference: report.inventoryReference,
+        })),
       {
         time: def.createdAt,
         event: `Default reported · ${def.status}`,
@@ -106,6 +124,20 @@ export function liveDefaultRecord(row) {
   };
 }
 export const defaultsBuyinsApi = {
+  placeOrder: (org, id, payload) =>
+    lenderPost(
+      `/api/v1/organizations/${org}/defaults/${id}/buy-in-orders`,
+      payload,
+    ),
+  cancelOrder: (org, id) =>
+    lenderPost(`/api/v1/organizations/${org}/buy-in-orders/${id}/cancel`, {}),
+  matchOrder: (org, id) =>
+    lenderPost(`/api/v1/organizations/${org}/buy-in-orders/${id}/match`, {}),
+  receiveInventory: (org, id, reference) =>
+    lenderPost(
+      `/api/v1/organizations/${org}/buy-ins/${id}/inventory-receipts`,
+      { reference },
+    ),
   async snapshot(organizationId, signal) {
     const rows = await lenderGet(
       `/api/v1/organizations/${organizationId}/lenddesk/defaults-buyins`,

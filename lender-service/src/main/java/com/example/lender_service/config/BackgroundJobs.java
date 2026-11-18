@@ -15,6 +15,7 @@ public class BackgroundJobs {
   private static final Logger log = LoggerFactory.getLogger(BackgroundJobs.class);
   private final OutboxService outbox;
   private final MarketService market;
+  private final BuyinOrderService buyinOrders;
   private final SecurityMasterRepository securities;
 
   @Scheduled(fixedDelayString = "${lender.outbox-poll-ms:1000}")
@@ -25,6 +26,12 @@ public class BackgroundJobs {
       } catch (Exception e) {
         log.warn("Outbox partition {} remains pending: {}", key, e.getMessage());
       }
+  }
+
+  @Scheduled(fixedDelayString="${lender.buyin-order-poll-ms:5000}")
+  public void matchBuyins() {
+    for(var order:buyinOrders.pending()) try {buyinOrders.match(order.getOrganizationId(),order.getId());}
+    catch(Exception e) {log.warn("Buy-in order {} remains pending: {}",order.getId(),e.getMessage());}
   }
 
   @Scheduled(fixedDelayString = "${lender.market-poll-ms:60000}")

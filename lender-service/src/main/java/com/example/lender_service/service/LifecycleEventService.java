@@ -46,6 +46,7 @@ public class LifecycleEventService {
   private final EventService events;
   private final JsonService json;
   private final Clock clock;
+  private final BuyinOrderService buyinOrders;
 
   @Transactional
   public void receive(String body) {
@@ -112,6 +113,7 @@ public class LifecycleEventService {
             "Lifecycle request already completed");
         r.setStatus(e.type().endsWith("ACCEPTED") ? "ACCEPTED" : "REJECTED");
         if (Set.of("BUY_IN_REQUESTED","BUY_IN_EXECUTION_REQUESTED").contains(r.getType())) r.setFailureReason(e.type().endsWith("REJECTED") ? e.data().path("reason").asText("Buy-in request rejected") : null);
+        if("BUY_IN_EXECUTION_REQUESTED".equals(r.getType()) && e.type().endsWith("REJECTED")) buyinOrders.rejected(e.organizationId(),r.getId(),r.getFailureReason());
         if("VALUATION_REQUESTED".equals(r.getType()))r.setFailureReason(null);
         if (Set.of("VALUATION_REQUESTED", "FEE_ACCRUAL_REQUESTED", "REBATE_ACCRUAL_REQUESTED")
                 .contains(r.getType())
@@ -502,6 +504,7 @@ public class LifecycleEventService {
           var execution=found(requests.findByIdAndOrganizationId(number(d,"executionRequestId"),e.organizationId()));
           require("BUY_IN_EXECUTION_REQUESTED".equals(execution.getType()) && Objects.equals(execution.getLoanId(),loan.getId()) && json.tree(execution.getPayload()).path("buyinRequestId").asLong()==number(d,"lifecycleRequestId"),"Execution request mismatch");
           execution.setStatus("COMPLETED");execution.setFailureReason(null);
+          buyinOrders.confirmed(p,execution.getId(),d.path("executionReference").asText());
         }
       }
       default -> throw new IllegalArgumentException("Unsupported lifecycle event " + e.type());

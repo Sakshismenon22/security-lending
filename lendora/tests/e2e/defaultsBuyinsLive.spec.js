@@ -79,7 +79,7 @@ test('failed requests expose the reason and retry uses a stable key after networ
   await expect(page.locator('.db-main-table')).toContainText('BI-000041')
   await expect(page.getByRole('button', { name: 'Request buy-in', exact: true })).toBeDisabled()
   await expect(page.getByRole('heading', { name: 'Owner-reported amounts' })).toBeVisible()
-  await expect(page.getByText('Not supplied by this report', { exact: true })).toBeVisible()
+  await expect(page.getByText('Awaiting securities receipt', { exact: true })).toBeVisible()
   await expect(page.locator('.db-metrics > div').filter({ hasText: 'Buy-ins pending' })).toContainText('0')
   await expect(page.locator('.db-main-table')).toContainText('In default')
 })
@@ -151,4 +151,81 @@ test('margin defaults cannot request securities buy-ins and stale execution erro
   await dialog.getByRole('button', { name: 'Submit execution report' }).click()
   await expect(dialog.getByRole('alert')).toContainText('obligation has changed')
   await expect(dialog.getByRole('button', { name: 'Submit execution report' })).toBeEnabled()
+})
+
+test('demo market buy-in order is persisted and received inventory appears after fill', async ({ page }) => {
+  await session(page)
+  const rows = snapshot()
+  rows[0].requests = [{ id: 333, type: 'BUY_IN_REQUESTED', status: 'ACCEPTED', createdAt: '2026-11-18T09:00:00Z' }]
+  await page.route(rowPath, route => route.fulfill({ json: { success: true, data: rows } }))
+  const bodies = []
+  await page.route('**/api/v1/organizations/37/defaults/5/buy-in-orders', route => {
+    bodies.push(route.request().postDataJSON())
+    rows[0].orders = [{ id: 10, type: 'MARKET', quantity: 15, executionPrice: 101, costs: 5, executionReference: 'DEMO-BUYIN-10', status: 'EXECUTION_PENDING' }]
+    rows[0].requests.unshift({ id: 334, type: 'BUY_IN_EXECUTION_REQUESTED', status: 'PENDING' })
+    return route.fulfill({ json: { success: true, data: rows[0].orders[0] } })
+  })
+  await page.goto('http://localhost:5175/defaults-buyins')
+  await page.getByRole('button', { name: 'Place buy-in order', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('No external broker order')
+  await dialog.getByLabel('Costs (₹)', { exact: true }).fill('5')
+  await dialog.getByRole('button', { name: 'Place demo order', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(bodies[0]).toMatchObject({ buyinRequestId: 333, type: 'MARKET', quantity: 15, limitPrice: null, costs: 5 })
+  await expect(page.getByRole('region', { name: 'Buy-in orders' })).toContainText('EXECUTION_PENDING')
+  await expect(page.getByRole('button', { name: 'Place buy-in order', exact: true })).toHaveCount(0)
+  rows[0].orders[0].status = 'FILLED'
+  rows[0].orders[0].filledAt = '2026-11-18T10:00:00Z'
+  rows[0].requests.forEach(r => { r.status = 'COMPLETED' })
+  rows[0].buyIns = [{ id: 41, quantity: 15, price: 101, costs: 5, collateralApplied: 0, residualBalance: 1520, status: 'EXECUTED', executionReference: 'DEMO-BUYIN-10', inventoryReference: 'DEMO-BUYIN-10', inventoryReceivedAt: '2026-11-18T10:00:00Z' }]
+  await refresh(page)
+  await expect(page.getByRole('region', { name: 'Buy-in orders' })).toContainText('FILLED')
+  await expect(page.getByText('Inventory received · cash payable', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Receive securities/ })).toHaveCount(0)
+})
+
+test('unmatched limit order can be cancelled and an external receipt requires confirmation', async ({ page }) => {
+  await session(page)
+  const rows = snapshot()
+  rows[0].requests = [{ id: 333, type: 'BUY_IN_REQUESTED', status: 'ACCEPTED' }]
+  await page.route(rowPath, route => route.fulfill({ json: { success: true, data: rows } }))
+  await page.route('**/api/v1/organizations/37/defaults/5/buy-in-orders', route => {
+    expect(route.request().postDataJSON()).toMatchObject({ type: 'LIMIT', limitPrice: 90 })
+    rows[0].orders = [{ id: 10, type: 'LIMIT', quantity: 15, limitPrice: 90, status: 'PENDING', executionReference: 'DEMO-10' }]
+    return route.fulfill({ json: { success: true, data: rows[0].orders[0] } })
+  })
+  await page.route('**/api/v1/organizations/37/buy-in-orders/10/cancel', route => {
+    rows[0].orders[0].status = 'CANCELLED'
+    return route.fulfill({ json: { success: true, data: rows[0].orders[0] } })
+  })
+  await page.goto('http://localhost:5175/defaults-buyins')
+  await page.getByRole('button', { name: 'Place buy-in order', exact: true }).click()
+  let dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Order type').selectOption('LIMIT')
+  await dialog.getByLabel('Limit price (₹)').fill('90')
+  await dialog.getByRole('button', { name: 'Place demo order', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await page.getByRole('button', { name: 'Cancel order #10', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Buy-in orders' })).toContainText('CANCELLED')
+  await expect(page.getByRole('button', { name: 'Place buy-in order', exact: true })).toBeVisible()
+  rows[0].requests[0].status = 'COMPLETED'
+  rows[0].buyIns = [{ id: 41, quantity: 15, price: 100, costs: 0, status: 'EXECUTED', executionReference: 'TRADE-41' }]
+  await refresh(page)
+  const receipts = []
+  await page.route('**/api/v1/organizations/37/buy-ins/41/inventory-receipts', route => {
+    receipts.push(route.request().postDataJSON())
+    rows[0].buyIns[0].inventoryReceivedAt = '2026-11-18T10:00:00Z'
+    rows[0].buyIns[0].inventoryReference = 'buyin-receipt-41'
+    return route.fulfill({ json: { success: true, data: rows[0].buyIns[0] } })
+  })
+  await page.getByRole('button', { name: /^Receive securities/ }).click()
+  dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  expect(receipts).toEqual([])
+  await page.getByRole('button', { name: /^Receive securities/ }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Confirm receipt', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  expect(receipts).toEqual([{ reference: 'buyin-receipt-41' }])
+  await expect(page.getByRole('button', { name: /^Receive securities/ })).toHaveCount(0)
 })

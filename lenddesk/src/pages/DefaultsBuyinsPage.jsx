@@ -149,7 +149,7 @@ function Notices({ record }) {
     </article>
   );
 }
-function Execution({ record, onManage, onReport }) {
+function Execution({ record, onManage, onReport, organizationId, onRefresh }) {
   if (record.live)
     return (
       <LiveBuyinExecution
@@ -157,6 +157,8 @@ function Execution({ record, onManage, onReport }) {
         onRequest={onManage}
         onReport={onReport}
         allowed={canRequestBuyin(record)}
+        organizationId={organizationId}
+        onRefresh={onRefresh}
       />
     );
   const order = record.order;
@@ -1170,6 +1172,8 @@ function DefaultsBuyinsWorkspace({ live, organizationId, refreshKey }) {
                   <Obligation record={selected} />
                   <Notices record={selected} />
                   <Execution
+                    organizationId={organizationId}
+                    onRefresh={refreshLive}
                     record={selected}
                     onManage={openBuyin}
                     onReport={() =>
@@ -1182,6 +1186,8 @@ function DefaultsBuyinsWorkspace({ live, organizationId, refreshKey }) {
               {detailsTab === "Buy-in execution" && (
                 <>
                   <Execution
+                    organizationId={organizationId}
+                    onRefresh={refreshLive}
                     record={selected}
                     onManage={openBuyin}
                     onReport={() =>

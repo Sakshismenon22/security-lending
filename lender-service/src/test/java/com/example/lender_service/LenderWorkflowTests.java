@@ -62,6 +62,12 @@ class LenderWorkflowTests {
   @Autowired MarginCallRepository calls;
   @Autowired RecallRepository recalls;
   @Autowired LoanDefaultRepository defaults;
+  @Autowired BuyinOrderService buyinOrders;
+  @Autowired BuyinOrderRepository buyinOrderRows;
+  @Autowired BuyinInventoryService buyinReceipts;
+  @Autowired BuyInRepository buyinReports;
+  @Autowired InventoryHistoryRepository inventoryHistory;
+  @Autowired LenderAccountLedgerRepository purchaseLedger;
   @Autowired MockMvc mvc;
   @Autowired LocateScreenService locateScreenForTests;
   @Autowired SecurityMasterRepository securityMasterForScreenTest;
@@ -2271,6 +2277,406 @@ class LenderWorkflowTests {
           "TRADE-43"
         )
       )
+    );
+  }
+
+  Map<String, Object> orderFill(BuyinOrder order, LoanDefault def) {
+    var data = new LinkedHashMap<String, Object>();
+    data.put("loanId", order.getLoanId());
+    data.put("defaultId", def.getOwnerReferenceId());
+    data.put("lifecycleRequestId", order.getBuyinRequestId());
+    data.put("executionRequestId", order.getExecutionRequestId());
+    data.put("quantity", order.getQuantity());
+    data.put("price", order.getExecutionPrice());
+    data.put("costs", order.getCosts());
+    data.put("collateralApplied", "0");
+    data.put(
+      "residualBalance",
+      order
+        .getExecutionPrice()
+        .multiply(BigDecimal.valueOf(order.getQuantity()))
+        .add(order.getCosts())
+    );
+    data.put("status", "EXECUTED");
+    data.put("executionReference", order.getExecutionReference());
+    return data;
+  }
+
+  @Test
+  void buyinMarketOrderCreditsPurchasedInventoryAndAuditsExactlyOnce() throws Exception {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("market-parent")
+    );
+    lifecycle(
+      org,
+      "LIFECYCLE_REQUEST_ACCEPTED",
+      parent.getId(),
+      1,
+      Map.of("loanId", loan.getId())
+    );
+    var stockBefore = inventory.position(org.getId(), loan.getSecurityId());
+    long total = stockBefore.getTotalQuantity(),
+      available = stockBefore.getAvailableQuantity(),
+      loaned = stockBefore.getLoanedQuantity(),
+      outstanding = loan.getOutstandingQuantity();
+    var request = new BuyinOrderRequest(
+      "market-order",
+      parent.getId(),
+      "MARKET",
+      20,
+      null,
+      bd("5")
+    );
+    var order = buyinOrders.place(org.getId(), def.getId(), request);
+    var http = mvc
+      .perform(
+        post(
+          "/api/v1/organizations/" +
+            org.getId() +
+            "/defaults/" +
+            def.getId() +
+            "/buy-in-orders"
+        )
+          .contentType("application/json")
+          .content(json.write(request))
+      )
+      .andExpect(status().isOk())
+      .andReturn();
+    assertEquals(
+      order.getId().longValue(),
+      json
+        .tree(http.getResponse().getContentAsString())
+        .path("data")
+        .path("id")
+        .asLong()
+    );
+    assertEquals("EXECUTION_PENDING", order.getStatus());
+    assertEquals(
+      order.getId(),
+      buyinOrders.place(org.getId(), def.getId(), request).getId()
+    );
+    assertEquals(total, stockBefore.getTotalQuantity());
+    assertThrows(ResponseStatusException.class, () ->
+      lifecycleRequests.reportBuyin(
+        org.getId(),
+        def.getId(),
+        new BuyinExecutionRequest(
+          "manual-overlap",
+          parent.getId(),
+          20,
+          bd("101"),
+          bd("5"),
+          "OTHER"
+        )
+      )
+    );
+    long reportId = ids.incrementAndGet();
+    var payload = orderFill(order, def);
+    lifecycle(org, "BUY_IN_REPORTED", reportId, 1, payload);
+    lifecycle(org, "BUY_IN_REPORTED", reportId, 1, payload);
+    assertEquals("FILLED", order.getStatus());
+    assertEquals(total + 20, stockBefore.getTotalQuantity());
+    assertEquals(available + 20, stockBefore.getAvailableQuantity());
+    assertEquals(loaned, stockBefore.getLoanedQuantity());
+    assertEquals(outstanding, loan.getOutstandingQuantity());
+    assertEquals("ACTIVE", loan.getStatus());
+    var report = buyinReports
+      .findByOrganizationIdAndOwnerReferenceId(org.getId(), reportId)
+      .orElseThrow();
+    assertNotNull(report.getInventoryReceivedAt());
+    buyinReceipts.receive(
+      org.getId(),
+      report.getId(),
+      order.getExecutionReference()
+    );
+    assertEquals(
+      1,
+      inventoryHistory
+        .findByOrganizationId(org.getId(), Pageable.unpaged())
+        .stream()
+        .filter(h -> h.getType().equals("BUY_IN_SECURITIES_RECEIVED"))
+        .count()
+    );
+    var entries = purchaseLedger
+      .findByOrganizationId(org.getId(), Pageable.unpaged())
+      .stream()
+      .filter(l -> l.getType().equals("BUY_IN_PURCHASE_PAYABLE"))
+      .toList();
+    assertEquals(1, entries.size());
+    assertEquals(0, bd("2005").compareTo(entries.get(0).getAmount()));
+    assertTrue(
+      events
+        .findByOrganizationId(org.getId(), Pageable.unpaged())
+        .stream()
+        .anyMatch(e ->
+          json
+            .tree(e.getPayload())
+            .path("type")
+            .asText()
+            .equals("BUY_IN_ORDER_FILLED")
+        )
+    );
+    assertEquals(
+      1L,
+      valuationEm
+        .createQuery(
+          "select count(a) from AuditEvent a where a.organizationId=:org and a.type='BUY_IN_ORDER_FILLED'",
+          Long.class
+        )
+        .setParameter("org", org.getId())
+        .getSingleResult()
+    );
+    mvc
+      .perform(
+        post(
+          "/api/v1/organizations/" +
+            org.getId() +
+            "/buy-ins/" +
+            report.getId() +
+            "/inventory-receipts"
+        )
+          .contentType("application/json")
+          .content(
+            json.write(Map.of("reference", order.getExecutionReference()))
+          )
+      )
+      .andExpect(status().isOk());
+    assertThrows(ResponseStatusException.class, () ->
+      buyinOrders.cancel(org.getId(), order.getId())
+    );
+    var other = organization();
+    mvc
+      .perform(
+        post(
+          "/api/v1/organizations/" +
+            other.getId() +
+            "/buy-in-orders/" +
+            order.getId() +
+            "/cancel"
+        )
+      )
+      .andExpect(status().isNotFound());
+    var response = mvc
+      .perform(
+        get(
+          "/api/v1/organizations/" + org.getId() + "/lenddesk/defaults-buyins"
+        )
+      )
+      .andExpect(status().isOk())
+      .andReturn();
+    var row = json
+      .tree(response.getResponse().getContentAsString())
+      .path("data")
+      .get(0);
+    assertEquals("FILLED", row.path("orders").get(0).path("status").asText());
+    assertFalse(row.path("buyIns").get(0).path("inventoryReceivedAt").isNull());
+  }
+
+  @Test
+  void buyinLimitOrderWaitsCancelsAndMatchesOnlyAtOrBelowLimit() {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("limit-parent")
+    );
+    lifecycle(
+      org,
+      "LIFECYCLE_REQUEST_ACCEPTED",
+      parent.getId(),
+      1,
+      Map.of("loanId", loan.getId())
+    );
+    var order = buyinOrders.place(
+      org.getId(),
+      def.getId(),
+      new BuyinOrderRequest(
+        "limit-cancel",
+        parent.getId(),
+        "LIMIT",
+        20,
+        bd("90"),
+        bd("0")
+      )
+    );
+    assertEquals("PENDING", order.getStatus());
+    assertNull(order.getExecutionRequestId());
+    assertThrows(ResponseStatusException.class, () ->
+      buyinOrders.place(
+        org.getId(),
+        def.getId(),
+        new BuyinOrderRequest(
+          "duplicate-pending",
+          parent.getId(),
+          "MARKET",
+          20,
+          null,
+          bd("0")
+        )
+      )
+    );
+    buyinOrders.cancel(org.getId(), order.getId());
+    buyinOrders.cancel(org.getId(), order.getId());
+    assertEquals("CANCELLED", order.getStatus());
+    var replacement = buyinOrders.place(
+      org.getId(),
+      def.getId(),
+      new BuyinOrderRequest(
+        "limit-fill",
+        parent.getId(),
+        "LIMIT",
+        20,
+        bd("90"),
+        bd("0")
+      )
+    );
+    assertEquals("PENDING", replacement.getStatus());
+    market.quote(loan.getSecurityId(), bd("89"), Instant.now());
+    buyinOrders.match(org.getId(), replacement.getId());
+    assertEquals("EXECUTION_PENDING", replacement.getStatus());
+    assertEquals(0, bd("89").compareTo(replacement.getExecutionPrice()));
+    assertThrows(ResponseStatusException.class, () ->
+      buyinOrders.cancel(org.getId(), replacement.getId())
+    );
+  }
+
+  @Test
+  void buyinRejectsStaleQuotesAndChangedObligationsWithoutCreditingInventory() {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("stale-parent")
+    );
+    lifecycle(
+      org,
+      "LIFECYCLE_REQUEST_ACCEPTED",
+      parent.getId(),
+      1,
+      Map.of("loanId", loan.getId())
+    );
+    var sec = securityMasterForScreenTest
+      .findById(loan.getSecurityId())
+      .orElseThrow();
+    sec.setPriceAt(Instant.now().minusSeconds(600));
+    long total = inventory
+      .position(org.getId(), loan.getSecurityId())
+      .getTotalQuantity();
+    var order = buyinOrders.place(
+      org.getId(),
+      def.getId(),
+      new BuyinOrderRequest(
+        "stale-order",
+        parent.getId(),
+        "MARKET",
+        20,
+        null,
+        bd("0")
+      )
+    );
+    assertEquals("PENDING", order.getStatus());
+    assertTrue(order.getFailureReason().contains("fresh"));
+    assertNull(order.getExecutionRequestId());
+    loan.setOutstandingQuantity(10L);
+    market.quote(loan.getSecurityId(), bd("100"), Instant.now());
+    buyinOrders.match(org.getId(), order.getId());
+    assertEquals("REJECTED", order.getStatus());
+    assertEquals(
+      total,
+      inventory.position(org.getId(), loan.getSecurityId()).getTotalQuantity()
+    );
+  }
+
+  @Test
+  void externalBuyinReceiptRequiresConfirmationAndCannotCreditTwice() {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("external-parent")
+    );
+    long total = inventory
+      .position(org.getId(), loan.getSecurityId())
+      .getTotalQuantity();
+    var payload = new LinkedHashMap<String, Object>(
+      Map.of(
+        "loanId",
+        loan.getId(),
+        "defaultId",
+        def.getOwnerReferenceId(),
+        "quantity",
+        20,
+        "price",
+        "100",
+        "costs",
+        "0",
+        "collateralApplied",
+        "0",
+        "residualBalance",
+        "2000",
+        "status",
+        "EXECUTED",
+        "lifecycleRequestId",
+        parent.getId()
+      )
+    );
+    payload.put("executionReference", "EXTERNAL-TRADE");
+    long owner = ids.incrementAndGet();
+    lifecycle(org, "BUY_IN_REPORTED", owner, 1, payload);
+    var report = buyinReports
+      .findByOrganizationIdAndOwnerReferenceId(org.getId(), owner)
+      .orElseThrow();
+    assertEquals(
+      total,
+      inventory.position(org.getId(), loan.getSecurityId()).getTotalQuantity()
+    );
+    buyinReceipts.receive(org.getId(), report.getId(), "CUSTODY-42");
+    buyinReceipts.receive(org.getId(), report.getId(), "CUSTODY-42");
+    assertEquals(
+      total + 20,
+      inventory.position(org.getId(), loan.getSecurityId()).getTotalQuantity()
+    );
+    assertThrows(ResponseStatusException.class, () ->
+      buyinReceipts.receive(org.getId(), report.getId(), "OTHER-CUSTODY")
+    );
+    var other = organization();
+    assertThrows(ResponseStatusException.class, () ->
+      buyinReceipts.receive(other.getId(), report.getId(), "CUSTODY-42")
     );
   }
 
