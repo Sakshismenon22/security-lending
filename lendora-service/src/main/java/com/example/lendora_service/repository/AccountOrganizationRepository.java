@@ -10,6 +10,8 @@ public interface AccountOrganizationRepository
     String type
   );
 
+  java.util.List<AccountOrganization> findByPlatformOrganizationIdIsNotNullOrderByIdAsc();
+
   boolean existsByTypeAndRegistrationNumber(
     String type,
     String registrationNumber

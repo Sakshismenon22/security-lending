@@ -1421,4 +1421,29 @@ class BorrowerWorkflowTests {
                 .andExpect(status().isBadRequest());
         assertNotNull(portfolio.dashboard(org));
     }
+
+    @Test
+    void lenderOffersPreserveCashOnlySecurityOnlyAndMixedCollateralRules() {
+        long org = org(), sec = security("100"), lender = 1000000000001L;
+        apply(org, "LENDER_REFERENCE_UPDATED", lender, 1, Map.of("name", "Registered lender", "externalId", "LENDORA_REGISTERED"));
+        var cash = new LinkedHashMap<String,Object>(); cash.put("assetType", "CASH"); cash.put("securityId", null); cash.put("haircut", "0");
+        var security = Map.<String,Object>of("assetType", "SECURITY", "securityId", sec, "haircut", "0.15");
+        for (var rules : List.of(List.of(cash), List.of(security), List.of(cash, security))) {
+            long ownerId = sequence.incrementAndGet();
+            var data = new LinkedHashMap<String,Object>();
+            data.put("lenderReferenceId", lender); data.put("lenderExternalId", "LENDORA_REGISTERED"); data.put("number", "OFFER-" + ownerId);
+            data.put("effectiveDate", LocalDate.now().toString()); data.put("expiryDate", LocalDate.now().plusYears(1).toString());
+            data.put("creditLimit", "1000000"); data.put("feeRate", "0.03"); data.put("rebateRate", "0.01"); data.put("coverageRatio", "1.05");
+            data.put("billingFrequency", "MONTHLY"); data.put("rebateSettlementFrequency", "AT_CLOSE"); data.put("dayBasis", 365);
+            data.put("recallAllowed", true); data.put("marginHours", 24); data.put("recallHours", 48); data.put("collateralRules", rules);
+            apply(org, "AGREEMENT_OFFERED", ownerId, 1, data);
+            var agreement = db.matchingRow(Msla.class, eq("organizationId", org), eq("lenderMslaId", ownerId));
+            assertEquals("OFFERED", agreement.get("status"));
+            apply(org, "AGREEMENT_OFFERED", ownerId, 1, data);
+            assertEquals(1, db.rows(Msla.class, eq("organizationId", org), eq("lenderMslaId", ownerId)).size());
+            var stored = db.rows(CollateralHaircut.class, eq("mslaId", n(agreement,"id")));
+            assertEquals(rules.size(), stored.size());
+            for (var rule : stored) assertEquals(0, bd("SECURITY".equals(rule.get("asset_type")) ? "0.15" : "0").compareTo(money(rule, "haircut")));
+        }
+    }
 }

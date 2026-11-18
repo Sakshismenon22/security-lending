@@ -302,6 +302,7 @@ public class BorrowerEventProjectionService {
             Long securityId = rawSecurity == null ? null : number(rule, "securityId");
             BigDecimal haircut = decimal(rule, "haircut");
             boolean cash = "CASH".equals(assetType);
+            require(haircut.signum() >= 0 && haircut.compareTo(new BigDecimal("0.99999999")) <= 0, "Collateral haircut must be in [0,1)");
             require(
                     (cash && securityId == null && haircut.signum() == 0)
                             || (!cash && "SECURITY".equals(assetType) && securityId != null),

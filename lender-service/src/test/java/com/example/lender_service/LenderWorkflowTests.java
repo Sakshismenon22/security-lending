@@ -2085,4 +2085,32 @@ class LenderWorkflowTests {
     assertEquals("CLOSED", request.getStatus()); assertEquals("CLOSED", event.getStatus());
     assertEquals("OPEN", def.getStatus());
   }
+
+  @Test
+  void lenderOfferPublishesExactlyTheSelectedCollateralTypesAndHaircuts() {
+    var org = organization(); var connection = connection(org); long sec = security("100");
+    var securityOnly = new AgreementOfferRequest(connection.getId(), "MSLA-SECURITY-ONLY", LocalDate.now(), LocalDate.now().plusYears(1),
+        bd("100000"), bd("0.03"), bd("0.01"), bd("1.05"), "MONTHLY", 365, true, 24, 48,
+        List.of(new RuleRequest("SECURITY", sec, bd("0.15"))), "AT_CLOSE");
+    var agreement = agreementService.offer(org.getId(), securityOnly);
+    var offered = events.findAll().stream().filter(e -> e.getOrganizationId().equals(org.getId()) && json.tree(e.getPayload()).path("type").asText().equals("AGREEMENT_OFFERED")).findFirst().orElseThrow();
+    var rules = json.tree(offered.getPayload()).path("data").path("collateralRules");
+    assertEquals(1, rules.size()); assertEquals("SECURITY", rules.get(0).path("assetType").asText());
+    assertEquals(0, bd("0.15").compareTo(new BigDecimal(rules.get(0).path("haircut").asText())));
+    assertEquals("OFFERED", agreement.getStatus());
+    assertEquals(connection.getBorrowerOrganizationId().longValue(), json.tree(offered.getPayload()).path("organizationId").asLong());
+    long before = events.count();
+    assertEquals(true, agreementService.resend(org.getId(), agreement.getId()).get("alreadyQueued"));
+    assertEquals(before, events.count());
+    offered.setPublished(true); offered.setStatus("PUBLISHED");
+    assertEquals(false, agreementService.resend(org.getId(), agreement.getId()).get("alreadyQueued"));
+    assertEquals(1, agreements.findByOrganizationId(org.getId(), Pageable.unpaged()).getTotalElements());
+    var replay = events.findAll().stream().filter(e -> e.getOrganizationId().equals(org.getId()) && json.tree(e.getPayload()).path("type").asText().equals("AGREEMENT_OFFERED") && !e.getId().equals(offered.getId())).findFirst().orElseThrow();
+    assertEquals(agreement.getId().longValue(), json.tree(replay.getPayload()).path("referenceId").asLong());
+    assertEquals(1, json.tree(replay.getPayload()).path("version").asLong());
+    assertEquals(json.tree(offered.getPayload()).path("data"), json.tree(replay.getPayload()).path("data"));
+    assertThrows(ResponseStatusException.class, () -> agreementService.resend(organization().getId(), agreement.getId()));
+    agreement.setStatus("ACTIVE");
+    assertThrows(ResponseStatusException.class, () -> agreementService.resend(org.getId(), agreement.getId()));
+  }
 }

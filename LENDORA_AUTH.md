@@ -54,8 +54,9 @@ Borrower migration **V17** adds the idempotent Lendora organization identity.
 The new account database uses its own Flyway migration V1. Existing organizations
 and directory users are not silently given passwords: create an account through
 Lendora. Existing agreements/counterparties are not automatically connected to a
-newly registered organization. The existing FIX routing configuration still needs
-the newly provisioned borrower organization ID and institution identifiers.
+newly registered organization. Lendora-mode FIX adapters resolve provisioned accounts through the private transport
+directory. Manually started adapters retain their static routing unless account
+routing is enabled as described below.
 
 ## Endpoints and access
 
@@ -236,3 +237,32 @@ on both services. Existing FIX institution configuration and organization allowl
 still apply; adding a connection does not itself configure a FIX session or approve
 an agreement. `LENDORA_BORROWER_INSTITUTION_ID` on lender-service defaults to the
 existing shared `BORROWER_DEMO` adapter identity.
+
+## MSLA offers between registered accounts
+
+Lendora account mode now enables `LENDORA_ROUTING_ENABLED=true` for both FIX adapters
+through `start-lendora.cmd`. The adapters privately verify provisioned account IDs
+and logical `LENDORA_…` lender identities against the account service, then use the
+existing configured FIX sessions. Static session allowlists still apply in legacy
+mode; unknown accounts and identities on another institution remain rejected.
+
+After this update, stop **both FIX adapter processes**, borrower-service,
+lender-service and lendora-service, then run `start-lendora.cmd`. Existing adapters
+must restart to receive the shared provisioning key and routing mode. For manual
+startup set `LENDORA_ROUTING_ENABLED=true` and the same `LENDORA_PROVISIONING_KEY`
+on the FIX adapters as on the account/business services. Physical FIX sessions still
+need to be logged on; this does not bypass session configuration or receipts.
+
+LendDesk's offer form now lets you choose cash-only, security-only or mixed accepted
+collateral. Add one rule per accepted security, choose it from imported references,
+and enter its haircut in **percent** (15 means 15%, sent as 0.15). Cash uses a fixed
+0% haircut. Duplicate rules and empty rule sets are rejected. Security master IDs
+must exist in both business services, as required by the existing contract.
+
+BorrowDesk refreshes the register every five seconds and includes `OFFERED` in its
+Proposed tab. For an unanswered offer lost before this fix, use **Retry delivery**
+in LendDesk's MSLA register after restarting the adapters. This requeues the lender
+reference and unchanged offer, preserving the agreement ID and offer version, so
+BorrowDesk does not create a duplicate agreement if it already received it. A
+pending business outbox offer is coalesced. If a failed transport message is blocking
+a FIX session, retry or close that message through Failed deliveries first.

@@ -38,7 +38,7 @@ public class EnvelopeService {
         var root=parse(message.payload());var envelope=validate(root,expected);
         if(!envelope.eventId().equals(message.eventId()) || !envelope.payloadHash().equals(message.payloadHash()))throw invalid("FIX envelope ID/hash does not match the JSON envelope");
         var route=routes.session(sessionKey,envelope.organizationId());
-        if(expected==MessageKind.COMMAND && !properties.getInstitutionId().equals(text(root,"lenderExternalId")))throw invalid("Command is addressed to another institution");
+        if(expected==MessageKind.COMMAND && !routes.acceptsCommandTarget(text(root,"lenderExternalId")))throw invalid("Command is addressed to another institution");
         return new RoutedEnvelope(envelope,sessionKey,route.getCounterpartyId());
     }
     private JsonNode parse(String body) {

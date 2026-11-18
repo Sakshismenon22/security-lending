@@ -214,12 +214,13 @@ try {
     }
 
     if ($Lendora) {
-        foreach ($port in @(8081, 8084, 8086)) {
+        foreach ($port in @(8081, 8082, 8083, 8084, 8086)) {
             if (Test-Port $port) {
-                throw "Port $port already has a backend running. Stop the old borrower, lender and Lendora backend windows first, then rerun to load the shared provisioning key consistently."
+                throw "Port $port already has a backend running. Stop the borrower, lender, Lendora and both FIX adapter windows first, then rerun to load the shared provisioning key and routing mode consistently."
             }
         }
         Initialize-LendoraKey
+        $env:LENDORA_ROUTING_ENABLED = 'true'
         Write-Host 'Lendora mode requires the lendora_db PostgreSQL database in addition to the existing demo databases.'
     }
 

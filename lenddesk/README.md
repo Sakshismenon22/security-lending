@@ -75,3 +75,16 @@ organization allowlists must cover the connected organizations. The shared borro
 adapter institution defaults to `BORROWER_DEMO`, configurable on lender-service via
 `LENDORA_BORROWER_INSTITUTION_ID`. Lendora directory IDs, business organization IDs
 and FIX institution IDs are separate identifiers.
+
+## MSLA accepted collateral and offer delivery
+
+The live MSLA offer dialog has an **Accepted collateral & haircuts** rule table.
+Choose cash, individual securities, or both; add/remove rows as needed. Security
+haircuts are entered as percentages and converted to the backend decimal contract.
+Cash remains 0%. The server validates securities, duplicate rules and haircut bounds.
+
+An offer submission queues delivery; it is not proof that BorrowDesk has received it.
+Unanswered `OFFERED` agreements expose **Retry delivery**, which requeues the original
+terms under the same agreement ID/version. It does not create or amend an agreement.
+Registered accounts require the updated Lendora-aware FIX routing mode; restart both
+adapters with `start-lendora.cmd`. See the root Lendora setup document for details.

@@ -97,3 +97,20 @@ The receiving adapter also stamps Kafka headers `x-counterparty-id` and `x-fix-s
 - A missing receipt can cause a retransmission at a new FIX sequence number with the **same** event ID. Normal QuickFIX/J resend handling may also replay stored messages. Both cases are deduplicated at the application queue.
 - A crash after broker acknowledgment but before marking a publication complete can duplicate Kafka output. Business consumers must retain their own inbox deduplication.
 - A transport receipt is not a business decision. Wait for the appropriate business event to change borrower loan/reservation/account state.
+
+### Lendora registered-account routing
+
+When `adapter.lendora-routing-enabled=true`, the adapter reads
+`/internal/lendora/transport-organizations` from the account service using the private
+`X-Lendora-Provisioning-Key`. Provisioned borrower business IDs can use their registered
+physical borrower institution's existing FIX session. A registered logical lender
+external ID resolves to its configured lender institution for transport; the logical
+ID is preserved in the business payload so lender-service still identifies the correct
+organization. Inbound command targets are checked against that mapping.
+
+No new sessions or wildcard organization permissions are created. Unknown accounts,
+unconfigured institutions and wrong-direction aliases fail validation. The registry
+is cached briefly, refreshed on an account miss, and fails closed if a required lookup
+is unavailable. Disabled mode retains the explicit static allowlists. The account
+service and both adapters must share `LENDORA_PROVISIONING_KEY`; `start-lendora.cmd`
+sets the mode and key for newly started adapter processes.

@@ -303,4 +303,17 @@ class AccountIntegrationTests {
         .andExpect(jsonPath("$.data.length()").value(0));
     mvc.perform(get("/internal/lendora/borrowers/" + borrower.getId()).header("X-Lendora-Provisioning-Key", "test-provisioning-key")).andExpect(status().isNotFound());
   }
+
+  @Test void privateTransportRegistrySeparatesBusinessIdsFromFixInstitutionIds() throws Exception {
+    mvc.perform(post("/api/v1/organizations/register").contentType("application/json").content(registration("LENDER", "lender@transport.example"))).andExpect(status().isCreated());
+    mvc.perform(post("/api/v1/organizations/register").contentType("application/json").content(registration("BORROWER", "borrower@transport.example"))).andExpect(status().isCreated());
+    mvc.perform(get("/internal/lendora/transport-organizations")).andExpect(status().isUnauthorized());
+    mvc.perform(get("/internal/lendora/transport-organizations").header("X-Lendora-Provisioning-Key", "test-provisioning-key"))
+      .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(2))
+      .andExpect(jsonPath("$.data[0].type").value("LENDER"))
+      .andExpect(jsonPath("$.data[0].institutionId").value("LENDER_DEMO"))
+      .andExpect(jsonPath("$.data[1].institutionId").value("BORROWER_DEMO"))
+      .andExpect(jsonPath("$.data[0].organizationId").value(42))
+      .andExpect(jsonPath("$.data[0].email").doesNotExist());
+  }
 }

@@ -72,10 +72,53 @@ class LiveBridgeIntegrationTests {
             if(borrower!=null)borrower.close();if(lender!=null)lender.close();broker.destroy();
         }
     }
+    @Test void registeredMslaOfferAndAcceptanceCrossRealFixAndKafka() throws Exception {
+        var broker=new EmbeddedKafkaKraftBroker(1,1,"borrower.commands.v1","lender.commands.v1","lender.confirmations.v1","borrower.confirmations.v1","borrower.commands.v1.DLT","lender.confirmations.v1.DLT");
+        broker.brokerProperties(Map.of("auto.create.topics.enable","false","num.network.threads","2","num.io.threads","2"));
+        var registry=com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
+        registry.createContext("/internal/lendora/transport-organizations",exchange->{
+            if(!"test-routing-key".equals(exchange.getRequestHeaders().getFirst("X-Lendora-Provisioning-Key"))) {exchange.sendResponseHeaders(401,-1);exchange.close();return;}
+            var data=List.of(Map.of("type","BORROWER","organizationId",42,"externalId","LENDORA_BORROWER","institutionId","BORROWER_DEMO"),Map.of("type","LENDER","organizationId",7,"externalId","LENDORA_LENDER","institutionId","LENDER_DEMO"));
+            byte[] bytes=MessageCodecTests.JSON.writeValueAsString(Map.of("success",true,"data",data)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type","application/json");exchange.sendResponseHeaders(200,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
+        });registry.start();
+        ConfigurableApplicationContext borrower=null,lender=null;Consumer<String,String> borrowerObserver=null,lenderObserver=null;
+        String database=UUID.randomUUID().toString().replace("-","");int port;
+        try(var socket=new ServerSocket(0)){port=socket.getLocalPort();}
+        broker.afterPropertiesSet();
+        try {
+            String url="http://127.0.0.1:"+registry.getAddress().getPort();
+            lender=start("LENDER",broker.getBrokersAsString(),port,database,url);borrower=start("BORROWER",broker.getBrokersAsString(),port,database,url);
+            var b=borrower;var l=lender;
+            waitFor(()->b.getBean(FixEngineService.class).sessions().get(0).loggedOn()&&l.getBean(FixEngineService.class).sessions().get(0).loggedOn(),"Registered-account FIX sessions must log on");
+            borrowerObserver=observer(broker,"registered-borrower-"+database,"borrower.confirmations.v1");lenderObserver=observer(broker,"registered-lender-"+database,"lender.commands.v1");
+            String eventId="offer-"+database;
+            var terms=new LinkedHashMap<String,Object>();terms.put("lenderReferenceId",1000000000001L);terms.put("lenderExternalId","LENDORA_LENDER");terms.put("number","MSLA-REGISTERED");terms.put("effectiveDate","2026-11-18");terms.put("expiryDate","2027-11-18");terms.put("creditLimit",100000);terms.put("feeRate",new java.math.BigDecimal("0.03"));terms.put("rebateRate",new java.math.BigDecimal("0.01"));terms.put("coverageRatio",new java.math.BigDecimal("1.05"));terms.put("billingFrequency","MONTHLY");terms.put("rebateSettlementFrequency","AT_CLOSE");terms.put("dayBasis",365);terms.put("recallAllowed",true);terms.put("marginHours",24);terms.put("recallHours",48);
+            terms.put("collateralRules",List.of(new LinkedHashMap<String,Object>(){{put("assetType","CASH");put("securityId",null);put("haircut",0);}},Map.of("assetType","SECURITY","securityId",7,"haircut",new java.math.BigDecimal("0.15"))));
+            String offer=MessageCodecTests.JSON.writeValueAsString(Map.of("eventId",eventId,"type","AGREEMENT_OFFERED","organizationId",42,"referenceId",31,"version",1,"occurredAt",java.time.Instant.now().toString(),"borrowerExternalId","BORROWER_DEMO","data",terms));
+            template(lender).send("lender.confirmations.v1","42",offer).get(10,TimeUnit.SECONDS);
+            var received=MessageCodecTests.JSON.readTree(KafkaTestUtils.getSingleRecord(borrowerObserver,"borrower.confirmations.v1",Duration.ofSeconds(30)).value());
+            assertEquals(42,received.path("organizationId").asLong());assertEquals("AGREEMENT_OFFERED",received.path("type").asText());assertEquals("0.15",received.path("data").path("collateralRules").get(1).path("haircut").asText());
+            var reply=new LinkedHashMap<String,Object>(MessageCodecTests.JSON.readValue(MessageCodecTests.command("accept-"+database),new tools.jackson.core.type.TypeReference<Map<String,Object>>(){}));
+            reply.put("type","AGREEMENT_ACCEPTED");reply.put("organizationId",42);reply.put("lenderExternalId","LENDORA_LENDER");reply.put("referenceId",41);reply.put("mslaId",41);reply.put("data",Map.of("lenderMslaId",31,"reason","Accepted"));
+            template(borrower).send("borrower.commands.v1","42",MessageCodecTests.JSON.writeValueAsString(reply)).get(10,TimeUnit.SECONDS);
+            var accepted=KafkaTestUtils.getSingleRecord(lenderObserver,"lender.commands.v1",Duration.ofSeconds(30));
+            assertEquals("LENDORA_LENDER",MessageCodecTests.JSON.readTree(accepted.value()).path("lenderExternalId").asText());
+            assertEquals("BORROWER_DEMO",new String(accepted.headers().lastHeader("x-counterparty-id").value(),java.nio.charset.StandardCharsets.UTF_8));
+            waitFor(()->l.getBean(OutboundMessageRepository.class).findByEventId(eventId).map(m->m.getState()==DeliveryState.ACKNOWLEDGED).orElse(false),"Offer must receive durable FIX receipt");
+        } finally {
+            if(borrowerObserver!=null)borrowerObserver.close();if(lenderObserver!=null)lenderObserver.close();if(borrower!=null)borrower.close();if(lender!=null)lender.close();registry.stop(0);broker.destroy();
+        }
+    }
     private ConfigurableApplicationContext start(String side,String kafka,int port,String database) {
+        return start(side,kafka,port,database,null);
+    }
+    private ConfigurableApplicationContext start(String side,String kafka,int port,String database,String registry) {
         boolean borrower=side.equals("BORROWER");String local=borrower?"BORROWER_DEMO":"LENDER_DEMO",remote=borrower?"LENDER_DEMO":"BORROWER_DEMO";
         return new SpringApplicationBuilder(FixAdapterServiceApplication.class).web(WebApplicationType.NONE).profiles("test").run(
             "--spring.datasource.url=jdbc:h2:mem:wire_"+side+database+";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+            "--adapter.lendora-routing-enabled="+(registry!=null),
+            "--adapter.lendora-url="+(registry==null?"http://localhost:8086":registry),"--adapter.lendora-key=test-routing-key",
             "--spring.kafka.bootstrap-servers="+kafka,"--adapter.side="+side,"--adapter.institution-id="+local,"--adapter.sender-comp-id="+local,
             "--adapter.fix-enabled=true","--adapter.kafka-enabled=true","--adapter.workers-enabled=true",
             "--adapter.consumer-group=wire-"+side+database,
