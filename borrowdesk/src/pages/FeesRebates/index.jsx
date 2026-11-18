@@ -47,7 +47,7 @@ function Badge({ value }) {
     </span>
   );
 }
-function Pagination({ page, pages, total, onPage }) {
+function Pagination({ page, pages, total, pageSize = 10, onPage, onPageSize }) {
   return (
     <div
       className="fd-pagination"
@@ -55,9 +55,10 @@ function Pagination({ page, pages, total, onPage }) {
       aria-label="Fees pagination"
     >
       <span>
-        {total ? `${page * 10 + 1}–${Math.min((page + 1) * 10, total)}` : "0"}{" "}
+        {total ? `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)}` : "0"}{" "}
         of {total}
       </span>
+      {onPageSize && <label>Rows per page <select value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></label>}
       <button disabled={!page} onClick={() => onPage(page - 1)}>
         Previous
       </button>
@@ -343,11 +344,9 @@ export default function FeesRebates() {
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
-  const pages = Math.max(1, Math.ceil(filtered.length / 10)),
-    page = Math.max(
-      0,
-      Math.min(Math.floor(Number(params.get("page"))) || 0, pages - 1),
-    );
+  const pageSize = [25, 50, 100].includes(Number(params.get("size"))) ? Number(params.get("size")) : 25;
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize)),
+    page = Math.max(0, Math.min(Math.floor(Number(params.get("page"))) || 0, pages - 1));
   const query = params.toString() ? `?${params}` : "";
   const update = (k, v) => {
     const next = new URLSearchParams(params);
@@ -516,7 +515,7 @@ export default function FeesRebates() {
             "",
           ]}
         >
-          {filtered.slice(page * 10, (page + 1) * 10).map((r) => (
+          {filtered.slice(page * pageSize, (page + 1) * pageSize).map((r) => (
             <Fragment key={r.key}>
               <tr
                 className={expanded === r.key ? "fd-selected" : ""}
@@ -644,7 +643,9 @@ export default function FeesRebates() {
           page={page}
           pages={pages}
           total={filtered.length}
+          pageSize={pageSize}
           onPage={(value) => update("page", value)}
+          onPageSize={(size) => { const next = new URLSearchParams(params); next.set("size", String(size)); next.delete("page"); setParams(next, { replace: true }); }}
         />
       </section>
     </main>

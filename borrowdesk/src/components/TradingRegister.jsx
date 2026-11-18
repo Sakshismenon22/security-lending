@@ -1,5 +1,6 @@
 import OrderManagement from "./OrderManagement";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import TablePagination from "./TablePagination";
 import { Minimize2, Maximize2 } from "lucide-react";
 const number = (v) =>
   v == null
@@ -46,6 +47,7 @@ export default function TradingRegister({
 }) {
   const [filter, setFilter] = useState("All");
   const [minimized, setMinimized] = useState(false);
+  const [tablePage,setTablePage]=useState(1),[tablePageSize,setTablePageSize]=useState(25);
   const symbol = (row) =>
     row.symbol ??
     byId(securities, row.securityId ?? row.security_id)?.symbol ??
@@ -227,6 +229,10 @@ export default function TradingRegister({
       !options.includes(filter) ||
       (tab === "Orders" ? r.status : r.kind) === filter,
   );
+  const tablePageCount=Math.max(1,Math.ceil(visible.length/tablePageSize));
+  const pageRows=visible.slice((tablePage-1)*tablePageSize,tablePage*tablePageSize);
+  useEffect(()=>setTablePage(1),[tab,filter]);
+  useEffect(()=>{if(tablePage>tablePageCount)setTablePage(tablePageCount)},[tablePage,tablePageCount]);
   const format = (r, c) => {
     const value = r[c.key];
     if (value == null || value === "")
@@ -324,7 +330,7 @@ export default function TradingRegister({
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((r) => (
+                  {pageRows.map((r) => (
                     <tr key={r.key}>
                       {columns.map((c) => (
                         <td
@@ -370,6 +376,7 @@ export default function TradingRegister({
                 </tbody>
               </table>
             </div>
+            <TablePagination page={tablePage} pageSize={tablePageSize} total={visible.length} onPageChange={setTablePage} onPageSizeChange={setTablePageSize}/>
             {isPosition && visible.length > 0 && (
               <div className="register-position-total">
                 Open legs: {openPositions.length} · Day MTM P&amp;L:{" "}
