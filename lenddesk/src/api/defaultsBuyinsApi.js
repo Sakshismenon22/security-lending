@@ -7,7 +7,14 @@ const failed = (status) => ["FAILED", "REJECTED", "CANCELLED"].includes(status);
 export const requestPending = (record) => pending(record.request?.status);
 export const canRequestBuyin = (record) =>
   record.rawStatus === "OPEN" &&
+  ["RECALL", "MATURITY"].includes(record.obligationType) &&
   !requestPending(record) &&
+  !record.reports.some((report) => !failed(report.status));
+
+export const canReportBuyin = (record) =>
+  record.rawStatus === "OPEN" &&
+  record.request?.status === "ACCEPTED" &&
+  !pending(record.executionRequest?.status) &&
   !record.reports.some((report) => !failed(report.status));
 
 export function liveDefaultRecord(row) {
@@ -17,7 +24,11 @@ export function liveDefaultRecord(row) {
     margin = row.marginCall;
   const reports = row.buyIns || [],
     requests = row.requests || [],
-    request = requests[0] || null;
+    request =
+      requests.find((item) => item.type !== "BUY_IN_EXECUTION_REQUESTED") ||
+      null;
+  const executionRequest =
+    requests.find((item) => item.type === "BUY_IN_EXECUTION_REQUESTED") || null;
   const activeReport = reports.find((report) => !failed(report.status));
   const resolved = ["RESOLVED", "CLOSED", "SETTLED"].includes(def.status);
   const quantity =
@@ -45,6 +56,8 @@ export function liveDefaultRecord(row) {
     reason: def.reason,
     deadline: reported.dueAt || recall?.dueAt || margin?.dueAt || null,
     rawStatus: def.status,
+    obligationType: def.obligationType,
+    executionRequest,
     status: resolved
       ? "Resolved"
       : def.status === "OPEN"
@@ -102,6 +115,11 @@ export const defaultsBuyinsApi = {
       throw new Error("The defaults response could not be read. Please retry.");
     return rows.map(liveDefaultRecord);
   },
+  report: (organizationId, defaultId, payload) =>
+    lenderPost(
+      `/api/v1/organizations/${organizationId}/defaults/${defaultId}/buy-in-executions`,
+      payload,
+    ),
   request: (organizationId, defaultId, clientRequestId) =>
     lenderPost(
       `/api/v1/organizations/${organizationId}/defaults/${defaultId}/buy-in-requests`,

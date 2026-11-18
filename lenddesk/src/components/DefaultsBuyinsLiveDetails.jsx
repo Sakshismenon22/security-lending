@@ -1,3 +1,4 @@
+import { canReportBuyin } from "../api/defaultsBuyinsApi";
 import { number, rupees, caseDate } from "../data/defaultsBuyinsData";
 
 const Status = ({ children }) => (
@@ -7,7 +8,7 @@ const Status = ({ children }) => (
     {children}
   </span>
 );
-export function LiveBuyinExecution({ record, onRequest, allowed }) {
+export function LiveBuyinExecution({ record, onRequest, onReport, allowed }) {
   return (
     <article className="db-card">
       <h3>Buy-in reports &amp; requests</h3>
@@ -20,6 +21,20 @@ export function LiveBuyinExecution({ record, onRequest, allowed }) {
           )}
         </div>
       )}
+      {record.executionRequest && (
+        <div className="db-live-request">
+          <b>Execution submission #{record.executionRequest.id}</b>
+          <Status>{record.executionRequest.status}</Status>
+          {record.executionRequest.failureReason && (
+            <p role="status">{record.executionRequest.failureReason}</p>
+          )}
+        </div>
+      )}
+      {canReportBuyin(record) && (
+        <button className="db-button db-primary" onClick={onReport}>
+          Record execution
+        </button>
+      )}
       {record.reports.length ? (
         <div className="db-scroll">
           <table>
@@ -29,6 +44,7 @@ export function LiveBuyinExecution({ record, onRequest, allowed }) {
                 <th>Quantity</th>
                 <th>Reported price</th>
                 <th>Costs</th>
+                <th>Trade reference</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -39,6 +55,7 @@ export function LiveBuyinExecution({ record, onRequest, allowed }) {
                   <td>{number(report.quantity)}</td>
                   <td>{rupees(report.price)}</td>
                   <td>{rupees(report.costs)}</td>
+                  <td>{report.executionReference || "—"}</td>
                   <td>
                     <Status>{report.status}</Status>
                   </td>
@@ -49,6 +66,12 @@ export function LiveBuyinExecution({ record, onRequest, allowed }) {
         </div>
       ) : (
         <p className="db-empty">No execution report has been received.</p>
+      )}
+      {record.obligationType === "MARGIN_CALL" && (
+        <p className="db-footnote">
+          This is a collateral obligation. It is resolved by fulfilling the
+          margin call; a securities buy-in is not available.
+        </p>
       )}
       <p className="db-footnote">
         Execution reports do not confirm custody movement, collateral
@@ -78,7 +101,10 @@ export function LiveBuyinRecovery({ record }) {
           {[
             ["Reported buy-in costs", report?.costs],
             ["Reported collateral applied", report?.collateralApplied],
-            ["Reported residual balance", report?.residualBalance],
+            [
+              "Reported execution amount before settlement",
+              report?.residualBalance,
+            ],
           ].map(([label, value]) => (
             <tr key={label}>
               <td>{label}</td>

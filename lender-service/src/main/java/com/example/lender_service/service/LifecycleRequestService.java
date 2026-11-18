@@ -211,6 +211,7 @@ public class LifecycleRequestService {
     var previous = requests.findByOrganizationIdAndClientRequestId(org, r.clientRequestId());
     if (previous.isPresent()) return same(previous.get(), "BUY_IN_REQUESTED", json.write(payload), def.getLoanId());
     require("OPEN".equals(def.getStatus()), "Default is not open");
+    require(Set.of("RECALL", "MATURITY").contains(def.getObligationType()), "Buy-ins require an overdue securities return");
     var pending = requests.findByOrganizationIdAndLoanIdIn(org, List.of(def.getLoanId())).stream()
         .filter(x -> "BUY_IN_REQUESTED".equals(x.getType())
             && Set.of("PENDING", "ACCEPTED").contains(x.getStatus())
@@ -228,6 +229,79 @@ public class LifecycleRequestService {
         "BUY_IN_REQUESTED",
         r.clientRequestId(),
         payload);
+  }
+
+  public LifecycleRequest reportBuyin(
+    long org,
+    long id,
+    BuyinExecutionRequest r
+  ) {
+    tenants.lock(org);
+    var def = found(defaults.findByIdAndOrganizationId(id, org));
+    var parent = found(
+      requests.findByIdAndOrganizationId(r.buyinRequestId(), org)
+    );
+    var payload = Map.of(
+      "defaultReferenceId",
+      def.getOwnerReferenceId(),
+      "buyinRequestId",
+      r.buyinRequestId(),
+      "quantity",
+      r.quantity(),
+      "price",
+      r.price(),
+      "costs",
+      r.costs(),
+      "executionReference",
+      r.executionReference()
+    );
+    var previous = requests.findByOrganizationIdAndClientRequestId(
+      org,
+      r.clientRequestId()
+    );
+    if (previous.isPresent()) return same(
+      previous.get(),
+      "BUY_IN_EXECUTION_REQUESTED",
+      json.write(payload),
+      def.getLoanId()
+    );
+    require(
+      "OPEN".equals(def.getStatus()) &&
+        Set.of("RECALL", "MATURITY").contains(def.getObligationType()),
+      "An open securities default is required"
+    );
+    require(
+      "BUY_IN_REQUESTED".equals(parent.getType()) &&
+        "ACCEPTED".equals(parent.getStatus()) &&
+        Objects.equals(parent.getLoanId(), def.getLoanId()) &&
+        json.tree(parent.getPayload()).path("defaultReferenceId").asLong() ==
+          def.getOwnerReferenceId(),
+      "Buy-in request is not accepted for this default"
+    );
+    var pending = requests
+      .findByOrganizationIdAndLoanIdIn(org, List.of(def.getLoanId()))
+      .stream()
+      .filter(
+        x ->
+          "BUY_IN_EXECUTION_REQUESTED".equals(x.getType()) &&
+          Set.of("PENDING", "ACCEPTED").contains(x.getStatus()) &&
+          json.tree(x.getPayload()).path("buyinRequestId").asLong() ==
+            parent.getId()
+      )
+      .findFirst();
+    if (pending.isPresent()) return pending.get();
+    BuyinDeliveryState.retireFailed(
+      em,
+      org,
+      def.getLoanId(),
+      def.getOwnerReferenceId()
+    );
+    return create(
+      found(loans.findByIdAndOrganizationId(def.getLoanId(), org)),
+      "BUY_IN_EXECUTION_REQUESTED",
+      r.clientRequestId(),
+      payload
+    );
   }
 
   private LifecycleRequest same(LifecycleRequest previous, String type, String data, Long loanId) {

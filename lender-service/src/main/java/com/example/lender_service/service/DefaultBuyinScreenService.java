@@ -107,6 +107,19 @@ public class DefaultBuyinScreenService {
                 b.getDefaultReferenceId().equals(def.getOwnerReferenceId())
             )
             .sorted(Comparator.comparing(BuyIn::getId).reversed())
+            .map(b -> {
+              var item = new LinkedHashMap<String, Object>(
+                json.map(json.tree(json.write(b)))
+              );
+              item.put(
+                "executionReference",
+                json
+                  .tree(b.getSourceData())
+                  .path("executionReference")
+                  .asText("")
+              );
+              return item;
+            })
             .toList()
         );
         row.put(
@@ -117,7 +130,10 @@ public class DefaultBuyinScreenService {
               r ->
                 r.getLoanId() != null &&
                 r.getLoanId().equals(loan.getId()) &&
-                "BUY_IN_REQUESTED".equals(r.getType()) &&
+                Set.of(
+                  "BUY_IN_REQUESTED",
+                  "BUY_IN_EXECUTION_REQUESTED"
+                ).contains(r.getType()) &&
                 json
                   .tree(r.getPayload())
                   .path("defaultReferenceId")

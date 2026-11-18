@@ -18,9 +18,20 @@ public final class BuyinDeliveryState {
       !event.getPayload().stripLeading().startsWith("{")
     ) return null;
     var root = JSON.readTree(event.getPayload());
-    return "BUY_IN_REQUESTED".equals(root.path("type").asText())
-      ? root.path("referenceId").asLong()
-      : null;
+    String type = root.path("type").asText();
+    if (
+      Set.of(
+        "BUY_IN_REQUESTED",
+        "BUY_IN_EXECUTION_REQUESTED",
+        "LIFECYCLE_REQUEST_ACCEPTED",
+        "LIFECYCLE_REQUEST_REJECTED"
+      ).contains(type)
+    ) return root.path("referenceId").asLong();
+    if ("BUY_IN_REPORTED".equals(type)) return root
+      .path("data")
+      .path("executionRequestId")
+      .asLong(root.path("data").path("lifecycleRequestId").asLong());
+    return null;
   }
 
   public static boolean resolveTerminal(EntityManager em, OutboxEvent event) {
@@ -30,7 +41,9 @@ public final class BuyinDeliveryState {
     if (
       request == null ||
       !request.getOrganizationId().equals(event.getOrganizationId()) ||
-      !"BUY_IN_REQUESTED".equals(request.getType())
+      !Set.of("BUY_IN_REQUESTED", "BUY_IN_EXECUTION_REQUESTED").contains(
+        request.getType()
+      )
     ) return false;
     if (
       Set.of("COMPLETED", "REJECTED", "CLOSED").contains(request.getStatus())
@@ -54,7 +67,7 @@ public final class BuyinDeliveryState {
         ? "Buy-in command delivery retries exhausted"
         : reason.substring(0, Math.min(1000, reason.length()));
     em.createQuery(
-      "update LifecycleRequest r set r.status='FAILED',r.failureReason=:reason where r.organizationId=:org and r.id=:id and r.type='BUY_IN_REQUESTED' and r.status in ('PENDING','ACCEPTED')"
+      "update LifecycleRequest r set r.status='FAILED',r.failureReason=:reason where r.organizationId=:org and r.id=:id and r.type in ('BUY_IN_REQUESTED','BUY_IN_EXECUTION_REQUESTED') and r.status in ('PENDING','ACCEPTED')"
     )
       .setParameter("org", event.getOrganizationId())
       .setParameter("id", id)
@@ -70,7 +83,7 @@ public final class BuyinDeliveryState {
     Long id = requestId(event);
     if (id == null) return;
     em.createQuery(
-      "update LifecycleRequest r set r.status=:status,r.failureReason=:reason where r.organizationId=:org and r.id=:id and r.type='BUY_IN_REQUESTED' and r.status='FAILED'"
+      "update LifecycleRequest r set r.status=:status,r.failureReason=:reason where r.organizationId=:org and r.id=:id and r.type in ('BUY_IN_REQUESTED','BUY_IN_EXECUTION_REQUESTED') and r.status='FAILED'"
     )
       .setParameter("org", event.getOrganizationId())
       .setParameter("id", id)
@@ -88,7 +101,7 @@ public final class BuyinDeliveryState {
   ) {
     var failed = em
       .createQuery(
-        "select r from LifecycleRequest r where r.organizationId=:org and r.loanId=:loan and r.type='BUY_IN_REQUESTED' and r.status='FAILED'",
+        "select r from LifecycleRequest r where r.organizationId=:org and r.loanId=:loan and r.type in ('BUY_IN_REQUESTED','BUY_IN_EXECUTION_REQUESTED') and r.status='FAILED'",
         LifecycleRequest.class
       )
       .setParameter("org", org)

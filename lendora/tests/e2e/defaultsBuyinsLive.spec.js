@@ -100,3 +100,55 @@ test('unavailable or empty live data never falls back to sample defaults', async
   await expect(page.locator('.db-preview-chip')).toHaveText('SAMPLE DATA')
   await expect(page.locator('.db-main-table')).toContainText('DEF-000018')
 })
+
+test('accepted live buy-in records an execution and displays the lifecycle report after refresh', async ({ page }) => {
+  await session(page)
+  const rows = snapshot()
+  rows[0].requests = [{ id: 333, type: 'BUY_IN_REQUESTED', status: 'ACCEPTED', createdAt: '2026-11-18T09:00:00Z' }]
+  await page.route(rowPath, route => route.fulfill({ json: { success: true, data: rows } }))
+  const bodies = []
+  await page.route('**/api/v1/organizations/37/defaults/5/buy-in-executions', route => {
+    bodies.push(route.request().postDataJSON())
+    rows[0].requests.unshift({ id: 334, type: 'BUY_IN_EXECUTION_REQUESTED', status: 'PENDING', createdAt: '2026-11-18T09:01:00Z' })
+    return route.fulfill({ json: { success: true, data: rows[0].requests[0] } })
+  })
+  await page.goto('http://localhost:5175/defaults-buyins')
+  await page.getByRole('button', { name: 'Record execution', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByLabel('Executed quantity')).toHaveValue('15')
+  await dialog.getByLabel('Execution price (₹)').fill('101')
+  await dialog.getByLabel('Execution costs (₹)').fill('5')
+  await dialog.getByLabel('Trade confirmation reference').fill('TRADE-123')
+  await dialog.getByRole('button', { name: 'Submit execution report' }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(bodies).toHaveLength(1)
+  expect(bodies[0]).toMatchObject({ buyinRequestId: 333, quantity: 15, price: 101, costs: 5, executionReference: 'TRADE-123' })
+  await expect(page.getByRole('button', { name: 'Record execution', exact: true })).toHaveCount(0)
+  rows[0].requests.forEach(item => { item.status = 'COMPLETED' })
+  rows[0].buyIns = [{ id: 41, quantity: 15, price: 101, costs: 5, collateralApplied: 0, residualBalance: 1520, status: 'EXECUTED', executionReference: 'TRADE-123', createdAt: '2026-11-18T09:02:00Z' }]
+  await refresh(page)
+  await expect(page.getByRole('cell', { name: 'TRADE-123', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'EXECUTED', exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('cell', { name: 'TRADE-123', exact: true })).toBeVisible()
+})
+
+test('margin defaults cannot request securities buy-ins and stale execution errors allow correction', async ({ page }) => {
+  await session(page)
+  const rows = snapshot()
+  rows[0].default.obligationType = 'MARGIN_CALL'
+  await page.route(rowPath, route => route.fulfill({ json: { success: true, data: rows } }))
+  await page.goto('http://localhost:5175/defaults-buyins')
+  await expect(page.getByRole('button', { name: 'Request buy-in', exact: true })).toBeDisabled()
+  rows[0].default.obligationType = 'RECALL'
+  rows[0].requests = [{ id: 333, type: 'BUY_IN_REQUESTED', status: 'ACCEPTED', createdAt: '2026-11-18T09:00:00Z' }]
+  await refresh(page)
+  await page.getByRole('button', { name: 'Record execution', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Execution price (₹)').fill('101')
+  await dialog.getByLabel('Trade confirmation reference').fill('TRADE-123')
+  await page.route('**/api/v1/organizations/37/defaults/5/buy-in-executions', route => route.fulfill({ status: 409, json: { detail: 'The obligation has changed; refresh this case' } }))
+  await dialog.getByRole('button', { name: 'Submit execution report' }).click()
+  await expect(dialog.getByRole('alert')).toContainText('obligation has changed')
+  await expect(dialog.getByRole('button', { name: 'Submit execution report' })).toBeEnabled()
+})

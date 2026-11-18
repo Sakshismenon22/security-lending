@@ -108,10 +108,10 @@ public class LifecycleEventService {
         var r = found(requests.findByIdAndOrganizationId(e.referenceId(), e.organizationId()));
         require(
             Set.of("PENDING", "ACCEPTED").contains(r.getStatus())
-                || ("VALUATION_REQUESTED".equals(r.getType()) && "FAILED".equals(r.getStatus())),
+                || (Set.of("VALUATION_REQUESTED","BUY_IN_REQUESTED","BUY_IN_EXECUTION_REQUESTED").contains(r.getType()) && "FAILED".equals(r.getStatus())),
             "Lifecycle request already completed");
         r.setStatus(e.type().endsWith("ACCEPTED") ? "ACCEPTED" : "REJECTED");
-        if ("BUY_IN_REQUESTED".equals(r.getType())) r.setFailureReason(e.type().endsWith("REJECTED") ? e.data().path("reason").asText("Buy-in request rejected") : null);
+        if (Set.of("BUY_IN_REQUESTED","BUY_IN_EXECUTION_REQUESTED").contains(r.getType())) r.setFailureReason(e.type().endsWith("REJECTED") ? e.data().path("reason").asText("Buy-in request rejected") : null);
         if("VALUATION_REQUESTED".equals(r.getType()))r.setFailureReason(null);
         if (Set.of("VALUATION_REQUESTED", "FEE_ACCRUAL_REQUESTED", "REBATE_ACCRUAL_REQUESTED")
                 .contains(r.getType())
@@ -480,6 +480,7 @@ public class LifecycleEventService {
         p.setObligationType(text(d, "obligationType"));
         p.setReason(text(d, "reason"));
         defaults.save(p);
+        events.audit(e.organizationId(), "DEFAULT_"+p.getStatus(), String.valueOf(p.getId()));
       }
       case "BUY_IN_REPORTED" -> {
         var p =
@@ -497,6 +498,11 @@ public class LifecycleEventService {
         p.setResidualBalance(decimal(d, "residualBalance"));
         buyIns.save(p);
         completeRequest(e, loan);
+        if(d.hasNonNull("executionRequestId")) {
+          var execution=found(requests.findByIdAndOrganizationId(number(d,"executionRequestId"),e.organizationId()));
+          require("BUY_IN_EXECUTION_REQUESTED".equals(execution.getType()) && Objects.equals(execution.getLoanId(),loan.getId()) && json.tree(execution.getPayload()).path("buyinRequestId").asLong()==number(d,"lifecycleRequestId"),"Execution request mismatch");
+          execution.setStatus("COMPLETED");execution.setFailureReason(null);
+        }
       }
       default -> throw new IllegalArgumentException("Unsupported lifecycle event " + e.type());
     }

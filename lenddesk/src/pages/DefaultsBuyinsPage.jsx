@@ -6,6 +6,7 @@ import {
   canRequestBuyin,
   requestPending,
 } from "../api/defaultsBuyinsApi";
+import LiveBuyinExecutionDialog from "../components/LiveBuyinExecutionDialog";
 import LiveBuyinRequestDialog from "../components/LiveBuyinRequestDialog";
 import {
   LiveBuyinExecution,
@@ -148,12 +149,13 @@ function Notices({ record }) {
     </article>
   );
 }
-function Execution({ record, onManage }) {
+function Execution({ record, onManage, onReport }) {
   if (record.live)
     return (
       <LiveBuyinExecution
         record={record}
         onRequest={onManage}
+        onReport={onReport}
         allowed={canRequestBuyin(record)}
       />
     );
@@ -1167,13 +1169,25 @@ function DefaultsBuyinsWorkspace({ live, organizationId, refreshKey }) {
                 <>
                   <Obligation record={selected} />
                   <Notices record={selected} />
-                  <Execution record={selected} onManage={openBuyin} />
+                  <Execution
+                    record={selected}
+                    onManage={openBuyin}
+                    onReport={() =>
+                      setModal({ kind: "execution", record: selected })
+                    }
+                  />
                   <Recovery record={selected} />
                 </>
               )}
               {detailsTab === "Buy-in execution" && (
                 <>
-                  <Execution record={selected} onManage={openBuyin} />
+                  <Execution
+                    record={selected}
+                    onManage={openBuyin}
+                    onReport={() =>
+                      setModal({ kind: "execution", record: selected })
+                    }
+                  />
                   <Obligation record={selected} />
                 </>
               )}
@@ -1238,7 +1252,21 @@ function DefaultsBuyinsWorkspace({ live, organizationId, refreshKey }) {
             </button>
           </div>
         )}
-        {modal && live && (
+        {modal && live && modal.kind === "execution" && (
+          <LiveBuyinExecutionDialog
+            record={modal.record}
+            organizationId={organizationId}
+            onClose={() => setModal(null)}
+            onSubmitted={() => {
+              setModal(null);
+              setNotice(
+                "Execution submitted for lifecycle verification. Settlement remains unconfirmed.",
+              );
+              refreshLive();
+            }}
+          />
+        )}
+        {modal && live && modal.kind !== "execution" && (
           <LiveBuyinRequestDialog
             record={modal.record}
             organizationId={organizationId}

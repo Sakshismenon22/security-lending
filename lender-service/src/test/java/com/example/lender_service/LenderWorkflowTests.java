@@ -2087,6 +2087,194 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void executionEndpointIsTenantScopedIdempotentAndCompletesBothRequests() throws Exception {
+    var org = organization();
+    var connection = connection(org);
+    var loan = activeLoan(org, connection, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("parent-execution")
+    );
+    var request = new BuyinExecutionRequest(
+      "execution-one",
+      parent.getId(),
+      20,
+      bd("101"),
+      bd("5"),
+      "TRADE-42"
+    );
+    assertThrows(ResponseStatusException.class, () ->
+      lifecycleRequests.reportBuyin(org.getId(), def.getId(), request)
+    );
+    lifecycle(
+      org,
+      "LIFECYCLE_REQUEST_ACCEPTED",
+      parent.getId(),
+      1,
+      Map.of("loanId", loan.getId())
+    );
+    String path =
+      "/api/v1/organizations/" +
+      org.getId() +
+      "/defaults/" +
+      def.getId() +
+      "/buy-in-executions";
+    var response = mvc
+      .perform(
+        post(path).contentType("application/json").content(json.write(request))
+      )
+      .andExpect(status().isOk())
+      .andReturn();
+    long executionId = json
+      .tree(response.getResponse().getContentAsString())
+      .path("data")
+      .path("id")
+      .asLong();
+    assertEquals(
+      executionId,
+      lifecycleRequests.reportBuyin(org.getId(), def.getId(), request).getId()
+    );
+    assertEquals(
+      executionId,
+      lifecycleRequests
+        .reportBuyin(
+          org.getId(),
+          def.getId(),
+          new BuyinExecutionRequest(
+            "execution-double-click",
+            parent.getId(),
+            20,
+            bd("101"),
+            bd("5"),
+            "TRADE-42"
+          )
+        )
+        .getId()
+    );
+    var other = organization();
+    mvc
+      .perform(
+        post(
+          "/api/v1/organizations/" +
+            other.getId() +
+            "/defaults/" +
+            def.getId() +
+            "/buy-in-executions"
+        )
+          .contentType("application/json")
+          .content(json.write(request))
+      )
+      .andExpect(status().isNotFound());
+    mvc
+      .perform(
+        post(path)
+          .contentType("application/json")
+          .content(
+            json.write(
+              new BuyinExecutionRequest(
+                "negative",
+                parent.getId(),
+                20,
+                bd("-1"),
+                bd("0"),
+                "x"
+              )
+            )
+          )
+      )
+      .andExpect(status().isBadRequest());
+    var executionEvent = events
+      .findAll()
+      .stream()
+      .filter(
+        e ->
+          json
+            .tree(e.getPayload())
+            .path("type")
+            .asText()
+            .equals("BUY_IN_EXECUTION_REQUESTED") &&
+          json.tree(e.getPayload()).path("referenceId").asLong() == executionId
+      )
+      .findFirst()
+      .orElseThrow();
+    executionEvent.setStatus("FAILED");
+    BuyinDeliveryState.fail(valuationEm, executionEvent, "Kafka unavailable");
+    valuationEm.refresh(valuationEm.find(LifecycleRequest.class, executionId));
+    assertEquals(
+      "FAILED",
+      valuationEm.find(LifecycleRequest.class, executionId).getStatus()
+    );
+    assertEquals("ACCEPTED", parent.getStatus());
+    BuyinDeliveryState.decide(valuationEm, executionEvent, true);
+    valuationEm.refresh(valuationEm.find(LifecycleRequest.class, executionId));
+    assertEquals(
+      "PENDING",
+      valuationEm.find(LifecycleRequest.class, executionId).getStatus()
+    );
+    var data = new LinkedHashMap<String, Object>();
+    data.put("loanId", loan.getId());
+    data.put("defaultId", def.getOwnerReferenceId());
+    data.put("lifecycleRequestId", parent.getId());
+    data.put("executionRequestId", executionId);
+    data.put("quantity", 20);
+    data.put("price", "101");
+    data.put("costs", "5");
+    data.put("collateralApplied", "0");
+    data.put("residualBalance", "2025");
+    data.put("status", "EXECUTED");
+    data.put("executionReference", "TRADE-42");
+    long report = ids.incrementAndGet();
+    lifecycle(org, "BUY_IN_REPORTED", report, 1, data);
+    lifecycle(org, "BUY_IN_REPORTED", report, 1, data);
+    assertEquals("COMPLETED", parent.getStatus());
+    assertEquals(
+      "COMPLETED",
+      valuationEm.find(LifecycleRequest.class, executionId).getStatus()
+    );
+    var snapshot = mvc
+      .perform(
+        get(
+          "/api/v1/organizations/" + org.getId() + "/lenddesk/defaults-buyins"
+        )
+      )
+      .andExpect(status().isOk())
+      .andReturn();
+    var row = json
+      .tree(snapshot.getResponse().getContentAsString())
+      .path("data")
+      .get(0);
+    assertEquals(2, row.path("requests").size());
+    assertEquals(1, row.path("buyIns").size());
+    assertEquals(
+      "TRADE-42",
+      row.path("buyIns").get(0).path("executionReference").asText()
+    );
+    assertEquals("ACTIVE", loan.getStatus());
+    assertEquals("OPEN", def.getStatus());
+    assertThrows(ResponseStatusException.class, () ->
+      lifecycleRequests.reportBuyin(
+        org.getId(),
+        def.getId(),
+        new BuyinExecutionRequest(
+          "another",
+          parent.getId(),
+          20,
+          bd("101"),
+          bd("5"),
+          "TRADE-43"
+        )
+      )
+    );
+  }
+
+  @Test
   void lenderOfferPublishesExactlyTheSelectedCollateralTypesAndHaircuts() {
     var org = organization(); var connection = connection(org); long sec = security("100");
     var securityOnly = new AgreementOfferRequest(connection.getId(), "MSLA-SECURITY-ONLY", LocalDate.now(), LocalDate.now().plusYears(1),

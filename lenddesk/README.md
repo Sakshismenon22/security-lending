@@ -37,9 +37,12 @@ model, which correlates records using owner default IDs, not coincidental local 
 Only reported values are displayed; unknown quantities/exposures/deadlines show `—`.
 The current command contract does **not** accept exchange-order quantity or limit
 price. Manual default creation and notice delivery are not supported in live mode.
-The lifecycle service in this repository does not implement a buy-in execution
-consumer: a lifecycle/execution owner must process `BUY_IN_REQUESTED` and publish
-`BUY_IN_REPORTED` for execution results. Queue acceptance alone is not execution.
+Lifecycle now detects overdue recall, maturity and margin obligations, accepts or
+rejects buy-in requests, and verifies operator-entered trade confirmations. Once a
+securities buy-in is accepted, use **Record execution** to submit the completed
+trade's price, costs and reference. The report does not imply cash/custody
+settlement or loan close-out. See [Defaults and buy-ins](../DEFAULTS_BUYINS.md) for
+rules, endpoints, restart instructions and tests.
 
 The **Sample preview** link opens `/defaults-buyins/preview`. This retains the
 frontend-only design with sample cases, draft defaults/notices/buy-ins and execution
