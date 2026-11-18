@@ -110,7 +110,21 @@ export default function LoanWorkspace(){
 function CollateralTable({positions,securities,full=false}){
  const [page,setPage]=useState(1),[pageSize,setPageSize]=useState(25),pages=Math.max(1,Math.ceil(positions.length/pageSize)),visible=positions.slice((page-1)*pageSize,page*pageSize);
  useEffect(()=>setPage(1),[positions,pageSize]);useEffect(()=>{if(page>pages)setPage(pages)},[page,pages]);
- return <><div className="lw-table-wrap"><table className="lw-table"><thead><tr><th>ISIN / Security</th><th className="right">Qty</th><th className="right">Haircut</th><th className="right">Eligible value</th><th className="right">Market value</th>{full&&<th>Status</th>}</tr></thead><tbody>{visible.map((p,i)=><tr key={val(p,'id')||i}><td><b>{fmt(p,'security')}</b></td><td className="right">{fmt(p,'qty')}</td><td className="right">{fmt(p,'haircut')}</td><td className="right">{fmt(p,'eligible')}</td><td className="right">{fmt(p,'market')}</td>{full&&<td><Badge value={val(p,'status')||'POSTED'}/></td>}</tr>)}{!positions.length&&<tr><td colSpan={full?6:5} className="lw-empty">No collateral lots recorded.</td></tr>}</tbody>{positions.length>0&&<tfoot><tr><td colSpan={3}>Total collateral value</td><td className="right">{money(positions.reduce((sum,p)=>sum+Number(fmt(p,'rawEligible')||0),0))}</td><td className="right">{money(positions.reduce((sum,p)=>sum+Number(fmt(p,'rawMarket')||0),0))}</td>{full&&<td/>}</tr></tfoot>}</table></div><TablePagination page={page} pageSize={pageSize} total={positions.length} onPageChange={setPage} onPageSizeChange={setPageSize}/></>
+ const lotValues=p=>{
+  const asset=state(val(p,'assetType','asset_type'))==='CASH';
+  const sec=securities.find(s=>key(val(s,'id','securityId','security_id'))===key(val(p,'securityId','security_id')));
+  const quantity=val(p,'quantity','allocatedQuantity','allocated_quantity');
+  const cash=val(p,'cashAmount','cash_amount','amount');
+  const market=val(p,'marketValue','market_value')??(asset?(cash==null?null:Number(cash)):(quantity!=null&&val(sec,'price','ltp')!=null?Number(quantity)*Number(val(sec,'price','ltp')):null));
+  const rawHaircut=val(p,'haircut','haircutRate','haircut_rate');
+  const haircut=rawHaircut==null?null:(Number(rawHaircut)<=1?Number(rawHaircut)*100:Number(rawHaircut));
+  const explicitEligible=val(p,'eligibleValue','eligible_value','recognizedValue','recognized_value');
+  const eligible=explicitEligible??(market!=null?Number(market)*(1-(haircut==null?0:haircut/100)):null);
+  const security=asset?'Cash':val(sec,'symbol','isin','name')||val(p,'securitySymbol','security_symbol','securityName','security_name')||'-';
+  return {security,quantity,haircut,eligible,market,rawEligible:eligible,rawMarket:market};
+ };
+ const values=positions.map(lotValues);
+ return <><div className="lw-table-wrap"><table className="lw-table"><thead><tr><th>ISIN / Security</th><th className="right">Qty</th><th className="right">Haircut</th><th className="right">Eligible value</th><th className="right">Market value</th>{full&&<th>Status</th>}</tr></thead><tbody>{visible.map((p,i)=>{const v=values[(page-1)*pageSize+i];return <tr key={val(p,'id')||i}><td><b>{v.security}</b></td><td className="right">{v.quantity==null?'-':n(v.quantity)}</td><td className="right">{v.haircut==null?'-':n(v.haircut)+'%'}</td><td className="right">{money(v.eligible)}</td><td className="right">{money(v.market)}</td>{full&&<td><Badge value={val(p,'status')||'POSTED'}/></td>}</tr>})}{!positions.length&&<tr><td colSpan={full?6:5} className="lw-empty">No collateral lots recorded.</td></tr>}</tbody>{positions.length>0&&<tfoot><tr><td colSpan={3}>Total collateral value</td><td className="right">{money(values.reduce((sum,p)=>sum+Number(p.rawEligible||0),0))}</td><td className="right">{money(values.reduce((sum,p)=>sum+Number(p.rawMarket||0),0))}</td>{full&&<td/>}</tr></tfoot>}</table></div><TablePagination page={page} pageSize={pageSize} total={positions.length} onPageChange={setPage} onPageSizeChange={setPageSize}/></>
 }
 function RecordTable({items,columns,fields}){
  const [page,setPage]=useState(1),[pageSize,setPageSize]=useState(25),pages=Math.max(1,Math.ceil(items.length/pageSize)),visible=items.slice((page-1)*pageSize,page*pageSize);
