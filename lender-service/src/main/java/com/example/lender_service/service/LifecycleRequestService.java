@@ -20,6 +20,7 @@ public class LifecycleRequestService {
   private final MslaRepository agreements;
   private final RebateRepository rebates;
   private final LoanDefaultRepository defaults;
+  private final BuyInRepository buyIns;
   private final RecallService recalls;
   private final LifecycleRequestRepository requests;
   private final TenantService tenants;
@@ -206,12 +207,27 @@ public class LifecycleRequestService {
   public LifecycleRequest buyIn(long org, long id, LifecycleActionRequest r) {
     tenants.lock(org);
     var def = found(defaults.findByIdAndOrganizationId(id, org));
+    var payload = Map.of("defaultReferenceId", def.getOwnerReferenceId());
+    var previous = requests.findByOrganizationIdAndClientRequestId(org, r.clientRequestId());
+    if (previous.isPresent()) return same(previous.get(), "BUY_IN_REQUESTED", json.write(payload), def.getLoanId());
     require("OPEN".equals(def.getStatus()), "Default is not open");
+    var pending = requests.findByOrganizationIdAndLoanIdIn(org, List.of(def.getLoanId())).stream()
+        .filter(x -> "BUY_IN_REQUESTED".equals(x.getType())
+            && Set.of("PENDING", "ACCEPTED").contains(x.getStatus())
+            && json.tree(x.getPayload()).path("defaultReferenceId").asLong(-1) == def.getOwnerReferenceId())
+        .findFirst();
+    if (pending.isPresent()) return pending.get();
+    require(buyIns.findByOrganizationId(org, Pageable.unpaged()).getContent().stream()
+        .noneMatch(x -> x.getLoanId().equals(def.getLoanId())
+            && x.getDefaultReferenceId().equals(def.getOwnerReferenceId())
+            && !Set.of("FAILED", "REJECTED", "CANCELLED").contains(x.getStatus())),
+        "A buy-in has already been reported for this default");
+    BuyinDeliveryState.retireFailed(em, org, def.getLoanId(), def.getOwnerReferenceId());
     return create(
-        found(loans.findById(def.getLoanId())),
+        found(loans.findByIdAndOrganizationId(def.getLoanId(), org)),
         "BUY_IN_REQUESTED",
         r.clientRequestId(),
-        Map.of("defaultReferenceId", def.getOwnerReferenceId()));
+        payload);
   }
 
   private LifecycleRequest same(LifecycleRequest previous, String type, String data, Long loanId) {

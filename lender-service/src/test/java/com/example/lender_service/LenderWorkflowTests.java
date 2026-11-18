@@ -1988,4 +1988,101 @@ class LenderWorkflowTests {
         ResponseStatusException.class,
         () -> lifecycleRequests.recall(o.getId(), second.getId(), body));
   }
+
+  LoanDefault reportDefaultForBuyinTest(Organization org, Loan loan, long ownerId, long obligationId) {
+    lifecycle(org, "DEFAULT_REPORTED", ownerId, 1, Map.of(
+        "loanId", loan.getId(), "obligationId", obligationId, "obligationType", "RECALL",
+        "reason", "Recall deadline elapsed", "status", "OPEN"));
+    return defaults.findByOrganizationIdAndOwnerReferenceId(org.getId(), ownerId).orElseThrow();
+  }
+
+  @Test
+  void buyinScreenKeepsOwnerReferencesAndRequestsSeparate() throws Exception {
+    var org = organization(); var connection = connection(org);
+    var loan = activeLoan(org, connection, security("100"), true);
+    long recallOwner = ids.incrementAndGet();
+    lifecycle(org, "RECALL_UPDATED", recallOwner, 1, Map.of("loanId", loan.getId(), "quantity", 20,
+        "fulfilledQuantity", 5, "dueAt", Instant.now().minusSeconds(3600), "reason", "Recall", "status", "OVERDUE", "externalId", "REC-SCREEN"));
+    var first = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), recallOwner);
+    var second = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    var request = lifecycleRequests.buyIn(org.getId(), first.getId(), new LifecycleActionRequest("screen-buyin"));
+    var response = mvc.perform(get("/api/v1/organizations/" + org.getId() + "/lenddesk/defaults-buyins"))
+        .andExpect(status().isOk()).andReturn();
+    var rows = json.tree(response.getResponse().getContentAsString()).path("data");
+    assertEquals(2, rows.size());
+    for (var row : rows) {
+      if (row.path("default").path("id").asLong() == first.getId()) {
+        assertEquals(request.getId().longValue(), row.path("requests").get(0).path("id").asLong());
+        assertEquals(recallOwner, row.path("recall").path("ownerReferenceId").asLong());
+        assertEquals(first.getOwnerReferenceId().longValue(), row.path("default").path("ownerReferenceId").asLong());
+      } else {
+        assertEquals(second.getId().longValue(), row.path("default").path("id").asLong());
+        assertEquals(0, row.path("requests").size());
+        assertTrue(row.path("recall").isNull());
+      }
+    }
+    var other = organization();
+    mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/defaults-buyins"))
+        .andExpect(jsonPath("$.data.length()").value(0));
+    mvc.perform(post("/api/v1/organizations/" + other.getId() + "/defaults/" + first.getId() + "/buy-in-requests")
+        .contentType("application/json").content("{\"clientRequestId\":\"foreign\"}"))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void buyinRequestsAreIdempotentAndRejectedRequestsCanBeRetried() {
+    var org = organization(); var connection = connection(org);
+    var loan = activeLoan(org, connection, security("100"), true);
+    var def = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    var request = lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-first"));
+    assertEquals("PENDING", request.getStatus());
+    assertEquals(request.getId(), lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-first")).getId());
+    assertEquals(request.getId(), lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-second-click")).getId());
+    var second = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    assertThrows(ResponseStatusException.class, () -> lifecycleRequests.buyIn(org.getId(), second.getId(), new LifecycleActionRequest("buyin-first")));
+    lifecycle(org, "LIFECYCLE_REQUEST_REJECTED", request.getId(), 1, Map.of("reason", "No execution venue available"));
+    assertEquals("REJECTED", request.getStatus()); assertEquals("No execution venue available", request.getFailureReason());
+    var retry = lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-retry"));
+    assertNotEquals(request.getId(), retry.getId()); assertEquals("PENDING", retry.getStatus());
+    def.setStatus("RESOLVED");
+    assertEquals(retry.getId(), lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-retry")).getId());
+    assertThrows(ResponseStatusException.class, () -> lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-closed")));
+  }
+
+  @Test
+  void buyinReportsCompleteOnlyTheirDefaultAndDoNotSettleLoanOrCash() throws Exception {
+    var org = organization(); var connection = connection(org);
+    var loan = activeLoan(org, connection, security("100"), true);
+    var def = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    var request = lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-report"));
+    var initialCash = accounts.findByOrganizationId(org.getId()).orElseThrow().getCashCollateralHeld();
+    var data = new LinkedHashMap<String, Object>(Map.of("loanId", loan.getId(), "defaultId", def.getOwnerReferenceId(),
+        "quantity", 20, "price", "101", "costs", "5", "collateralApplied", "2025", "residualBalance", "0", "status", "COMPLETED", "lifecycleRequestId", request.getId()));
+    lifecycle(org, "BUY_IN_REPORTED", ids.incrementAndGet(), 1, data);
+    assertEquals("COMPLETED", request.getStatus());
+    assertEquals("ACTIVE", loans.findById(loan.getId()).orElseThrow().getStatus());
+    assertEquals(initialCash, accounts.findByOrganizationId(org.getId()).orElseThrow().getCashCollateralHeld());
+    assertThrows(ResponseStatusException.class, () -> lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("duplicate-after-report")));
+    var response = mvc.perform(get("/api/v1/organizations/" + org.getId() + "/lenddesk/defaults-buyins")).andExpect(status().isOk()).andReturn();
+    assertEquals(20L, json.tree(response.getResponse().getContentAsString()).path("data").get(0).path("buyIns").get(0).path("quantity").asLong());
+    data.put("defaultId", def.getOwnerReferenceId() + 1);
+    assertThrows(ResponseStatusException.class, () -> lifecycle(org, "BUY_IN_REPORTED", ids.incrementAndGet(), 1, data));
+  }
+
+  @Test
+  void exhaustedBuyinDeliveryFailsRequestAndNewAttemptRetiresFailedCommand() {
+    var org = organization(); var connection = connection(org);
+    var loan = activeLoan(org, connection, security("100"), true);
+    var def = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    var request = lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-delivery-first"));
+    var event = events.findAll().stream().filter(e -> e.getOrganizationId().equals(org.getId()) && json.tree(e.getPayload()).path("type").asText().equals("BUY_IN_REQUESTED")).findFirst().orElseThrow();
+    event.setStatus("FAILED");
+    BuyinDeliveryState.fail(valuationEm, event, "Kafka unavailable after retries");
+    valuationEm.refresh(request);
+    assertEquals("FAILED", request.getStatus()); assertEquals("Kafka unavailable after retries", request.getFailureReason());
+    var retry = lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-delivery-retry"));
+    assertEquals("PENDING", retry.getStatus()); assertNotEquals(request.getId(), retry.getId());
+    assertEquals("CLOSED", request.getStatus()); assertEquals("CLOSED", event.getStatus());
+    assertEquals("OPEN", def.getStatus());
+  }
 }

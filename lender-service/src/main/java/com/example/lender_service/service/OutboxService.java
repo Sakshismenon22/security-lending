@@ -78,6 +78,7 @@ public class OutboxService {
       if (event.getAttempts() >= maxAttempts) {
         event.setStatus("FAILED");
         ValuationDeliveryState.fail(em,event,event.getLastError());
+        BuyinDeliveryState.fail(em,event,event.getLastError());
         var note = new com.example.lender_service.model.Notification();
         note.setOrganizationId(event.getOrganizationId());
         note.setType("REQUEST_DELIVERY_FAILED");

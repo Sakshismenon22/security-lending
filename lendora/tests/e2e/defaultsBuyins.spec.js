@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 async function openPreview(page) {
   await page.route('http://localhost:8086/api/v1/auth/me', route => route.fulfill({ json: { success: true, data: { organization: { type: 'LENDER', name: 'Apex Prime Fund', platformOrganizationId: 37 }, user: { fullName: 'Test Admin' } } } }))
   await page.route('http://localhost:8084/**', route => route.fulfill({ json: { success: true, data: [] } }))
-  await page.goto('http://localhost:5175/defaults-buyins')
+  await page.goto('http://localhost:5175/defaults-buyins/preview')
   await expect(page.getByRole('heading', { name: 'Defaults & Buy-ins', exact: true })).toBeVisible()
 }
 const table = page => page.locator('.db-main-table')

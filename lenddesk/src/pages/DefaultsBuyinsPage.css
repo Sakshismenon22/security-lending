@@ -790,3 +790,11 @@
 }
 
 .sidebar a[href="/defaults-buyins"] .nav-label { font-size: 18px; letter-spacing: -.3px; }
+
+.db-load-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 10px; border: 1px solid #e6bbc6; border-radius: 5px; background: #fff2f5; color: #9b3450; font-size: 12px; }
+.db-live-request { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 8px; margin-bottom: 8px; background: #f1eaff; font-size: 11px; }
+.db-live-request > p { width: 100%; margin: 0; overflow-wrap: anywhere; color: #a0354b; }
+.db-live-confirm { font-size: 12px; margin: 0; }
+.db-live-confirm > div { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e7dbf3; gap: 15px; }
+.db-live-confirm dd { margin: 0; }
+.db-page a.db-button { text-decoration: none; }

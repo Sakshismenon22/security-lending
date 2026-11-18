@@ -1,8 +1,22 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { useDataSource } from "../hooks/useDataSource";
+import {
+  defaultsBuyinsApi,
+  canRequestBuyin,
+  requestPending,
+} from "../api/defaultsBuyinsApi";
+import LiveBuyinRequestDialog from "../components/LiveBuyinRequestDialog";
+import {
+  LiveBuyinExecution,
+  LiveBuyinRecovery,
+  LiveObligation,
+} from "../components/DefaultsBuyinsLiveDetails";
 import Topbar from "../components/Topbar";
 import DefaultsBuyinsDialog from "../components/DefaultsBuyinsDialog";
 import {
   caseDate,
+  caseDay,
   defaultCases,
   number,
   rupees,
@@ -48,6 +62,7 @@ function Empty({ children }) {
   return <p className="db-empty">{children}</p>;
 }
 function Obligation({ record }) {
+  if (record.live) return <LiveObligation record={record} />;
   return (
     <article className="db-card">
       <h3>Default &amp; obligation</h3>
@@ -75,6 +90,16 @@ function Obligation({ record }) {
   );
 }
 function Notices({ record }) {
+  if (record.live)
+    return (
+      <article className="db-card">
+        <h3>Notices &amp; deadlines</h3>
+        <Empty>No notices are supplied by the current backend contract.</Empty>
+        <p className="db-footnote">
+          Notice preparation and delivery are not enabled in live mode.
+        </p>
+      </article>
+    );
   return (
     <article className="db-card">
       <h3>
@@ -124,6 +149,14 @@ function Notices({ record }) {
   );
 }
 function Execution({ record, onManage }) {
+  if (record.live)
+    return (
+      <LiveBuyinExecution
+        record={record}
+        onRequest={onManage}
+        allowed={canRequestBuyin(record)}
+      />
+    );
   const order = record.order;
   const filled = order?.filled || 0;
   const percent = order ? Math.round((filled / order.quantity) * 100) : 0;
@@ -219,6 +252,7 @@ function Execution({ record, onManage }) {
   );
 }
 function Recovery({ record }) {
+  if (record.live) return <LiveBuyinRecovery record={record} />;
   const order = record.order,
     filled = order?.filled || 0;
   return (
@@ -290,7 +324,8 @@ function Activity({ record, compact = false }) {
         {record.activities.slice(-4).map((item, i) => (
           <span key={i}>
             <i />
-            {item.time} <strong>{item.event}</strong>
+            {record.live ? caseDate(item.time) : item.time}{" "}
+            <strong>{item.event}</strong>
           </span>
         ))}
       </div>
@@ -309,7 +344,7 @@ function Activity({ record, compact = false }) {
         <tbody>
           {record.activities.map((item, i) => (
             <tr key={i}>
-              <td>{item.time}</td>
+              <td>{record.live ? caseDate(item.time) : item.time}</td>
               <td>{item.event}</td>
               <td>{item.reference}</td>
             </tr>
@@ -320,9 +355,64 @@ function Activity({ record, compact = false }) {
   );
 }
 
-export default function DefaultsBuyinsPage() {
-  const [records, setRecords] = useState(() => structuredClone(defaultCases));
-  const [selectedId, setSelectedId] = useState("DEF-000018");
+export default function DefaultsBuyinsPage({ preview = false }) {
+  const { mode, organizationId, refreshKey } = useDataSource();
+  const live = mode === "live" && !preview;
+  return (
+    <DefaultsBuyinsWorkspace
+      key={`${live}:${organizationId}`}
+      live={live}
+      organizationId={organizationId}
+      refreshKey={refreshKey}
+    />
+  );
+}
+function DefaultsBuyinsWorkspace({ live, organizationId, refreshKey }) {
+  const [records, setRecords] = useState(() =>
+    live ? [] : structuredClone(defaultCases),
+  );
+  const [selectedId, setSelectedId] = useState(live ? null : "DEF-000018");
+  const [loading, setLoading] = useState(live),
+    [loadError, setLoadError] = useState(""),
+    [reload, setReload] = useState(0);
+  useEffect(() => {
+    if (!live) return;
+    const controller = new AbortController();
+    let timer;
+    async function load() {
+      try {
+        const rows = await defaultsBuyinsApi.snapshot(
+          organizationId,
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
+        setRecords(rows);
+        setSelectedId((current) =>
+          current && rows.some((item) => item.id === current)
+            ? current
+            : (rows[0]?.id ?? null),
+        );
+        setLoadError("");
+      } catch (error) {
+        if (!controller.signal.aborted) setLoadError(error.message);
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          timer = setTimeout(load, 10000);
+        }
+      }
+    }
+    load();
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [live, organizationId, refreshKey, reload]);
+  function refreshLive() {
+    setLoading(true);
+    setReload((value) => value + 1);
+  }
+
   const [tab, setTab] = useState("All cases"),
     [detailsTab, setDetailsTab] = useState("Case overview");
   const [draft, setDraft] = useState(blankFilters),
@@ -334,8 +424,12 @@ export default function DefaultsBuyinsPage() {
     [notice, setNotice] = useState("");
   const workspace = useRef(null);
   const [searchKey, setSearchKey] = useState(0);
-  const defaults = records.filter((item) => !item.order && !isResolved(item)),
-    buyins = records.filter((item) => item.order && !isResolved(item)),
+  const defaults = records.filter(
+      (item) => !item.order && !requestPending(item) && !isResolved(item),
+    ),
+    buyins = records.filter(
+      (item) => (item.order || requestPending(item)) && !isResolved(item),
+    ),
     resolved = records.filter(isResolved);
   const filtered = records
     .filter((item) => {
@@ -353,9 +447,11 @@ export default function DefaultsBuyinsPage() {
         return false;
       if (
         filters.deadline &&
-        (filters.deadline === "18 Nov"
-          ? !item.deadline.startsWith("2026-11-18")
-          : !item.deadline.startsWith("2026-11-19"))
+        (live
+          ? caseDay(item.deadline) !== filters.deadline
+          : filters.deadline === "18 Nov"
+            ? !item.deadline?.startsWith("2026-11-18")
+            : !item.deadline?.startsWith("2026-11-19"))
       )
         return false;
       return (
@@ -541,7 +637,7 @@ export default function DefaultsBuyinsPage() {
     const csv = rows
       .map((row) =>
         row
-          .map((value) => `"${String(value).replaceAll('"', '""')}"`)
+          .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
           .join(","),
       )
       .join("\r\n");
@@ -550,7 +646,9 @@ export default function DefaultsBuyinsPage() {
       ),
       link = document.createElement("a");
     link.href = url;
-    link.download = "lenddesk-defaults-buyins-sample.csv";
+    link.download = live
+      ? "lenddesk-defaults-buyins.csv"
+      : "lenddesk-defaults-buyins-sample.csv";
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -569,7 +667,9 @@ export default function DefaultsBuyinsPage() {
           <div>
             <div className="db-title">
               <h1>Defaults &amp; Buy-ins</h1>
-              <span className="db-preview-chip">SAMPLE DATA</span>
+              <span className="db-preview-chip">
+                {live ? "LIVE DATA" : "SAMPLE DATA"}
+              </span>
             </div>
             <p>Track failed obligations, recovery and replacement purchases</p>
           </div>
@@ -577,36 +677,98 @@ export default function DefaultsBuyinsPage() {
             <button className="db-button" onClick={exportRows}>
               ↥ Export
             </button>
-            <button
-              className="db-button db-primary"
-              onClick={() => setModal({ kind: "default" })}
-            >
-              Record default
-            </button>
+            {live ? (
+              <>
+                <Link className="db-button" to="/defaults-buyins/preview">
+                  Sample preview
+                </Link>
+                <button
+                  className="db-button"
+                  disabled={loading}
+                  onClick={refreshLive}
+                >
+                  {loading ? "Refreshing…" : "Refresh"}
+                </button>
+              </>
+            ) : (
+              <>
+                <Link className="db-button" to="/defaults-buyins">
+                  Live workspace
+                </Link>
+                <button
+                  className="db-button db-primary"
+                  onClick={() => setModal({ kind: "default" })}
+                >
+                  Record default
+                </button>
+              </>
+            )}
           </div>
         </header>
         <p className="db-preview-banner">
-          <span>ⓘ</span> Frontend preview · Sample cases and local drafts.
-          Notices and buy-in orders are not sent.
+          <span>ⓘ</span>{" "}
+          {live
+            ? "Defaults are reported by the lifecycle owner. Buy-in requests are queued for processing; execution reports do not confirm settlement."
+            : "Frontend preview · Sample cases and local drafts. Notices and buy-in orders are not sent."}
         </p>
+        {loadError && (
+          <div className="db-load-error" role="alert">
+            Unable to refresh live cases: {loadError}{" "}
+            {records.length > 0 && "Showing the last loaded snapshot."}
+            <button className="db-button" onClick={refreshLive}>
+              Retry
+            </button>
+          </div>
+        )}
         <section
           className="db-metrics"
           aria-label="Defaults and buy-ins summary"
         >
           {[
-            ["Open defaults", defaults.length],
-            ["Buy-ins pending", buyins.length],
             [
-              "Exposure at risk",
-              rupees(
-                records
-                  .filter((item) => !isResolved(item))
-                  .reduce((sum, item) => sum + item.exposure, 0),
-              ),
+              "Open defaults",
+              live
+                ? records.filter((item) => item.rawStatus === "OPEN").length
+                : defaults.length,
             ],
             [
-              "Recovered",
-              rupees(resolved.reduce((sum, item) => sum + item.exposure, 0)),
+              "Buy-ins pending",
+              live
+                ? records.filter(
+                    (item) =>
+                      !isResolved(item) &&
+                      (requestPending(item) ||
+                        (item.order &&
+                          ![
+                            "COMPLETED",
+                            "EXECUTED",
+                            "SETTLED",
+                            "FAILED",
+                            "REJECTED",
+                            "CANCELLED",
+                          ].includes(item.order.status))),
+                  ).length
+                : buyins.length,
+            ],
+            [
+              "Exposure at risk",
+              live
+                ? records.some((item) => item.exposure != null)
+                  ? `${rupees(records.filter((item) => !isResolved(item)).reduce((sum, item) => sum + (item.exposure || 0), 0))}${records.some((item) => !isResolved(item) && item.exposure == null) ? " + unreported" : ""}`
+                  : "Not reported"
+                : rupees(
+                    records
+                      .filter((item) => !isResolved(item))
+                      .reduce((sum, item) => sum + item.exposure, 0),
+                  ),
+            ],
+            [
+              live ? "Resolved cases" : "Recovered",
+              live
+                ? resolved.length
+                : rupees(
+                    resolved.reduce((sum, item) => sum + item.exposure, 0),
+                  ),
             ],
           ].map(([label, value]) => (
             <div key={label}>
@@ -682,15 +844,25 @@ export default function DefaultsBuyinsPage() {
           ))}
           <label>
             Deadline
-            <select
-              name="deadline"
-              value={draft.deadline}
-              onChange={filterChange}
-            >
-              <option value="">Any date</option>
-              <option>18 Nov</option>
-              <option>19 Nov</option>
-            </select>
+            {live ? (
+              <input
+                type="date"
+                aria-label="Deadline"
+                name="deadline"
+                value={draft.deadline}
+                onChange={filterChange}
+              />
+            ) : (
+              <select
+                name="deadline"
+                value={draft.deadline}
+                onChange={filterChange}
+              >
+                <option value="">Any date</option>
+                <option>18 Nov</option>
+                <option>19 Nov</option>
+              </select>
+            )}
           </label>
           <button className="db-button" type="button" onClick={reset}>
             Reset
@@ -816,7 +988,11 @@ export default function DefaultsBuyinsPage() {
                   <tr>
                     <td colSpan={13}>
                       <Empty>
-                        No cases match your filters. Try Reset or another tab.
+                        {loading
+                          ? "Loading live cases…"
+                          : loadError
+                            ? "Live cases could not be loaded. Use Retry above."
+                            : "No cases match your filters. Try Reset or another tab."}
                       </Empty>
                     </td>
                   </tr>
@@ -878,21 +1054,35 @@ export default function DefaultsBuyinsPage() {
               <div className="db-actions">
                 <button
                   className="db-button"
-                  disabled={isResolved(selected)}
+                  disabled={live || isResolved(selected)}
+                  title={
+                    live
+                      ? "Notice delivery is not supported by this backend"
+                      : undefined
+                  }
                   onClick={() => setModal({ kind: "notice", record: selected })}
                 >
                   Prepare notice
                 </button>
                 <button
                   className="db-button db-primary"
-                  disabled={isResolved(selected)}
+                  disabled={
+                    live ? !canRequestBuyin(selected) : isResolved(selected)
+                  }
                   onClick={openBuyin}
                 >
-                  {selected.order
-                    ? "Manage buy-in"
-                    : selected.buyinDraft
-                      ? "Edit buy-in draft"
-                      : "Create buy-in"}
+                  {live
+                    ? requestPending(selected)
+                      ? "Buy-in pending"
+                      : selected.request?.status === "FAILED" ||
+                          selected.request?.status === "REJECTED"
+                        ? "Retry buy-in"
+                        : "Request buy-in"
+                    : selected.order
+                      ? "Manage buy-in"
+                      : selected.buyinDraft
+                        ? "Edit buy-in draft"
+                        : "Create buy-in"}
                 </button>
                 <button
                   className="db-button"
@@ -1000,8 +1190,14 @@ export default function DefaultsBuyinsPage() {
                       <div>
                         <dt>Executed quantity</dt>
                         <dd>
-                          {number(selected.order?.filled || 0)} /{" "}
-                          {number(selected.quantity)}
+                          {live ? (
+                            "Owner report required"
+                          ) : (
+                            <>
+                              {number(selected.order?.filled || 0)} /{" "}
+                              {number(selected.quantity)}
+                            </>
+                          )}
                         </dd>
                       </div>
                       <div>
@@ -1042,7 +1238,32 @@ export default function DefaultsBuyinsPage() {
             </button>
           </div>
         )}
-        {modal && (
+        {modal && live && (
+          <LiveBuyinRequestDialog
+            record={modal.record}
+            organizationId={organizationId}
+            onClose={() => setModal(null)}
+            onSubmitted={(request) => {
+              setRecords((current) =>
+                current.map((item) =>
+                  item.backendId === modal.record.backendId
+                    ? {
+                        ...item,
+                        request,
+                        requests: [request, ...item.requests],
+                      }
+                    : item,
+                ),
+              );
+              setModal(null);
+              setNotice(
+                `Buy-in request #${request.id}: ${request.status}. Waiting for the lifecycle owner; execution is not yet confirmed.`,
+              );
+              refreshLive();
+            }}
+          />
+        )}
+        {modal && !live && (
           <DefaultsBuyinsDialog
             kind={modal.kind}
             record={modal.record}

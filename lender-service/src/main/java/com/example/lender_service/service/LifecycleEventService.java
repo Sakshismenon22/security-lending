@@ -111,6 +111,7 @@ public class LifecycleEventService {
                 || ("VALUATION_REQUESTED".equals(r.getType()) && "FAILED".equals(r.getStatus())),
             "Lifecycle request already completed");
         r.setStatus(e.type().endsWith("ACCEPTED") ? "ACCEPTED" : "REJECTED");
+        if ("BUY_IN_REQUESTED".equals(r.getType())) r.setFailureReason(e.type().endsWith("REJECTED") ? e.data().path("reason").asText("Buy-in request rejected") : null);
         if("VALUATION_REQUESTED".equals(r.getType()))r.setFailureReason(null);
         if (Set.of("VALUATION_REQUESTED", "FEE_ACCRUAL_REQUESTED", "REBATE_ACCRUAL_REQUESTED")
                 .contains(r.getType())
@@ -513,6 +514,9 @@ public class LifecycleEventService {
               requests.findByIdAndOrganizationId(
                   number(e.data(), "lifecycleRequestId"), e.organizationId()));
       require(Objects.equals(r.getLoanId(), loan.getId()), "Lifecycle request loan mismatch");
+      if ("BUY_IN_REPORTED".equals(e.type())) {
+        require("BUY_IN_REQUESTED".equals(r.getType()) && json.tree(r.getPayload()).path("defaultReferenceId").asLong(-1) == e.data().path("defaultId").asLong(-2), "Buy-in report does not match the requested default");
+      }
       r.setStatus("COMPLETED");
       r.setFailureReason(null);
     }

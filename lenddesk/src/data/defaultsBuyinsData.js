@@ -150,10 +150,20 @@ export const previewLoans = [
   },
 ];
 export const number = (value) =>
-  new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(value);
-export const rupees = (value) => `₹${number(value)}`;
-export const caseDate = (value) =>
-  new Intl.DateTimeFormat("en-IN", {
+  value == null || !Number.isFinite(Number(value))
+    ? "—"
+    : new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(
+        value,
+      );
+export const rupees = (value) =>
+  value == null || !Number.isFinite(Number(value)) ? "—" : `₹${number(value)}`;
+export const caseDate = (value) => {
+  if (!value) return "—";
+  const date = new Date(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? `${value}:00+05:30` : value,
+  );
+  if (!Number.isFinite(+date)) return "—";
+  return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -161,4 +171,21 @@ export const caseDate = (value) =>
     minute: "2-digit",
     hour12: false,
     timeZone: "Asia/Kolkata",
-  }).format(new Date(`${value}:00+05:30`));
+  }).format(date);
+};
+
+export const caseDay = (value) => {
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return value.slice(0, 10);
+  const date = new Date(value);
+  if (!Number.isFinite(+date)) return "";
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  return ["year", "month", "day"]
+    .map((type) => parts.find((part) => part.type === type).value)
+    .join("-");
+};

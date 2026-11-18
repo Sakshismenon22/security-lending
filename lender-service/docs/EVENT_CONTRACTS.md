@@ -149,3 +149,27 @@ DEFAULT_REPORTED and BUY_IN_REPORTED are read projections. Neither instructs cus
 ## Replay and ordering
 
 Inbox entries bind event ID to source and payload hash; changed content under an existing ID is rejected. Domain writes and confirmations are committed in one transaction, serialized by local lender organization. The outgoing outbox preserves order per Kafka partition key and retries publication failures without claiming success. Kafka and FIX retries can duplicate messages, so every business consumer must deduplicate independently.
+
+
+### LendDesk defaults and buy-ins workspace
+
+`GET /api/v1/organizations/{org}/lenddesk/defaults-buyins` returns tenant-scoped
+screen rows containing the default and its owner-reported data, loan, borrower,
+security, source recall/margin call, buy-in reports and lifecycle requests. Source
+obligations and buy-ins are joined by **owner reference IDs**. Requests are joined
+by their payload's `defaultReferenceId`, so defaults on the same loan do not share
+pending statuses accidentally.
+
+`POST /api/v1/organizations/{org}/defaults/{id}/buy-in-requests` accepts only
+`{clientRequestId}`. An open default is required. Replays return the same request;
+a second pending/accepted attempt is coalesced, and a non-failed existing buy-in
+report prevents another request. Exhausted command delivery marks the request
+`FAILED` and records the reason. A fresh attempt retires the old failed command so
+it cannot block the new command's outbox partition. Default status and collateral
+balances remain owner controlled.
+
+`BUY_IN_REPORTED` carrying `lifecycleRequestId` must match both the request loan and
+the requested owner default ID. It completes that request without inferring custody
+or cash settlement. The current lifecycle module has no buy-in execution consumer;
+that owner integration remains required for actual execution. The frontend reflects
+queued state and the reports supplied through the existing lifecycle Kafka consumer.
