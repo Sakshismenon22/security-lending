@@ -53,3 +53,25 @@ write endpoints. Legacy demo data mode also uses the sample screen.
 - Browser coverage: `../lendora/tests/e2e/defaultsBuyins*.spec.js`.
   Run from the repo root: `npm --prefix lendora run test:e2e -- defaultsBuyins`.
 - Frontend checks: `npm run lint`, `npm run build`.
+
+## Add registered borrowers
+
+In live mode, **Borrowers → Add borrower** opens a searchable list of provisioned
+Lendora borrower accounts. `/borrowers/new` uses the same directory. Select an
+account and click **Add borrower**; no name, FIX ID or organization ID needs to be
+entered manually. Connected borrowers are excluded, and empty/loading/error states
+are shown explicitly. Retry does not create a second connection or queue another
+lender-reference event.
+
+The lender service reads the account directory privately using the existing shared
+`LENDORA_PROVISIONING_KEY`. Browser requests use the signed-in lender's organization.
+The directory contains organization name, registration, country, currency and account
+references; it contains no administrator contacts, passwords or session data. POST
+submits only `directoryId`; the backend resolves and verifies the account afresh.
+
+This creates the existing counterparty connection and queues its lender reference.
+It does not approve an MSLA or confirm transport delivery. Existing FIX routes and
+organization allowlists must cover the connected organizations. The shared borrower
+adapter institution defaults to `BORROWER_DEMO`, configurable on lender-service via
+`LENDORA_BORROWER_INSTITUTION_ID`. Lendora directory IDs, business organization IDs
+and FIX institution IDs are separate identifiers.

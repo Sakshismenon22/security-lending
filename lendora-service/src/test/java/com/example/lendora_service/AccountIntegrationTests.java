@@ -278,4 +278,29 @@ class AccountIntegrationTests {
       )
       .andExpect(status().isForbidden());
   }
+
+  @Test
+  void privateBorrowerDirectoryListsOnlyProvisionedBorrowersWithoutAccountSecrets() throws Exception {
+    mvc.perform(post("/api/v1/organizations/register").contentType("application/json").content(registration("BORROWER", "borrower@example.com"))).andExpect(status().isCreated());
+    mvc.perform(post("/api/v1/organizations/register").contentType("application/json").content(registration("LENDER", "lender@example.com"))).andExpect(status().isCreated());
+    var borrower = organizations.findAll().stream().filter(o -> "BORROWER".equals(o.getType())).findFirst().orElseThrow();
+    var lender = organizations.findAll().stream().filter(o -> "LENDER".equals(o.getType())).findFirst().orElseThrow();
+    mvc.perform(get("/internal/lendora/borrowers")).andExpect(status().isUnauthorized());
+    mvc.perform(get("/internal/lendora/borrowers").header("X-Lendora-Provisioning-Key", "wrong-key")).andExpect(status().isUnauthorized());
+    mvc.perform(get("/internal/lendora/borrowers").header("X-Lendora-Provisioning-Key", "test-provisioning-key"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()").value(1))
+        .andExpect(jsonPath("$.data[0].directoryId").value(borrower.getId()))
+        .andExpect(jsonPath("$.data[0].borrowerOrganizationId").value(42))
+        .andExpect(jsonPath("$.data[0].type").value("BORROWER"))
+        .andExpect(jsonPath("$.data[0].email").doesNotExist())
+        .andExpect(jsonPath("$.data[0].passwordHash").doesNotExist())
+        .andExpect(jsonPath("$.data[0].administrator").doesNotExist());
+    mvc.perform(get("/internal/lendora/borrowers/" + lender.getId()).header("X-Lendora-Provisioning-Key", "test-provisioning-key")).andExpect(status().isNotFound());
+    mvc.perform(get("/internal/lendora/borrowers/" + borrower.getId()).header("X-Lendora-Provisioning-Key", "test-provisioning-key"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.registrationNumber").value("REG-BORROWER"));
+    borrower.setPlatformOrganizationId(null); organizations.saveAndFlush(borrower);
+    mvc.perform(get("/internal/lendora/borrowers").header("X-Lendora-Provisioning-Key", "test-provisioning-key"))
+        .andExpect(jsonPath("$.data.length()").value(0));
+    mvc.perform(get("/internal/lendora/borrowers/" + borrower.getId()).header("X-Lendora-Provisioning-Key", "test-provisioning-key")).andExpect(status().isNotFound());
+  }
 }

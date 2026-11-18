@@ -214,3 +214,25 @@ account-facing portals. The legacy launcher now rejects an authenticated backend
 already occupying 8081/8084. Both frontends default to 5176, and the launcher checks
 that the expected frontend actually owns the port. For simultaneous use, configure
 separate backend instances/ports and the test console's `DEMO_*_URL` targets.
+
+## Connecting registered borrowers from LendDesk
+
+**Borrowers → Add borrower** and the live `/borrowers/new` route list only provisioned
+BORROWER accounts registered in Lendora. Accounts already connected to the signed-in
+lender, including inactive connections, are excluded. A selection creates the existing
+business-service counterparty connection and queues the lender-reference event.
+
+- `GET /api/v1/organizations/{org}/borrower-directory` returns available entries.
+- `POST /api/v1/organizations/{org}/borrower-directory/connections` accepts
+  `{directoryId}`. The server resolves the real name/business borrower ID, verifies
+  availability, serializes changes per lender and coalesces duplicate submissions.
+- Lendora's `/internal/lendora/borrowers` and `/{directoryId}` endpoints require the
+  private shared provisioning key. Only minimal borrower organization fields are
+  exposed; no account users, credentials or session data are returned.
+
+Restart **lendora-service**, **lender-service**, and LendDesk after pulling this
+change. No database migration is needed. The existing shared key must be configured
+on both services. Existing FIX institution configuration and organization allowlists
+still apply; adding a connection does not itself configure a FIX session or approve
+an agreement. `LENDORA_BORROWER_INSTITUTION_ID` on lender-service defaults to the
+existing shared `BORROWER_DEMO` adapter identity.
