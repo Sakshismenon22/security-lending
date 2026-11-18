@@ -8,3 +8,20 @@
 .ca-detail.details-minimized .ca-detail-heading { min-height:35px; }
 .detail-size-toggle { min-width:82px; justify-content:center; }
 .detail-size-toggle svg { width:12px; height:12px; }
+
+
+/* Resizable collateral table and detail workspace, matching Funding. */
+.collateral-page .ca-workspace{flex:1 1 0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.collateral-page .ca-workspace>.ca-table-panel{min-height:125px;max-height:none;flex-shrink:1}
+.collateral-page .ca-resizer{height:10px;min-height:10px;flex:none;display:flex;align-items:center;justify-content:center;cursor:row-resize;touch-action:none;user-select:none;outline:none;z-index:2}
+.collateral-page .ca-resizer span{width:48px;height:3px;border-radius:4px;background:var(--border);transition:background .15s,width .15s}
+.collateral-page .ca-resizer:hover span,.collateral-page .ca-resizer:focus-visible span{width:68px;background:var(--primary)}
+.collateral-page .ca-workspace>.ca-detail{flex:1 1 0;min-height:120px}
+.collateral-page .ca-workspace.details-minimized>.ca-table-panel{flex:1 1 0!important;min-height:0}
+.collateral-page .ca-workspace.details-minimized>.ca-resizer{display:none}
+.collateral-page .ca-workspace.details-minimized>.ca-detail{flex:0 0 36px;min-height:36px;height:36px}
+@media(max-width:850px){.collateral-page .ca-workspace{overflow:auto}.collateral-page .ca-workspace>.ca-table-panel{flex:none;height:285px}.collateral-page .ca-workspace>.ca-detail{flex:none;height:310px}}
+
+
+/* Keep allocation summaries directly beneath the listed components. */
+.ca-allocation-card .ca-mini-table{flex:0 1 auto;max-height:45%;min-height:0;overflow:auto}
