@@ -15,17 +15,20 @@ import tools.jackson.databind.JsonNode;
 @Configuration
 public class LendoraAccessConfig implements WebMvcConfigurer {
 
+  private final com.example.lender_service.service.WorkspaceAdminAccess admins;
   private final boolean enabled;
   private final String url;
   private final Set<String> origins;
 
   public LendoraAccessConfig(
+    com.example.lender_service.service.WorkspaceAdminAccess admins,
     @Value("${lendora.auth-enabled:true}") boolean enabled,
     @Value("${lendora.auth-url:http://localhost:8086}") String url,
     @Value(
       "${lendora.allowed-origins:http://localhost:5176,http://localhost:5175,http://localhost:5174,http://localhost:5173}"
     ) String origins
   ) {
+    this.admins = admins;
     this.enabled = enabled;
     this.url = url;
     this.origins = new HashSet<>(Arrays.asList(origins.split(",")));
@@ -152,6 +155,26 @@ public class LendoraAccessConfig implements WebMvcConfigurer {
               "Create organizations through Lendora"
             );
             req.setAttribute("lendora.organizationId", org);
+            req.setAttribute(
+              "lendora.userEmail",
+              identity.path("user").path("email").asText("")
+            );
+            if (
+              handler instanceof
+                org.springframework.web.method.HandlerMethod method &&
+              !Set.of("GET", "HEAD").contains(req.getMethod()) &&
+              (method
+                .getBeanType()
+                .getSimpleName()
+                .equals("InventoryController") ||
+                (method
+                  .getBeanType()
+                  .getSimpleName()
+                  .equals("OrganizationController") &&
+                  Set.of("add", "member", "update").contains(
+                    method.getMethod().getName()
+                  )))
+            ) admins.requireAdmin(req, org);
             return true;
           }
         }

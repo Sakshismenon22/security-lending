@@ -39,6 +39,46 @@ public class InventoryService {
     return p;
   }
 
+  public InventoryPosition receive(long org, InventoryRequest r) {
+    tenants.lock(org);
+    found(securities.findById(r.securityId()));
+    var previous = history.findByOrganizationIdAndTypeAndReference(
+      org,
+      "INVENTORY_RECEIVED",
+      r.reference()
+    );
+    if (previous.isPresent()) {
+      var position = found(
+        inventory.findByIdAndOrganizationId(
+          previous.get().getInventoryId(),
+          org
+        )
+      );
+      require(
+        position.getSecurityId() == r.securityId() &&
+          previous.get().getQuantity() == r.quantity(),
+        "Receipt reference reused for different securities or quantity"
+      );
+      return position;
+    }
+    var position = inventory
+      .findByOrganizationIdAndSecurityId(org, r.securityId())
+      .orElseGet(() -> {
+        var p = new InventoryPosition();
+        p.setOrganizationId(org);
+        p.setSecurityId(r.securityId());
+        p.setTotalQuantity(0L);
+        p.setLoanedQuantity(0L);
+        p.setReservedQuantity(0L);
+        return inventory.saveAndFlush(p);
+      });
+    position.setTotalQuantity(
+      Math.addExact(position.getTotalQuantity(), r.quantity())
+    );
+    movement(position, "INVENTORY_RECEIVED", r.quantity(), r.reference());
+    return position;
+  }
+
   public InventoryPosition adjust(long org, long id, InventoryAdjustmentRequest r) {
     tenants.lock(org);
     var p = found(inventory.findByIdAndOrganizationId(id, org));

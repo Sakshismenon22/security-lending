@@ -266,3 +266,37 @@ reference and unchanged offer, preserving the agreement ID and offer version, so
 BorrowDesk does not create a duplicate agreement if it already received it. A
 pending business outbox offer is coalesced. If a failed transport message is blocking
 a FIX session, retry or close that message through Failed deliveries first.
+
+## Admin deposit review and securities receipts
+
+BorrowDesk **Funding & account → Deposit requests** lets active workspace admins
+page through deposit requests and accept a pending deposit after confirming
+receipt. Acceptance credits available cash through the existing deposit workflow,
+refreshes the funding balance/history, and cannot credit a confirmed request twice.
+
+LendDesk **Inventory → Add securities** lets active admins select a registered
+security, enter a positive quantity and provide a custody receipt reference.
+`POST /api/v1/organizations/{org}/inventory/receipts` creates a position or adds to
+an existing position. It preserves loaned/reserved quantities and records inventory
+history/audit events. Replaying the same reference/security/quantity recognizes the
+already recorded receipt without adding stock again. Reusing a reference for
+another security or quantity is rejected.
+
+Both frontends load `GET /api/v1/organizations/{org}/admin-access`. Permissions are
+resolved from the **verified session email and the business workspace's active
+member/role**, not the client-supplied role or Lendora account user ID. Lendora and
+business-service user IDs are independent. In authenticated mode the deposit
+approval endpoint derives its approver from this identity and ignores a supplied
+approver ID. The account identity's generic role label is not used to authorize
+these actions.
+
+Backend checks also protect inventory creation/adjustment/receipt endpoints and
+member-role mutations; non-admins cannot grant themselves admin access. The
+controls remain hidden for non-admin, inactive and unverified workspace identities.
+Legacy trusted demo mode retains its existing API behaviour when authentication
+is explicitly disabled; admin controls in these frontends require a verified
+Lendora session. No Spring Security or new service is introduced.
+
+Restart borrower-service and lender-service, then the two frontends. No database
+migration is needed. Existing organization administrators provisioned by Lendora
+are recognized through their registered email addresses.

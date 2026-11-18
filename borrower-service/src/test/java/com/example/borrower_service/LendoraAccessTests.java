@@ -26,6 +26,8 @@ class LendoraAccessTests {
 
   static final HttpServer server;
   static final AtomicLong ownOrg = new AtomicLong();
+  static final java.util.concurrent.atomic.AtomicReference<String> memberEmail =
+    new java.util.concurrent.atomic.AtomicReference<>("");
 
   static {
     try {
@@ -39,7 +41,9 @@ class LendoraAccessTests {
           role +
           "\",\"platformOrganizationId\":" +
           ownOrg.get() +
-          "}}}";
+          "},\"user\":{\"email\":\"" +
+          memberEmail.get() +
+          "\",\"role\":\"ADMIN\"}}}";
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, bytes.length);
@@ -82,6 +86,118 @@ class LendoraAccessTests {
       )
     );
     return ((Number) organization.get("id")).longValue();
+  }
+
+  @Autowired
+  com.example.borrower_service.service.PaymentService payments;
+
+  @Autowired
+  com.example.borrower_service.repository.BorrowerRepository db;
+
+  @Test
+  void depositApprovalUsesTheAuthenticatedActiveAdminAndCannotSpoofAnotherMember() throws Exception {
+    long id = organization();
+    ownOrg.set(id);
+    String suffix = UUID.randomUUID().toString();
+    String adminEmail = "admin-" + suffix + "@example.com",
+      readerEmail = "reader-" + suffix + "@example.com";
+    var admin = directory.member(
+      id,
+      new com.example.borrower_service.dto.MemberRequest(
+        "Admin",
+        adminEmail,
+        "ADMIN"
+      )
+    );
+    var reader = directory.member(
+      id,
+      new com.example.borrower_service.dto.MemberRequest(
+        "Reader",
+        readerEmail,
+        "READ_ONLY"
+      )
+    );
+    long adminId = ((Number) admin.get("id")).longValue(),
+      readerId = ((Number) reader.get("id")).longValue();
+    long request = (
+      (Number) payments
+        .funding(
+          id,
+          new com.example.borrower_service.dto.FundingRequest(
+            new java.math.BigDecimal("2500"),
+            suffix
+          ),
+          true
+        )
+        .get("id")
+    ).longValue();
+    var cookie = new Cookie("LENDORA_SESSION", "A".repeat(43));
+    String path = "/api/v1/organizations/" + id;
+    memberEmail.set(readerEmail);
+    mvc
+      .perform(get(path + "/admin-access").cookie(cookie))
+      .andExpect(jsonPath("$.data.admin").value(false));
+    mvc
+      .perform(
+        post(path + "/deposits/" + request + "/approve")
+          .cookie(cookie)
+          .contentType("application/json")
+          .content("{\"userId\":" + adminId + "}")
+      )
+      .andExpect(status().isForbidden());
+    mvc
+      .perform(
+        patch(path + "/users/" + readerId)
+          .cookie(cookie)
+          .contentType("application/json")
+          .content("{\"role\":\"ADMIN\",\"active\":true}")
+      )
+      .andExpect(status().isForbidden());
+    memberEmail.set(adminEmail);
+    mvc
+      .perform(get(path + "/admin-access").cookie(cookie))
+      .andExpect(jsonPath("$.data.admin").value(true));
+    mvc
+      .perform(
+        post(path + "/deposits/" + request + "/approve")
+          .cookie(cookie)
+          .contentType("application/json")
+          .content("{\"userId\":" + readerId + "}")
+      )
+      .andExpect(status().isOk());
+    assertEquals(
+      0,
+      new java.math.BigDecimal("2500").compareTo(
+        db
+          .find(com.example.borrower_service.model.TraderAccount.class, id)
+          .getAvailable()
+      )
+    );
+    mvc
+      .perform(
+        post(path + "/deposits/" + request + "/approve")
+          .cookie(cookie)
+          .contentType("application/json")
+          .content("{}")
+      )
+      .andExpect(status().is4xxClientError());
+    assertEquals(
+      0,
+      new java.math.BigDecimal("2500").compareTo(
+        db
+          .find(com.example.borrower_service.model.TraderAccount.class, id)
+          .getAvailable()
+      )
+    );
+    memberEmail.set("missing@example.com");
+    mvc
+      .perform(
+        post(path + "/deposits/" + request + "/approve")
+          .cookie(cookie)
+          .contentType("application/json")
+          .content("{}")
+      )
+      .andExpect(status().isForbidden());
   }
 
   @Test

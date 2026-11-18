@@ -26,6 +26,8 @@ class LendoraAccessTests {
 
   static final HttpServer server;
   static final AtomicLong ownOrg = new AtomicLong();
+  static final java.util.concurrent.atomic.AtomicReference<String> memberEmail =
+    new java.util.concurrent.atomic.AtomicReference<>("");
 
   static {
     try {
@@ -39,7 +41,9 @@ class LendoraAccessTests {
           role +
           "\",\"platformOrganizationId\":" +
           ownOrg.get() +
-          "}}}";
+          "},\"user\":{\"email\":\"" +
+          memberEmail.get() +
+          "\",\"role\":\"ADMIN\"}}}";
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, bytes.length);
@@ -82,6 +86,148 @@ class LendoraAccessTests {
       )
     );
     return organization.getId();
+  }
+
+  @Autowired
+  com.example.lender_service.service.MarketService market;
+
+  @Autowired
+  com.example.lender_service.service.InventoryService inventory;
+
+  @Autowired
+  com.example.lender_service.repository.UserRepository members;
+
+  @Test
+  void inventoryReceiptsAreAdminOnlyIdempotentAndCannotBeEnabledByClaimedRoles() throws Exception {
+    long id = organization();
+    ownOrg.set(id);
+    String suffix = UUID.randomUUID().toString();
+    String adminEmail = "admin-" + suffix + "@example.com",
+      readerEmail = "reader-" + suffix + "@example.com";
+    var admin = directory.member(
+      id,
+      new com.example.lender_service.dto.MemberRequest(
+        "Admin",
+        adminEmail,
+        "ADMIN"
+      )
+    );
+    var reader = directory.member(
+      id,
+      new com.example.lender_service.dto.MemberRequest(
+        "Reader",
+        readerEmail,
+        "READ_ONLY"
+      )
+    );
+    long security = System.nanoTime();
+    market.register(
+      new com.example.lender_service.dto.SecurityRequest(
+        security,
+        "EQADMIN",
+        "NSE",
+        "Admin equity",
+        "INADMIN",
+        "INR"
+      )
+    );
+    String body = json.writeValueAsString(
+      Map.of("securityId", security, "quantity", 100, "reference", suffix)
+    );
+    String path = "/api/v1/organizations/" + id;
+    var cookie = new Cookie("LENDORA_SESSION", "A".repeat(43));
+    memberEmail.set(readerEmail);
+    mvc
+      .perform(get(path + "/admin-access").cookie(cookie))
+      .andExpect(jsonPath("$.data.admin").value(false));
+    mvc
+      .perform(
+        post(path + "/inventory/receipts")
+          .cookie(cookie)
+          .contentType("application/json")
+          .content(body)
+      )
+      .andExpect(status().isForbidden());
+    mvc
+      .perform(
+        post(path + "/inventory")
+          .cookie(cookie)
+          .contentType("application/json")
+          .content(body)
+      )
+      .andExpect(status().isForbidden());
+    mvc
+      .perform(
+        patch(path + "/users/" + reader.getId())
+          .cookie(cookie)
+          .contentType("application/json")
+          .content("{\"role\":\"ADMIN\",\"active\":true}")
+      )
+      .andExpect(status().isForbidden());
+    memberEmail.set(adminEmail);
+    mvc
+      .perform(get(path + "/admin-access").cookie(cookie))
+      .andExpect(jsonPath("$.data.admin").value(true));
+    for (int i = 0; i < 2; i++) mvc
+      .perform(
+        post(path + "/inventory/receipts")
+          .cookie(cookie)
+          .contentType("application/json")
+          .content(body)
+      )
+      .andExpect(status().isOk());
+    assertEquals(100, inventory.position(id, security).getTotalQuantity());
+    String next = json.writeValueAsString(
+      Map.of(
+        "securityId",
+        security,
+        "quantity",
+        20,
+        "reference",
+        suffix + "-next"
+      )
+    );
+    mvc
+      .perform(
+        post(path + "/inventory/receipts")
+          .cookie(cookie)
+          .contentType("application/json")
+          .content(next)
+      )
+      .andExpect(status().isOk());
+    assertEquals(120, inventory.position(id, security).getAvailableQuantity());
+    mvc
+      .perform(
+        post(path + "/inventory/receipts")
+          .cookie(cookie)
+          .contentType("application/json")
+          .content(
+            json.writeValueAsString(
+              Map.of(
+                "securityId",
+                security,
+                "quantity",
+                101,
+                "reference",
+                suffix
+              )
+            )
+          )
+      )
+      .andExpect(status().is4xxClientError());
+    admin.setActive(false);
+    members.save(admin);
+    mvc
+      .perform(get(path + "/admin-access").cookie(cookie))
+      .andExpect(jsonPath("$.data.admin").value(false));
+    mvc
+      .perform(
+        post(path + "/inventory/receipts")
+          .cookie(cookie)
+          .contentType("application/json")
+          .content(next)
+      )
+      .andExpect(status().isForbidden());
   }
 
   @Test
