@@ -423,6 +423,7 @@ public class BorrowerCommandService {
     account.setFeeReceived(account.getFeeReceived().add(payment.amount()));
     var entry = new LenderAccountLedger();
     entry.setOrganizationId(organization.getId());
+    entry.setLoanId(loan.getId());
     entry.setType("FEE_PAYMENT_RECEIVED");
     entry.setAmount(payment.amount());
     entry.setReference(command.eventId());
