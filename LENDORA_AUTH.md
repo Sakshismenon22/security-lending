@@ -197,3 +197,20 @@ ORDER BY connections DESC;
 Use these results to locate duplicate or idle applications. Increasing PostgreSQL's
 `max_connections` is an optional server tuning change that uses more resources and
 requires a restart; first remove duplicates and apply the pool limits above.
+
+## Legacy API test console cannot load organizations
+
+`security-lending-test-demo` is an anonymous local tool that exercises both business
+services using arbitrary test organization/user IDs. It does not log in to Lendora,
+and its selectors cannot grant access. With normal account authentication enabled,
+its requests receive 401/403; a Lendora account can access only its own workspace and
+organization. The console explicitly omits session cookies and shows an actionable
+mode-mismatch error rather than silently using a platform session.
+
+Stop borrower/lender backend processes and use `start-demo.cmd` **without** `-Lendora`
+for the local test-console stack. It starts both backends with authentication disabled
+for that explicit test mode. `start-lendora.cmd` enables authentication and starts the
+account-facing portals. The legacy launcher now rejects an authenticated backend
+already occupying 8081/8084. Both frontends default to 5176, and the launcher checks
+that the expected frontend actually owns the port. For simultaneous use, configure
+separate backend instances/ports and the test console's `DEMO_*_URL` targets.

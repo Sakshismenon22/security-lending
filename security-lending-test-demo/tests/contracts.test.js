@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { actions, defaults, requestPath } from "../src/api/catalog.js";
-import { rowsOf, sendRequest } from "../src/api/client.js";
+import { rowsOf, sendRequest, requestError } from "../src/api/client.js";
 import { createProxy } from "../config/proxy.js";
 test("FIX proxy routes cannot be shadowed by business-service prefixes", () => {
   const proxy = createProxy();
@@ -133,6 +133,7 @@ test("HTTP errors remain failures and fee idempotency keys reach the proxy", asy
     });
     assert.equal(r.ok, false);
     assert.equal(r.status, 409);
+    assert.equal(observed.options.credentials, 'omit');
     assert.equal(observed.options.headers["Idempotency-Key"], "retry-same-key");
     assert.equal(
       observed.url,
@@ -150,4 +151,14 @@ test("delivery recovery accepts only scoped failure keys and encodes them in pat
     assert.throws(()=>requestPath(retry,7,"../other"));
     assert.throws(()=>requestPath(retry,7,"https://host"));
   }
+});
+
+
+test('authentication errors identify Lendora mode without altering raw payloads', () => {
+  const result = { side: 'borrower', status: 401, payload: { detail: 'Please log in through Lendora' } };
+  assert.match(requestError(result), /start-demo.cmd \(without -Lendora\)/);
+  assert.match(requestError(result), /Please log in through Lendora/);
+  assert.deepEqual(result.payload, { detail: 'Please log in through Lendora' });
+  assert.match(requestError({ side: 'lender', status: 403, payload: { detail: 'Organization access denied' } }), /Lender API returned 403/);
+  assert.equal(requestError({ side: 'borrower', status: 409, payload: { detail: 'Loan not active' } }), 'Request failed (HTTP 409): Loan not active');
 });

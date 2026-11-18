@@ -60,6 +60,7 @@ $services = @(
 )
 $frontend = @{
     Name = 'Lending test frontend'
+    ExpectedTitle = 'Lending lab'
     Folder = 'security-lending-test-demo'
     Port = 5176
     ReadyPath = '/'
@@ -154,6 +155,9 @@ function Start-Component($Component) {
     }
     if (Test-Port $Component.Port) {
         Write-Host "Checking existing $($Component.Name) on port $($Component.Port)..."
+        if (-not $Lendora -and $Component.Port -in @(8081, 8084) -and (Test-LoginRequired $Component.Port '/api/v1/organizations')) {
+            throw "The existing $($Component.Name) requires Lendora login. Stop the borrower and lender backend windows, then rerun start-demo.cmd without -Lendora for the test console. The launcher will not silently reuse authenticated backends in anonymous test mode."
+        }
         if ($Lendora -and $Component.Port -in @(8081, 8084)) {
             if (-not (Test-LoginRequired $Component.Port '/api/v1/organizations')) {
                 throw "Stop the existing $($Component.Name) and rerun in Lendora mode so authentication and the shared key are loaded."

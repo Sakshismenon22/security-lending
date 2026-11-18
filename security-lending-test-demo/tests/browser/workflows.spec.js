@@ -59,7 +59,7 @@ test(
       page.getByRole("heading", { name: "Setup", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Login unavailable" }),
+      page.getByRole("button", { name: "Lendora login is separate" }),
     ).toBeDisabled();
     await page
       .getByRole("button", { name: /Register borrower organization/ })
@@ -90,12 +90,14 @@ test(
       .getByRole("button", { name: /Agreements/ })
       .first()
       .click();
-    await page.getByRole("button", { name: /Propose MSLA/ }).click();
+    await page.getByRole("button", { name: "Lender", exact: true }).click();
+    await page.getByRole("button", { name: /Send MSLA offer to borrower/ }).click();
     await page.getByLabel("Send this write").check();
     await page.getByRole("button", { name: "Send request" }).click();
-    const proposal = seen.find((r) => r.path.endsWith("/11/agreements"));
+    const proposal = seen.find((r) => r.path.endsWith("/22/agreements"));
     expect(proposal.body.coverageRatio).toBe(1.05);
     expect(proposal.body.collateralRules[1].securityId).toBe(2);
+    await page.getByRole("button", { name: "Borrower", exact: true }).click();
     await page
       .getByRole("button", { name: /Locates & reservations/ })
       .first()
@@ -115,7 +117,7 @@ test(
       .getByRole("button", { name: /Request loan with collateral/ })
       .click();
     await page
-      .getByLabel("Collateral", { exact: false })
+      .getByRole("textbox", { name: /^Collateral/ })
       .fill(
         '[{"assetType":"SECURITY","securityId":2,"quantity":200,"cashAmount":0,"marginCallId":null}]',
       );
@@ -177,3 +179,22 @@ test(
     expect(errors).toEqual([]);
   },
 );
+
+
+test('Lendora authentication failures explain test mode and preserve the server response', async ({ page }) => {
+  await page.context().addCookies([{ name: 'LENDORA_SESSION', value: 'existing-account-session', domain: '127.0.0.1', path: '/' }]);
+  const cookies = [];
+  await page.route('**/bridge/**', route => {
+    cookies.push(route.request().headers().cookie);
+    return route.fulfill({ status: 401, json: { title: 'Unauthorized', detail: 'Please log in through Lendora' } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Load organizations / users' }).click();
+  await expect(page.getByRole('alert')).toContainText('Borrower API returned 401');
+  await expect(page.getByRole('alert')).toContainText('start-demo.cmd (without -Lendora)');
+  await expect(page.getByRole('alert')).toContainText('Please log in through Lendora');
+  await page.getByRole('button', { name: 'Lender', exact: true }).click();
+  await page.getByRole('button', { name: 'Load organizations / users' }).click();
+  await expect(page.getByRole('alert')).toContainText('Lender API returned 401');
+  expect(cookies.every(value => !value)).toBe(true);
+});
