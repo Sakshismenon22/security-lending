@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface BuyinLoanCloseoutRepository
   extends JpaRepository<BuyinLoanCloseout, Long>
 {
+  List<BuyinLoanCloseout> findTop100ByBorrowerSummaryQueuedFalseOrderByIdAsc();
   Optional<BuyinLoanCloseout> findByOrganizationIdAndLoanId(
     Long org,
     Long loan

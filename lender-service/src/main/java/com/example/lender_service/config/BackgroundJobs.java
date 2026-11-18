@@ -16,6 +16,7 @@ public class BackgroundJobs {
   private final OutboxService outbox;
   private final MarketService market;
   private final BuyinOrderService buyinOrders;
+  private final BuyinLoanCloseoutService buyinCloseouts;
   private final SecurityMasterRepository securities;
 
   @Scheduled(fixedDelayString = "${lender.outbox-poll-ms:1000}")
@@ -32,6 +33,12 @@ public class BackgroundJobs {
   public void matchBuyins() {
     for(var order:buyinOrders.pending()) try {buyinOrders.match(order.getOrganizationId(),order.getId());}
     catch(Exception e) {log.warn("Buy-in order {} remains pending: {}",order.getId(),e.getMessage());}
+  }
+
+  @Scheduled(fixedDelayString="${lender.buyin-summary-poll-ms:5000}")
+  public void deliverBuyinSummaries() {
+    for(var closeout:buyinCloseouts.pendingSummaries()) try {buyinCloseouts.publishSummary(closeout.getOrganizationId(),closeout.getId());}
+    catch(Exception e) {log.warn("Buy-in closure summary {} remains pending: {}",closeout.getId(),e.getMessage());}
   }
 
   @Scheduled(fixedDelayString = "${lender.market-poll-ms:60000}")

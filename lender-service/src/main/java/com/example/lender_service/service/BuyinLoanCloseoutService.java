@@ -265,6 +265,7 @@ public class BuyinLoanCloseoutService {
         reference
       )
     );
+    publishSummary(org,closeout.getId());
     resolveObligations(org, loan, connection);
     events.lifecycle(
       org,
@@ -279,6 +280,67 @@ public class BuyinLoanCloseoutService {
       Map.of("closeout", closeout, "loan", loan)
     );
     return closeout;
+  }
+
+  public List<BuyinLoanCloseout> pendingSummaries() {
+    return closeouts.findTop100ByBorrowerSummaryQueuedFalseOrderByIdAsc();
+  }
+
+  public void publishSummary(long org, long id) {
+    tenants.lock(org);
+    var closeout = found(closeouts.findById(id));
+    require(
+      closeout.getOrganizationId() == org,
+      "Closeout belongs to another organization"
+    );
+    if (closeout.isBorrowerSummaryQueued()) return;
+    var loan = found(
+      loans.findByIdAndOrganizationId(closeout.getLoanId(), org)
+    );
+    require("CLOSED".equals(loan.getStatus()), "Loan is not closed");
+    BigDecimal purchaseValue = reports
+      .findByOrganizationId(org, Pageable.unpaged())
+      .stream()
+      .filter(
+        b -> b.getLoanId().equals(loan.getId()) && b.getCloseoutQuantity() > 0
+      )
+      .map(b ->
+        b.getPrice().multiply(BigDecimal.valueOf(b.getCloseoutQuantity()))
+      )
+      .reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal executionCosts = closeout
+      .getPurchaseCost()
+      .subtract(purchaseValue);
+    require(
+      executionCosts.signum() >= 0,
+      "Closeout purchase allocation is inconsistent"
+    );
+    var data = new LinkedHashMap<String, Object>();
+    data.put("loanId", loan.getBorrowerLoanId());
+    data.put("quantity", closeout.getQuantity());
+    data.put("purchaseValue", purchaseValue);
+    data.put("executionCosts", executionCosts);
+    data.put("purchaseCost", closeout.getPurchaseCost());
+    data.put("cashCollateralApplied", closeout.getCashCollateralApplied());
+    data.put("cashCollateralReturned", closeout.getCashCollateralReturned());
+    data.put(
+      "averagePrice",
+      purchaseValue.divide(
+        BigDecimal.valueOf(closeout.getQuantity()),
+        6,
+        RoundingMode.HALF_UP
+      )
+    );
+    data.put("closedAt", closeout.getCreatedAt().toString());
+    data.put("reference", closeout.getReference());
+    events.confirm(
+      found(connections.findById(loan.getConnectionId())),
+      "BUY_IN_CLOSEOUT_REPORTED",
+      "buyin_closure_summary",
+      closeout.getId(),
+      data
+    );
+    closeout.setBorrowerSummaryQueued(true);
   }
 
   private void resolveObligations(

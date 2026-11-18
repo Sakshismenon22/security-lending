@@ -11,6 +11,7 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 public class BuyinLoanCloseout {
+  @Column(name="borrower_summary_queued",nullable=false) private boolean borrowerSummaryQueued;
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)

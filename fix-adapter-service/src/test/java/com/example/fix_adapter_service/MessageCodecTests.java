@@ -33,6 +33,11 @@ class MessageCodecTests {
         var borrower=properties(AdapterSide.BORROWER);var target=new EnvelopeService(borrower,new RouteService(borrower),JSON).inbound(decoded,"FIX.4.4:BORROWER_DEMO->LENDER_DEMO");assertEquals("COLLATERAL_APPLIED",JSON.readTree(target.envelope().payload()).path("type").asText());assertEquals(1500,JSON.readTree(target.envelope().payload()).path("data").path("amount").asLong());assertEquals(1000,JSON.readTree(target.envelope().payload()).path("referenceId").asLong());
     }
 
+    @Test void buyinClosureSummaryRoundTripsWithSettledAmountPrecision() throws Exception {
+        var lender=properties(AdapterSide.LENDER);String payload=confirmation("buyin-summary-event").replace("LOCATE_APPROVED","BUY_IN_CLOSEOUT_REPORTED").replace("\"approvedQuantity\":100","\"purchaseCost\":10005.123456,\"loanId\":41");
+        var source=new EnvelopeService(lender,new RouteService(lender),JSON).outbound(payload).orElseThrow();var codec=new FixMessageCodec(lender);var decoded=codec.decode(codec.business(outbound(source)));var borrower=properties(AdapterSide.BORROWER);var target=new EnvelopeService(borrower,new RouteService(borrower),JSON).inbound(decoded,"FIX.4.4:BORROWER_DEMO->LENDER_DEMO");var data=JSON.readTree(target.envelope().payload());assertEquals("BUY_IN_CLOSEOUT_REPORTED",data.path("type").asText());assertEquals(41,data.path("data").path("loanId").asLong());assertEquals(0,new java.math.BigDecimal("10005.123456").compareTo(data.path("data").path("purchaseCost").decimalValue()));
+    }
+
     @Test void commandRoundTripsWithUnicodeControlCharactersAndExactDecimalPrecision() throws Exception {
         var borrower=properties(AdapterSide.BORROWER);var source=new EnvelopeService(borrower,new RouteService(borrower),JSON).outbound(command("event-1")).orElseThrow();
         var codec=new FixMessageCodec(borrower);var decoded=codec.decode(codec.business(outbound(source)));

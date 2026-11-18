@@ -239,3 +239,35 @@ borrower-service, lifecycle cash-history query, and **both FIX adapters** (the n
 `COLLATERAL_APPLIED` confirmation is required). `start-lendora.cmd` can restart the
 stack after existing processes are stopped. Leaving an old FIX adapter running
 will prevent the collateral-application confirmation from reaching BorrowDesk.
+
+## BorrowDesk buy-in closure summary
+
+BorrowDesk's loan workspace shows a dedicated **Buy-in loan closure** card after a
+buy-in closeout. It displays the closed quantity, average execution price, purchase
+value, execution costs, total cost, applied cash collateral, returned cash surplus,
+closure timestamp in IST and closure reference. The surplus is labelled separately
+from rebates. Normal return closures do not show this card.
+
+Fee and rebate settlement sections use the loan's actual received billing records.
+Unpaid/accrued records remain due; no records means awaiting final confirmation
+unless the relevant contractual rate is zero. “Received records paid” refers to
+received bills/settlements, not a prediction that no further bills can arrive.
+The loan workspace refreshes every 10 seconds and keeps the summary visible across
+tabs and reloads.
+
+The lender publishes `BUY_IN_CLOSEOUT_REPORTED` through the existing durable
+confirmation outbox/FIX path. The borrower persists a tenant-scoped immutable
+`buyin_closure_summary`, returned as `buyinClosure` by
+`GET /api/v1/organizations/{org}/loans/{id}`. Applying this summary does not change
+holdings, cash, collateral or loan quantities. Duplicate or repeated delivery
+cannot repeat the closeout. If closure is confirmed before summary delivery, the
+card explicitly shows pending information rather than zero settlement amounts.
+
+Migration **V18** is required in both lender-service and borrower-service. New
+closures queue the summary immediately. A lender background job, enabled with the
+normal lender jobs, checks every five seconds for older closeouts whose summary
+has not been queued. It copies saved closeout figures and allocated trade prices,
+without repeating financial movements; the existing outbox handles delivery.
+Restart lender-service, borrower-service, BorrowDesk and **both FIX adapters** after
+upgrading so the new confirmation type is supported. The notification bell is a
+separate UI feature and is not wired by this summary change.

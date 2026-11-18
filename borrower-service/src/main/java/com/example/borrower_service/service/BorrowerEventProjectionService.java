@@ -137,6 +137,7 @@ public class BorrowerEventProjectionService {
             case "MARGIN_CALL_UPDATED" -> margin(org, id, d);
             case "RECALL_UPDATED" -> recall(org, id, d);
             case "DEFAULT_REPORTED" -> defaultView(org, id, d);
+            case "BUY_IN_CLOSEOUT_REPORTED" -> buyinClosureSummary(org,d);
             case "BUY_IN_REPORTED" -> buyInView(org, id, d);
             case "LOAN_STATUS_UPDATED" -> {
                 var loan = db.owned(Loan.class, org, id);
@@ -207,6 +208,7 @@ public class BorrowerEventProjectionService {
                         "RECALL_UPDATED",
                         "DEFAULT_REPORTED",
                         "BUY_IN_REPORTED",
+                        "BUY_IN_CLOSEOUT_REPORTED",
                         "LOAN_SETTLED",
                         "RETURN_SETTLED",
                         "REBATE_PAID",
@@ -220,8 +222,8 @@ public class BorrowerEventProjectionService {
                     entity -> {
                         entity.setOrganizationId(org);
                         entity.setType(event.type());
-                        entity.setReference(String.valueOf(id));
-                        entity.setMessage(event.type().replace('_', ' '));
+                        entity.setReference(String.valueOf(event.type().equals("BUY_IN_CLOSEOUT_REPORTED")?number(d,"loanId"):id));
+                        entity.setMessage(event.type().equals("BUY_IN_CLOSEOUT_REPORTED")?"Loan closed through buy-in":event.type().replace('_', ' '));
                     });
         return Map.of("applied", true);
     }
@@ -397,6 +399,69 @@ public class BorrowerEventProjectionService {
                         entity.setRemainingQuantity(0L);
                     });
         }
+    }
+
+    private void buyinClosureSummary(long org, Map<String, Object> d) {
+      long loanId = number(d, "loanId");
+      var loan = db.owned(Loan.class, org, loanId);
+      require(
+        "CLOSED".equals(loan.get("status")) &&
+          n(loan, "outstanding_quantity") == 0,
+        "Closure summary requires a closed loan"
+      );
+      long quantity = number(d, "quantity");
+      BigDecimal value = decimal(d, "purchaseValue"),
+        costs = decimal(d, "executionCosts"),
+        total = decimal(d, "purchaseCost"),
+        applied = decimal(d, "cashCollateralApplied"),
+        returned = decimal(d, "cashCollateralReturned"),
+        price = decimal(d, "averagePrice");
+      String reference = text(d, "reference");
+      require(
+        quantity > 0 &&
+          quantity <= n(loan, "quantity") &&
+          value.signum() > 0 &&
+          costs.signum() >= 0 &&
+          total.compareTo(value.add(costs)) == 0 &&
+          applied.compareTo(total) == 0 &&
+          returned.signum() >= 0 &&
+          price.signum() > 0 &&
+          reference.length() <= 120,
+        "Invalid buy-in closure summary"
+      );
+      var existing = db.entities(
+        BuyinClosureSummary.class,
+        Sort.unsorted(),
+        1,
+        eq("organizationId", org),
+        eq("loanId", loanId)
+      );
+      if (!existing.isEmpty()) {
+        var old = existing.get(0);
+        require(
+          old.getReference().equals(reference) &&
+            old.getQuantity() == quantity &&
+            old.getPurchaseValue().compareTo(value) == 0 &&
+            old.getExecutionCosts().compareTo(costs) == 0 &&
+            old.getCashCollateralApplied().compareTo(applied) == 0 &&
+            old.getCashCollateralReturned().compareTo(returned) == 0,
+          "Closure summary cannot change settled amounts"
+        );
+        return;
+      }
+      db.create(BuyinClosureSummary::new, e -> {
+        e.setOrganizationId(org);
+        e.setLoanId(loanId);
+        e.setQuantity(quantity);
+        e.setPurchaseValue(value);
+        e.setExecutionCosts(costs);
+        e.setPurchaseCost(total);
+        e.setCashCollateralApplied(applied);
+        e.setCashCollateralReturned(returned);
+        e.setAveragePrice(price);
+        e.setReference(reference);
+        e.setClosedAt(instantValue(d, "closedAt"));
+      });
     }
 
     private void collateralApplied(long org, long id, Map<String, Object> d) {
