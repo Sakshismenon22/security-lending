@@ -280,7 +280,7 @@ export default function BuyinOrderPanel({
               </label>
             </div>
             <dl
-              className="db-live-confirm db-order-estimate"
+              className="db-buyin-purchase-estimate"
               aria-label="Buy-in purchase estimate"
             >
               <div>

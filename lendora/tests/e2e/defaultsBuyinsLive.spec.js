@@ -353,3 +353,45 @@ test('manual scan displays service errors and partial failures without claiming 
   await expect(page.getByRole('alert')).toContainText('1 loans could not be checked')
   await expect(page.getByRole('status')).toContainText('4 loans checked')
 })
+
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 800, height: 900 }, { width: 390, height: 844 }]) {
+  test(`buy-in estimate labels and currency amounts stay separated at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await session(page)
+    const rows = snapshot()
+    rows[0].security.price = 1363
+    rows[0].reportedData.quantity = 100
+    rows[0].requests = [{ id: 333, type: 'BUY_IN_REQUESTED', status: 'ACCEPTED' }]
+    await page.route(rowPath, route => route.fulfill({ json: { success: true, data: rows } }))
+    await page.goto('http://localhost:5175/defaults-buyins')
+    await page.getByRole('button', { name: 'Place buy-in order', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    const estimate = dialog.locator('.db-buyin-purchase-estimate')
+    await expect(estimate.locator('dd').last()).toHaveText('₹1,36,300')
+    const layout = await estimate.evaluate(element => {
+      const dialog = element.closest('[role="dialog"]')
+      return {
+        estimateOverflow: element.scrollWidth - element.clientWidth,
+        dialogOverflow: dialog.scrollWidth - dialog.clientWidth,
+        bounds: { left: dialog.getBoundingClientRect().left, right: dialog.getBoundingClientRect().right },
+        rows: [...element.children].map(row => {
+          const label = row.querySelector('dt').getBoundingClientRect()
+          const amount = row.querySelector('dd').getBoundingClientRect()
+          const bounds = row.getBoundingClientRect()
+          return { top: bounds.top, bottom: bounds.bottom, labelRight: label.right, amountLeft: amount.left, amountHeight: amount.height }
+        }),
+      }
+    })
+    expect(layout.rows).toHaveLength(4)
+    expect(layout.estimateOverflow).toBeLessThanOrEqual(1)
+    expect(layout.dialogOverflow).toBeLessThanOrEqual(1)
+    expect(layout.bounds.left).toBeGreaterThanOrEqual(0)
+    expect(layout.bounds.right).toBeLessThanOrEqual(viewport.width)
+    for (let index = 0; index < layout.rows.length; index++) {
+      const row = layout.rows[index]
+      expect(row.amountLeft - row.labelRight).toBeGreaterThanOrEqual(10)
+      expect(row.amountHeight).toBeLessThan(24)
+      if (index) expect(row.top).toBeGreaterThanOrEqual(layout.rows[index - 1].bottom - 1)
+    }
+  })
+}
