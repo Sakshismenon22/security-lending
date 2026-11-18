@@ -7,6 +7,7 @@ export default function BuyinLoanCloseout({
   record,
   organizationId,
   onRefresh,
+  recordExecution = false,
 }) {
   const [open, setOpen] = useState(false),
     [preview, setPreview] = useState(null),
@@ -70,17 +71,30 @@ export default function BuyinLoanCloseout({
       <button className="db-button db-primary" onClick={show}>
         {record.loanStatus === "CLOSED"
           ? "View loan closure"
-          : "Close loan after buy-in"}
+          : recordExecution
+            ? "Record execution & close loan"
+            : "Close loan after buy-in"}
       </button>
       {open && (
         <DefaultsBuyinsModal
-          title="Loan closure after buy-in"
+          title={
+            recordExecution
+              ? "Record executed buy-in & close loan"
+              : "Loan closure after buy-in"
+          }
           description="Close the remaining securities loan using received buy-in stock, apply cash collateral to purchase costs, and release the surplus."
           onClose={busy ? null : () => setOpen(false)}
         >
           <form onSubmit={submit}>
             {busy && !preview && (
               <p role="status">Checking loan closure eligibility…</p>
+            )}
+            {recordExecution && (
+              <p className="db-form-note">
+                The order execution and securities receipt are already recorded.
+                This confirms the existing fill for settlement and loan closure;
+                it does not place another order or create another trade.
+              </p>
             )}
             {preview && (
               <>

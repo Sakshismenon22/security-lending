@@ -309,3 +309,30 @@ paging and Refresh remain available.
 
 Restart lender-service and lifecycle-service and reload/restart LendDesk. This
 change requires no database migration and does not change the scheduled interval.
+
+## Purchase amount, fees and execution confirmation
+
+The order form's fee input is **Additional execution fees (₹)**. Zero means no
+extra execution fees; it is not the securities purchase price. The form separately
+shows the quoted/limit price, quantity-based purchase value and estimated total
+(value plus fees). A limit uses the maximum at its limit price; market estimates
+use the last recorded quote. Missing prices display Awaiting quote rather than a
+zero purchase amount. The actual fill price remains authoritative.
+
+The main internal-order flow is **Place buy-in order → wait for confirmed
+execution/receipt → Record execution & close loan → Confirm loan closure**. This
+last action confirms settlement of the existing saved fill and calls the existing
+validated closure endpoint. It does not create another order, report another trade,
+or credit inventory again. Partial coverage, pending operations or insufficient
+cash collateral still block closure and are shown in the confirmation dialog.
+
+The initial **Record external execution** action is an alternative for a trade executed
+outside this system. It is aligned with Place buy-in order and is not a required
+second step for an internal order. External reports still require securities
+receipt confirmation before closure.
+
+The execution table labels fees separately from total purchase amount. The amounts
+panel shows the purchase value, additional fees and total; after closure it uses
+the allocated closeout values across that loan's buy-ins, including actual cash
+collateral applied and returned. It shows Loan closed / buy-in settled after
+confirmation instead of continuing to describe the purchase as cash payable.

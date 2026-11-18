@@ -52,6 +52,7 @@ export function liveDefaultRecord(row) {
     backendLoanId: row.loan.id,
     loanStatus: row.loan.status,
     loanClosedAt: row.loan.closedAt,
+    loanCloseout: row.closeout || null,
     borrower: row.borrowerName || "—",
     security: row.security?.symbol || "—",
     quantity,

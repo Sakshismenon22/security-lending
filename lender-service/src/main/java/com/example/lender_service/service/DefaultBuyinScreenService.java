@@ -21,6 +21,7 @@ public class DefaultBuyinScreenService {
   private final TenantService tenants;
   private final LoanDefaultRepository defaults;
   private final BuyInRepository buyIns;
+  private final BuyinLoanCloseoutRepository closeouts;
   private final BuyinOrderRepository orders;
   private final LoanRepository loans;
   private final BorrowerConnectionRepository borrowers;
@@ -53,7 +54,7 @@ public class DefaultBuyinScreenService {
       .stream()
       .collect(Collectors.toMap(SecurityMaster::getId, Function.identity()));
     var allBuyIns = buyIns.findByOrganizationId(org, paging).getContent();
-    var allOrders=orders.findByOrganizationId(org);
+    var allOrders = orders.findByOrganizationId(org);
     var allRequests = requests.findByOrganizationId(org, paging).getContent();
     var allRecalls = recalls.findByOrganizationId(org, paging).getContent();
     var allMargins = margins.findByOrganizationId(org, paging).getContent();
@@ -64,9 +65,44 @@ public class DefaultBuyinScreenService {
         var row = new LinkedHashMap<String, Object>();
         var loan = found(Optional.ofNullable(allLoans.get(def.getLoanId())));
         row.put("default", def);
-        row.put("orders",allOrders.stream().filter(o->o.getDefaultId().equals(def.getId())).sorted(Comparator.comparing(BuyinOrder::getId).reversed()).toList());
+        row.put(
+          "orders",
+          allOrders
+            .stream()
+            .filter(o -> o.getDefaultId().equals(def.getId()))
+            .sorted(Comparator.comparing(BuyinOrder::getId).reversed())
+            .toList()
+        );
         row.put("reportedData", json.tree(def.getSourceData()));
         row.put("loan", loan);
+        var closeout = closeouts.findByOrganizationIdAndLoanId(
+          org,
+          loan.getId()
+        );
+        if (closeout.isPresent()) {
+          var settlement = new LinkedHashMap<String, Object>(
+            json.map(json.tree(json.write(closeout.get())))
+          );
+          var principal = allBuyIns
+            .stream()
+            .filter(
+              b ->
+                b.getLoanId().equals(loan.getId()) &&
+                b.getCloseoutQuantity() > 0
+            )
+            .map(b ->
+              b
+                .getPrice()
+                .multiply(java.math.BigDecimal.valueOf(b.getCloseoutQuantity()))
+            )
+            .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+          settlement.put("purchaseValue", principal);
+          settlement.put(
+            "executionCosts",
+            closeout.get().getPurchaseCost().subtract(principal)
+          );
+          row.put("closeout", settlement);
+        } else row.put("closeout", null);
         row.put(
           "borrowerName",
           Optional.ofNullable(allBorrowers.get(loan.getConnectionId()))

@@ -1,5 +1,4 @@
 import BuyinOrderPanel from "./BuyinOrderPanel";
-import { canReportBuyin } from "../api/defaultsBuyinsApi";
 import { number, rupees, caseDate } from "../data/defaultsBuyinsData";
 
 const Status = ({ children }) => (
@@ -38,15 +37,11 @@ export function LiveBuyinExecution({
           )}
         </div>
       )}
-      {canReportBuyin(record) && (
-        <button className="db-button db-primary" onClick={onReport}>
-          Record execution
-        </button>
-      )}
       <BuyinOrderPanel
         record={record}
         organizationId={organizationId}
         onRefresh={onRefresh}
+        onReport={onReport}
       />
       {record.reports.length ? (
         <div className="db-scroll">
@@ -56,7 +51,8 @@ export function LiveBuyinExecution({
                 <th>Buy-in</th>
                 <th>Quantity</th>
                 <th>Reported price</th>
-                <th>Costs</th>
+                <th>Execution fees</th>
+                <th>Total purchase amount</th>
                 <th>Trade reference</th>
                 <th>Inventory receipt</th>
                 <th>Status</th>
@@ -69,6 +65,12 @@ export function LiveBuyinExecution({
                   <td>{number(report.quantity)}</td>
                   <td>{rupees(report.price)}</td>
                   <td>{rupees(report.costs)}</td>
+                  <td>
+                    {rupees(
+                      Number(report.quantity) * Number(report.price) +
+                        Number(report.costs),
+                    )}
+                  </td>
                   <td>{report.executionReference || "—"}</td>
                   <td>
                     {report.inventoryReceivedAt
@@ -107,7 +109,11 @@ export function LiveBuyinExecution({
   );
 }
 export function LiveBuyinRecovery({ record }) {
-  const report = record.reports[0];
+  const report = record.reports[0],
+    closeout = record.loanCloseout;
+  const purchaseValue = report
+    ? Number(report.quantity) * Number(report.price)
+    : null;
   return (
     <article className="db-card">
       <h3>Owner-reported amounts</h3>
@@ -120,12 +126,28 @@ export function LiveBuyinRecovery({ record }) {
         </thead>
         <tbody>
           {[
-            ["Reported buy-in costs", report?.costs],
-            ["Reported collateral applied", report?.collateralApplied],
             [
-              "Reported execution amount before settlement",
-              report?.residualBalance,
+              closeout
+                ? "Allocated securities purchase value"
+                : "Securities purchase value",
+              closeout?.purchaseValue ?? purchaseValue,
             ],
+            [
+              closeout
+                ? "Allocated execution fees"
+                : "Additional execution fees",
+              closeout?.executionCosts ?? report?.costs,
+            ],
+            [
+              "Total purchase amount",
+              closeout?.purchaseCost ??
+                (report ? purchaseValue + Number(report.costs) : null),
+            ],
+            [
+              "Cash collateral applied",
+              closeout?.cashCollateralApplied ?? report?.collateralApplied,
+            ],
+            ["Cash collateral returned", closeout?.cashCollateralReturned],
           ].map(([label, value]) => (
             <tr key={label}>
               <td>{label}</td>
@@ -137,14 +159,17 @@ export function LiveBuyinRecovery({ record }) {
       <div className="db-card-bottom">
         <b>Settlement confirmation</b>
         <Status>
-          {report?.inventoryReceivedAt
-            ? "Inventory received · cash payable"
-            : "Awaiting securities receipt"}
+          {closeout
+            ? "Loan closed · buy-in settled"
+            : report?.inventoryReceivedAt
+              ? "Inventory received · cash payable"
+              : "Awaiting securities receipt"}
         </Status>
       </div>
       <p className="db-footnote">
         Received purchases create a payable ledger entry. They do not
-        automatically close the original loan or settle cash.
+        automatically close the original loan. After execution, use the
+        confirmation action to record settlement and close an eligible loan.
       </p>
     </article>
   );

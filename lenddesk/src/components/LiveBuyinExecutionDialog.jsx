@@ -51,7 +51,7 @@ export default function LiveBuyinExecutionDialog({
   }
   return (
     <DefaultsBuyinsModal
-      title="Record buy-in execution"
+      title="Record external buy-in execution"
       description="Record an already executed trade. Lifecycle verifies the outstanding obligation before publishing the execution report. This does not settle cash or collateral."
       onClose={busy ? null : onClose}
     >

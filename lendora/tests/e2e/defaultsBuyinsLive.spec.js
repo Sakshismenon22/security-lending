@@ -113,7 +113,7 @@ test('accepted live buy-in records an execution and displays the lifecycle repor
     return route.fulfill({ json: { success: true, data: rows[0].requests[0] } })
   })
   await page.goto('http://localhost:5175/defaults-buyins')
-  await page.getByRole('button', { name: 'Record execution', exact: true }).click()
+  await page.getByRole('button', { name: 'Record external execution', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByLabel('Executed quantity')).toHaveValue('15')
   await dialog.getByLabel('Execution price (₹)').fill('101')
@@ -123,7 +123,7 @@ test('accepted live buy-in records an execution and displays the lifecycle repor
   await expect(dialog).toHaveCount(0)
   expect(bodies).toHaveLength(1)
   expect(bodies[0]).toMatchObject({ buyinRequestId: 333, quantity: 15, price: 101, costs: 5, executionReference: 'TRADE-123' })
-  await expect(page.getByRole('button', { name: 'Record execution', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Record external execution', exact: true })).toHaveCount(0)
   rows[0].requests.forEach(item => { item.status = 'COMPLETED' })
   rows[0].buyIns = [{ id: 41, quantity: 15, price: 101, costs: 5, collateralApplied: 0, residualBalance: 1520, status: 'EXECUTED', executionReference: 'TRADE-123', createdAt: '2026-11-18T09:02:00Z' }]
   await refresh(page)
@@ -143,7 +143,7 @@ test('margin defaults cannot request securities buy-ins and stale execution erro
   rows[0].default.obligationType = 'RECALL'
   rows[0].requests = [{ id: 333, type: 'BUY_IN_REQUESTED', status: 'ACCEPTED', createdAt: '2026-11-18T09:00:00Z' }]
   await refresh(page)
-  await page.getByRole('button', { name: 'Record execution', exact: true }).click()
+  await page.getByRole('button', { name: 'Record external execution', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Execution price (₹)').fill('101')
   await dialog.getByLabel('Trade confirmation reference').fill('TRADE-123')
@@ -156,6 +156,10 @@ test('margin defaults cannot request securities buy-ins and stale execution erro
 test('demo market buy-in order is persisted and received inventory appears after fill', async ({ page }) => {
   await session(page)
   const rows = snapshot()
+  rows[0].security.price = 100
+  rows[0].loan.outstandingQuantity = 15
+  const extraExecutions = []
+  await page.route('**/organizations/37/defaults/5/buy-in-executions', route => { extraExecutions.push(route.request().postDataJSON()); return route.fulfill({ json: { success: true, data: {} } }) })
   rows[0].requests = [{ id: 333, type: 'BUY_IN_REQUESTED', status: 'ACCEPTED', createdAt: '2026-11-18T09:00:00Z' }]
   await page.route(rowPath, route => route.fulfill({ json: { success: true, data: rows } }))
   const bodies = []
@@ -166,10 +170,15 @@ test('demo market buy-in order is persisted and received inventory appears after
     return route.fulfill({ json: { success: true, data: rows[0].orders[0] } })
   })
   await page.goto('http://localhost:5175/defaults-buyins')
+  const placeBox=await page.getByRole('button',{name:'Place buy-in order',exact:true}).boundingBox(),recordBox=await page.getByRole('button',{name:'Record external execution',exact:true}).boundingBox()
+  expect(Math.abs(placeBox.height-recordBox.height)).toBeLessThan(2)
+  expect(Math.abs(placeBox.y-recordBox.y)<2 || (Math.abs(placeBox.x-recordBox.x)<2 && Math.abs(placeBox.width-recordBox.width)<2)).toBeTruthy()
   await page.getByRole('button', { name: 'Place buy-in order', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('No external broker order')
-  await dialog.getByLabel('Costs (₹)', { exact: true }).fill('5')
+  await dialog.getByLabel('Additional execution fees (₹)', { exact: true }).fill('5')
+  await expect(dialog.getByRole('definition').filter({hasText:'₹1,505'})).toBeVisible()
+  await expect(dialog).toContainText('Execution fees are optional and may be ₹0')
   await dialog.getByRole('button', { name: 'Place demo order', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   expect(bodies[0]).toMatchObject({ buyinRequestId: 333, type: 'MARKET', quantity: 15, limitPrice: null, costs: 5 })
@@ -183,6 +192,19 @@ test('demo market buy-in order is persisted and received inventory appears after
   await expect(page.getByRole('region', { name: 'Buy-in orders' })).toContainText('FILLED')
   await expect(page.getByText('Inventory received · cash payable', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /^Receive securities/ })).toHaveCount(0)
+  await expect(page.getByRole('button',{name:'Record execution & close loan',exact:true})).toBeVisible()
+  const preview={loanStatus:'ACTIVE',outstandingQuantity:15,receivedQuantity:15,purchaseCost:1520,cashCollateralHeld:1700,cashCollateralToReturn:180,eligible:true,blockers:[]}
+  await page.route('**/organizations/37/defaults/5/loan-closeout-preview',route=>route.fulfill({json:{success:true,data:preview}}))
+  const closures=[]
+  await page.route('**/organizations/37/defaults/5/close-loan',route=>{closures.push(route.request().postDataJSON());rows[0].loan.status='CLOSED';rows[0].loan.outstandingQuantity=0;rows[0].default.status='RESOLVED';rows[0].closeout={purchaseCost:1520,cashCollateralApplied:1520,cashCollateralReturned:180,reference:closures[0].reference,createdAt:'2026-11-18T11:00:00Z'};return route.fulfill({json:{success:true,data:rows[0].closeout}})})
+  await page.getByRole('button',{name:'Record execution & close loan',exact:true}).click()
+  await expect(page.getByRole('dialog')).toContainText('does not place another order or create another trade')
+  await page.getByRole('dialog').getByRole('button',{name:'Confirm loan closure',exact:true}).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  expect(closures).toHaveLength(1);expect(bodies).toHaveLength(1);expect(extraExecutions).toHaveLength(0)
+  await expect(page.getByText('Loan closed · buy-in settled',{exact:true})).toBeVisible()
+  await expect(page.getByRole('button',{name:'View loan closure',exact:true})).toBeVisible()
+
 })
 
 test('unmatched limit order can be cancelled and an external receipt requires confirmation', async ({ page }) => {

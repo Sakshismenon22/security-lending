@@ -798,3 +798,8 @@
 .db-live-confirm > div { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e7dbf3; gap: 15px; }
 .db-live-confirm dd { margin: 0; }
 .db-page a.db-button { text-decoration: none; }
+
+.db-buyin-actions{display:flex;align-items:stretch;flex-wrap:wrap;gap:8px;margin:8px 0}
+.db-buyin-actions>.db-button{flex:1 1 150px;min-height:32px;display:inline-flex;align-items:center;justify-content:center;text-align:center}
+.db-order-estimate{margin-top:12px;border-top:1px solid var(--border,#e5dff0);padding-top:8px}
+.db-order-estimate>div:last-child{font-weight:750;color:var(--primary,#6b43ff)}
