@@ -271,3 +271,41 @@ without repeating financial movements; the existing outbox handles delivery.
 Restart lender-service, borrower-service, BorrowDesk and **both FIX adapters** after
 upgrading so the new confirmation type is supported. The notification bell is a
 separate UI feature and is not wired by this summary change.
+
+## Run a default scan from LendDesk
+
+The live Defaults & Buy-ins page has **Run default scan** next to Refresh. It calls
+`POST /api/v1/organizations/{org}/lenddesk/defaults-buyins/scan` through the normal
+signed-in lender API, which verifies organization access and delegates to the
+lifecycle service. The button shows a busy state and prevents duplicate clicks.
+It reports checked loans/current open cases, displays partial failures or service
+errors, and refreshes the case register. The page's regular polling receives
+subsequent projection updates. The sample preview has no manual scan action.
+
+The manual scan uses exactly the same `DefaultLifecycleService.evaluate` rules,
+organization locks and durable case IDs as the scheduled scan. It checks only the
+current organization's active/defaulted loans plus open cases (including cases on
+closed loans that need resolution). It runs immediately even if scheduled default
+jobs are disabled or the automatic interval is hourly. One failed loan does not
+prevent the remaining loans from being checked. Manual scanning does not place a
+buy-in or close a loan.
+
+The lender calls a protected internal endpoint:
+`POST /internal/lifecycle/organizations/{org}/defaults/scan`. Lender and lifecycle
+must share `LENDORA_PROVISIONING_KEY`; the key never reaches the browser. The
+`start-lendora.cmd` launcher already exports this key to its service processes.
+For individually launched services, set the same key on both processes. The
+lender's `LIFECYCLE_SERVICE_URL` defaults to `http://localhost:8085`.
+
+Case events still travel through the existing durable outbox/Kafka projection
+flow. A successful scan can therefore finish before new rows appear in LendDesk.
+If Kafka is stopped or a delivery is failed, restore/retry delivery using the
+existing recovery tools; running another scan is not a substitute for transport
+recovery. Repeated scans do not create duplicate cases.
+
+The page's full global top bar (search, organization controls, clock/avatar) has
+been removed from live and sample views. Page-local filters, sorting, export,
+paging and Refresh remain available.
+
+Restart lender-service and lifecycle-service and reload/restart LendDesk. This
+change requires no database migration and does not change the scheduled interval.

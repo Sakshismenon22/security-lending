@@ -11,6 +11,10 @@ import org.springframework.web.bind.annotation.*;
 public class DefaultBuyinScreenController {
 
   private final DefaultBuyinScreenService screen;
+  private final com.example.lender_service.service.DefaultScanService scans;
+
+  @PostMapping("/scan")
+  public ApiResponse<?> scan(@PathVariable long org) {return ApiResponse.ok(scans.run(org));}
 
   @GetMapping
   public ApiResponse<?> snapshot(@PathVariable long org) {

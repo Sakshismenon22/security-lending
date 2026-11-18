@@ -126,6 +126,11 @@ export function liveDefaultRecord(row) {
   };
 }
 export const defaultsBuyinsApi = {
+  scan: (org) =>
+    lenderPost(
+      `/api/v1/organizations/${org}/lenddesk/defaults-buyins/scan`,
+      {},
+    ),
   closeoutPreview: (org, id) =>
     lenderGet(
       `/api/v1/organizations/${org}/defaults/${id}/loan-closeout-preview`,

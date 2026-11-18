@@ -50,6 +50,7 @@ class DefaultLifecyclePersistenceTests {
   ObjectMapper json;
 
   @Autowired CashCollateralMovementRepository cashMovements;
+  @Autowired DefaultScanService manualScans;
 
   @Test void buyinCollateralApplicationReducesTheRebateCashBalanceInThePersistedQuery() {
     em.createNativeQuery("insert into collateral_position(id,organization_id,connection_id,msla_id,loan_id,borrower_loan_id,borrower_position_id,asset_id,asset_type,quantity,cash_amount,haircut,status,created_at) values(900,1,1,1,77,1,1,1,'CASH',0,0,0,'APPLIED',:at)").setParameter("at",Instant.parse("2026-11-18T10:00:00Z")).executeUpdate();
@@ -77,7 +78,7 @@ class DefaultLifecyclePersistenceTests {
     loan.setMaturityAt(Instant.now().minusSeconds(1));
     loans.saveAndFlush(loan);
     long loanId = loan.getId();
-    defaults.evaluate(1, loanId);
+    manualScans.run(1);
     em.flush();
     em.clear();
     defaults.evaluate(1, loanId);

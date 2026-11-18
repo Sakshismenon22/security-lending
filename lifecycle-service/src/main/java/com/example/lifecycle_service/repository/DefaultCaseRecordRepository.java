@@ -9,5 +9,7 @@ public interface DefaultCaseRecordRepository
 {
   List<DefaultCaseRecord> findByOrganizationIdAndLoanId(Long org, Long loan);
   Optional<DefaultCaseRecord> findByIdAndOrganizationId(Long id, Long org);
+  List<DefaultCaseRecord> findByOrganizationIdAndStatus(Long org,String status);
+  long countByOrganizationIdAndStatus(Long org,String status);
   List<DefaultCaseRecord> findByStatus(String status);
 }

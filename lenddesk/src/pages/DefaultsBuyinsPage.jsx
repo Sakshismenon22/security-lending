@@ -13,7 +13,6 @@ import {
   LiveBuyinRecovery,
   LiveObligation,
 } from "../components/DefaultsBuyinsLiveDetails";
-import Topbar from "../components/Topbar";
 import DefaultsBuyinsDialog from "../components/DefaultsBuyinsDialog";
 import {
   caseDate,
@@ -421,13 +420,14 @@ function DefaultsBuyinsWorkspace({ live, organizationId, refreshKey }) {
     [detailsTab, setDetailsTab] = useState("Case overview");
   const [draft, setDraft] = useState(blankFilters),
     [filters, setFilters] = useState(blankFilters);
-  const [globalSearch, setGlobalSearch] = useState(""),
-    [page, setPage] = useState(0);
+  const [page, setPage] = useState(0);
   const [sort, setSort] = useState({ key: "id", direction: 1 }),
     [modal, setModal] = useState(null),
     [notice, setNotice] = useState("");
   const workspace = useRef(null);
-  const [searchKey, setSearchKey] = useState(0);
+  const [scanning, setScanning] = useState(false),
+    [scanError, setScanError] = useState("");
+  const scanInFlight = useRef(false);
   const defaults = records.filter(
       (item) => !item.order && !requestPending(item) && !isResolved(item),
     ),
@@ -458,14 +458,9 @@ function DefaultsBuyinsWorkspace({ live, organizationId, refreshKey }) {
             : !item.deadline?.startsWith("2026-11-19"))
       )
         return false;
-      return (
-        `${item.id} ${item.loanId} ${item.borrower} ${item.security} ${item.order?.buyinId || ""}`
-          .toLowerCase()
-          .includes(globalSearch.toLowerCase()) &&
-        `${item.security} ${item.id} ${item.loanId}`
-          .toLowerCase()
-          .includes(filters.search.toLowerCase())
-      );
+      return `${item.security} ${item.id} ${item.loanId}`
+        .toLowerCase()
+        .includes(filters.search.toLowerCase());
     })
     .sort(
       (a, b) =>
@@ -496,8 +491,6 @@ function DefaultsBuyinsWorkspace({ live, organizationId, refreshKey }) {
   function reset() {
     setDraft(blankFilters);
     setFilters(blankFilters);
-    setGlobalSearch("");
-    setSearchKey((current) => current + 1);
     setPage(0);
   }
   function changeTab(value) {
@@ -656,16 +649,31 @@ function DefaultsBuyinsWorkspace({ live, organizationId, refreshKey }) {
     link.click();
     URL.revokeObjectURL(url);
   }
+  async function runDefaultScan() {
+    if (scanInFlight.current) return;
+    scanInFlight.current = true;
+    setScanning(true);
+    setScanError("");
+    try {
+      const result = await defaultsBuyinsApi.scan(organizationId);
+      setNotice(
+        `Default scan finished: ${result.loansChecked} loans checked, ${result.openCases} open cases. Case updates arrive automatically after processing.`,
+      );
+      if (result.loansFailed > 0)
+        setScanError(
+          `${result.loansFailed} loans could not be checked. Refresh cases and retry the scan.`,
+        );
+      refreshLive();
+    } catch (error) {
+      setScanError(error.message);
+    } finally {
+      scanInFlight.current = false;
+      setScanning(false);
+    }
+  }
   const openBuyin = () => setModal({ kind: "buyin", record: selected });
   return (
     <div className="db-route">
-      <Topbar
-        key={searchKey}
-        onSearch={(value) => {
-          setGlobalSearch(value);
-          setPage(0);
-        }}
-      />
       <section className="db-page">
         <header className="db-heading">
           <div>
@@ -683,6 +691,13 @@ function DefaultsBuyinsWorkspace({ live, organizationId, refreshKey }) {
             </button>
             {live ? (
               <>
+                <button
+                  className="db-button db-primary"
+                  disabled={scanning}
+                  onClick={runDefaultScan}
+                >
+                  {scanning ? "Scanning…" : "Run default scan"}
+                </button>
                 <Link className="db-button" to="/defaults-buyins/preview">
                   Sample preview
                 </Link>
@@ -715,6 +730,11 @@ function DefaultsBuyinsWorkspace({ live, organizationId, refreshKey }) {
             ? "Defaults are reported by the lifecycle owner. Buy-in requests are queued for processing; execution reports do not confirm settlement."
             : "Frontend preview · Sample cases and local drafts. Notices and buy-in orders are not sent."}
         </p>
+        {scanError && (
+          <p className="db-load-error" role="alert">
+            {scanError}
+          </p>
+        )}
         {loadError && (
           <div className="db-load-error" role="alert">
             Unable to refresh live cases: {loadError}{" "}

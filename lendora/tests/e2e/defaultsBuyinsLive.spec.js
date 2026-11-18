@@ -288,3 +288,46 @@ test('closure preview blocks insufficient receipts and revalidates changed colla
   await expect(dialog.getByRole('alert')).toContainText('Insufficient cash collateral')
   await expect(dialog).toBeVisible()
 })
+
+test('manual default scan runs once, refreshes cases and removes the global top bar', async ({ page }) => {
+  await session(page)
+  let rows = []
+  await page.route(rowPath, route => route.fulfill({ json: { success: true, data: rows } }))
+  const calls = []
+  let finish
+  const gate = new Promise(resolve => { finish = resolve })
+  await page.route('**/api/v1/organizations/37/lenddesk/defaults-buyins/scan', async route => {
+    calls.push(route.request().postDataJSON())
+    await gate
+    rows = snapshot()
+    await route.fulfill({ json: { success: true, data: { organizationId: 37, loansChecked: 3, openCases: 2, loansFailed: 0 } } })
+  })
+  await page.goto('http://localhost:5175/defaults-buyins')
+  await expect(page.locator('.topbar')).toHaveCount(0)
+  await expect(page.getByPlaceholder('Search loans, securities, borrowers, or IDs…')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Run default scan', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Scanning…', exact: true })).toBeDisabled()
+  expect(calls).toEqual([{}])
+  finish()
+  await expect(page.getByRole('status')).toContainText('3 loans checked, 2 open cases')
+  await expect(page.locator('.db-main-table')).toContainText('DEF-000005')
+  await expect(page.getByRole('button', { name: 'Run default scan', exact: true })).toBeEnabled()
+  await page.goto('http://localhost:5175/defaults-buyins/preview')
+  await expect(page.locator('.topbar')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Run default scan', exact: true })).toHaveCount(0)
+})
+
+test('manual scan displays service errors and partial failures without claiming complete success', async ({ page }) => {
+  await session(page)
+  await page.route(rowPath, route => route.fulfill({ json: { success: true, data: [] } }))
+  let fail = true
+  await page.route('**/api/v1/organizations/37/lenddesk/defaults-buyins/scan', route => route.fulfill(fail ? { status: 503, json: { detail: 'Lifecycle scan temporarily unavailable' } } : { json: { success: true, data: { organizationId: 37, loansChecked: 4, loansFailed: 1, openCases: 2 } } }))
+  await page.goto('http://localhost:5175/defaults-buyins')
+  await page.getByRole('button', { name: 'Run default scan', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('temporarily unavailable')
+  await expect(page.getByRole('button', { name: 'Run default scan', exact: true })).toBeEnabled()
+  fail = false
+  await page.getByRole('button', { name: 'Run default scan', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('1 loans could not be checked')
+  await expect(page.getByRole('status')).toContainText('4 loans checked')
+})
