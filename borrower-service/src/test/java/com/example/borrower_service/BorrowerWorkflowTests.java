@@ -47,6 +47,7 @@ class BorrowerWorkflowTests {
     @Autowired BorrowerRepository db;
     @Autowired MockMvc mvc;
     @Autowired ApplicationContext context;
+    @Autowired jakarta.persistence.EntityManager billingEm;
     static final AtomicLong sequence = new AtomicLong(1000);
 
     static BigDecimal bd(String value) {
@@ -375,6 +376,26 @@ class BorrowerWorkflowTests {
         0,
         bd("8000").compareTo(db.find(TraderAccount.class, org).getAvailable())
       );
+      var feeEntries = db.rows(TraderAccountTransaction.class, eq("organizationId", org), eq("type", "BUY_IN_EXECUTION_FEE"));
+      assertEquals(1, feeEntries.size());
+      assertEquals(0, money(feeEntries.get(0), "amount").signum());
+      assertEquals(0, bd("5").compareTo(money(feeEntries.get(0), "execution_fee_amount")));
+      assertEquals(loan, n(feeEntries.get(0), "loan_id"));
+      mvc.perform(get("/api/v1/organizations/" + org + "/transactions"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.content[0].executionFeeAmount").value(5));
+      assertTrue(portfolio.statement(org).contains("execution_fee_amount"));
+      // Reconstruct a pre-upgrade closure with no fee allocation, then backfill twice.
+      billingEm.flush();
+      billingEm.createQuery("delete from TraderAccountTransaction t where t.organizationId=:org and t.type='BUY_IN_EXECUTION_FEE'")
+          .setParameter("org", org).executeUpdate();
+      String migration = new org.springframework.core.io.ClassPathResource("db/migration/V20__buyin_execution_fee_ledger.sql")
+          .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+      for (int attempt = 0; attempt < 2; attempt++) for (String statement : migration.split(";"))
+          if (statement.contains("INSERT INTO")) billingEm.createNativeQuery(statement).executeUpdate();
+      billingEm.clear();
+      assertEquals(1, db.rows(TraderAccountTransaction.class, eq("organizationId", org), eq("type", "BUY_IN_EXECUTION_FEE")).size());
+      assertEquals(0, bd("8000").compareTo(money(account(org), "available")));
       long other = org();
       mvc
         .perform(get("/api/v1/organizations/" + other + "/loans/" + loan))
@@ -885,6 +906,98 @@ class BorrowerWorkflowTests {
         mvc.perform(get(path + "/fees"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].status").value("PAID"));
+    }
+
+    @Test
+    void returnAndLateClosureFeeConfirmationsMarkBillsPaidWithoutDuplicateReceipts() throws Exception {
+        for (int scenario = 0; scenario < 3; scenario++) {
+            long org = org(), security = security("100");
+            fund(org, "10000");
+            long loan = loan(org, security, agreement(org, 0), 10), fee = sequence.incrementAndGet();
+            apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+            var bill = Map.<String,Object>of("loanId", loan, "periodStart", "2026-11-01", "periodEnd", "2026-11-02",
+                "rate", "0.03", "amount", "100", "dueDate", "2026-11-03");
+            if (scenario != 2) apply(org, "FEE_BILL_ISSUED", fee, 1, bill);
+            long ret = n(lending.requestReturn(org, loan, new ReturnRequest(scenario == 0 ? 4 : 10)), "id");
+            apply(org, "RETURN_SETTLED", ret, 1, Map.of("reference", "return-paid"));
+            if (scenario == 2) apply(org, "FEE_BILL_ISSUED", fee, 1, bill);
+            var payment = db.rows(PaymentRequest.class, eq("feeId", fee)).get(0);
+            assertEquals("SETTLEMENT_SUBMITTED", payment.get("status"));
+            assertEquals("PAYMENT_PENDING", db.owned(LendingFee.class, org, fee).get("status"));
+            var cash = money(account(org), "available");
+            apply(org, "PAYMENT_CONFIRMED", n(payment, "id"), 1, Map.of("amount", "100"));
+            var paidAt = db.owned(LendingFee.class, org, fee).get("paid_at");
+            assertNotNull(paidAt);
+            assertEquals("PAID", db.owned(LendingFee.class, org, fee).get("status"));
+            // A repeated lender acknowledgement must not debit or release cash a second time.
+            apply(org, "PAYMENT_CONFIRMED", n(payment, "id"), 2, Map.of("amount", "100"));
+            assertEquals(paidAt, db.owned(LendingFee.class, org, fee).get("paid_at"));
+            assertEquals(0, cash.compareTo(money(account(org), "available")));
+            assertEquals(0, money(account(org), "blocked").signum());
+            assertEquals(1, db.rows(OutboxEvent.class, eq("organizationId", org), eq("eventType", "FEE_PAYMENT_RECEIVED")).size());
+            mvc.perform(get("/api/v1/organizations/" + org + "/fees"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.content[0].status").value("PAID"));
+        }
+    }
+
+    @Test
+    void confirmedBillingMigrationRepairsOnlyProvenPaymentsWithoutCashMovements() throws Exception {
+        long org = org(), security = security("100");
+        fund(org, "10000");
+        long loan = loan(org, security, agreement(org, 0), 10);
+        long paidFee = sequence.incrementAndGet(), pendingFee = sequence.incrementAndGet();
+        for (int i = 0; i < 2; i++) {
+            String day = "2026-11-0" + (i + 1);
+            apply(org, "FEE_BILL_ISSUED", i == 0 ? paidFee : pendingFee, 1, Map.of("loanId", loan,
+                "periodStart", day, "periodEnd", day, "rate", "0.03", "amount", "100", "dueDate", "2026-12-01"));
+        }
+        long paid = n(payments.payFee(org, paidFee, "paid"), "id");
+        apply(org, "PAYMENT_CONFIRMED", paid, 1, Map.of("amount", "100"));
+        payments.payFee(org, pendingFee, "still-pending");
+        db.edit(LendingFee.class, paidFee, f -> { f.setStatus("PAYMENT_PENDING"); f.setPaidAt(null); });
+        long rebate = sequence.incrementAndGet();
+        apply(org, "REBATE_ACCRUED", rebate, 1, Map.of("loanId", loan, "rate", "0.01", "amount", "10", "date", "2026-11-01", "paymentDate", "2026-11-02"));
+        apply(org, "REBATE_PAID", rebate, 2, Map.of("amount", "10"));
+        db.edit(Rebate.class, rebate, r -> r.setStatus("ACCRUED"));
+        var cash = money(account(org), "available");
+        var blocked = money(account(org), "blocked");
+        String sql = new org.springframework.core.io.ClassPathResource("db/migration/V19__reconcile_confirmed_billing_status.sql")
+            .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        billingEm.flush();
+        for (int attempt = 0; attempt < 2; attempt++) for (String statement : sql.split(";"))
+            if (!statement.isBlank()) billingEm.createNativeQuery(statement).executeUpdate();
+        billingEm.clear();
+        assertEquals("PAID", db.owned(LendingFee.class, org, paidFee).get("status"));
+        assertNotNull(db.owned(LendingFee.class, org, paidFee).get("paid_at"));
+        assertEquals("DUE", db.owned(LendingFee.class, org, pendingFee).get("status"));
+        assertEquals("PAID", db.owned(Rebate.class, org, rebate).get("status"));
+        assertEquals(0, cash.compareTo(money(account(org), "available")));
+        assertEquals(0, blocked.compareTo(money(account(org), "blocked")));
+        assertEquals(1, db.rows(RebatePayment.class, eq("organizationId", org)).size());
+    }
+
+    @Test
+    void legacySettledReturnFeeRepairSubmitsReservedCashOnce() {
+        long org = org(), security = security("100");
+        fund(org, "10000");
+        long loan = loan(org, security, agreement(org, 0), 10), fee = sequence.incrementAndGet();
+        apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+        apply(org, "FEE_BILL_ISSUED", fee, 1, Map.of("loanId", loan, "periodStart", "2026-11-01", "periodEnd", "2026-11-02",
+            "rate", "0.03", "amount", "100", "dueDate", "2026-11-03"));
+        long ret = n(lending.requestReturn(org, loan, new ReturnRequest(4)), "id");
+        var request = db.rows(PaymentRequest.class, eq("feeId", fee)).get(0);
+        var available = money(account(org), "available");
+        payments.resumeSettledReturnFee(org, n(request, "id"));
+        assertEquals("PENDING", db.owned(PaymentRequest.class, org, n(request, "id")).get("status"));
+        // Reproduce the old partial-return state, before the fee receipt was ever queued.
+        db.edit(LoanReturn.class, ret, e -> { e.setStatus("SETTLED"); e.setSettledAt(Instant.now()); });
+        db.edit(Loan.class, loan, e -> { e.setOutstandingQuantity(6L); e.setStatus("ACTIVE"); });
+        payments.resumeSettledReturnFee(org, n(request, "id"));
+        payments.resumeSettledReturnFee(org, n(request, "id"));
+        assertEquals("SETTLEMENT_SUBMITTED", db.owned(PaymentRequest.class, org, n(request, "id")).get("status"));
+        assertEquals(0, available.compareTo(money(account(org), "available")));
+        assertEquals(0, bd("100").compareTo(money(account(org), "blocked")));
+        assertEquals(1, db.rows(OutboxEvent.class, eq("organizationId", org), eq("eventType", "FEE_PAYMENT_RECEIVED")).size());
     }
 
     @Test
@@ -1583,6 +1696,35 @@ class BorrowerWorkflowTests {
         apply(org, "RECALL_UPDATED", recall, 1, fields);
         assertEquals("FULFILLED", db.owned(Recall.class, org, recall).get("status"));
         assertEquals(5, n(db.owned(Recall.class, org, recall), "fulfilled_quantity"));
+    }
+
+    @Test
+    void securitiesCollateralLiquidationRemovesSoldHoldingsAndHoldsCashUntilSettlement() {
+        long org=org(), security=security("100"), pledgedSecurity=security("200");
+        fund(org,"20000");
+        long loan=loan(org,security,agreement(org,pledgedSecurity),10);
+        apply(org,"LOAN_SETTLED",loan,1,Map.of());
+        db.holding(org,pledgedSecurity);
+        db.edit(Holding.class,new HoldingId(org,pledgedSecurity),h->{h.setOwnedQuantity(100L);h.setAverageCost(bd("100"));});
+        long position=n(collateral.post(org,loan,new AllocationRequest("SECURITY",pledgedSecurity,60,BigDecimal.ZERO)),"id");
+        apply(org,"COLLATERAL_PLEDGED",position,1,Map.of());
+        var available=money(account(org),"available");var pledged=money(account(org),"pledged");
+        var data=Map.<String,Object>of("loanId",loan,"securityId",pledgedSecurity,"quantity",60,"price","200","proceeds","12000","reference","SECURITY-SALE");
+        var sale=event(org,"COLLATERAL_LIQUIDATED",position,2,data);
+        projections.apply(sale);projections.apply(sale);
+        var holding=db.find(Holding.class,new HoldingId(org,pledgedSecurity));
+        assertEquals(40,holding.getOwnedQuantity());assertEquals(0,holding.getPledgedQuantity());
+        assertEquals(0,bd("6000").compareTo(holding.getRealizedPnl()));
+        var lot=db.owned(CollateralPosition.class,org,position);
+        assertEquals("CASH",lot.get("asset_type"));assertEquals(0,bd("12000").compareTo(money(lot,"cash_amount")));
+        assertEquals(0,available.compareTo(money(account(org),"available")));
+        assertEquals(0,pledged.add(bd("12000")).compareTo(money(account(org),"pledged")));
+        assertEquals(1,db.rows(TraderAccountTransaction.class,eq("organizationId",org),eq("type","COLLATERAL_SECURITY_SOLD")).size());
+        apply(org,"COLLATERAL_APPLIED",position,3,Map.of("amount","10005","reference","SECURITY-CLOSE"));
+        apply(org,"COLLATERAL_RELEASED",position,4,Map.of("cashAmount","1995","quantity",0));
+        assertEquals(0,available.add(bd("1995")).compareTo(money(account(org),"available")));
+        assertEquals(0,pledged.compareTo(money(account(org),"pledged")));
+        assertEquals(40,holding.getOwnedQuantity());
     }
 
     @Test

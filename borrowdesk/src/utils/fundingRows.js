@@ -13,6 +13,8 @@ export function fundingRows(transactions, context) {
     let loan, payment, order;
     const reference = row.reference;
     switch (row.type) {
+      case 'COLLATERAL_SECURITY_SOLD':
+      case 'BUY_IN_EXECUTION_FEE': loan = find('loans', row.loanId ?? row.loan_id); break;
       case 'COLLATERAL_PLEDGED': loan = find('loans', reference); break;
       case 'COLLATERAL_RELEASED': loan = find('loans', find('collateral', reference)?.loanId); break;
       case 'DEPOSIT_CONFIRMED':

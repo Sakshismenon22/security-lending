@@ -145,7 +145,8 @@ public class ReadService {
           linkedLoan == null ? null : linkedLoan.getId(),
           borrower == null ? null : borrower.getId(),
           borrower == null ? null : borrower.getName(),
-          linkedLoan == null ? null : linkedLoan.getBorrowerLoanId()
+          linkedLoan == null ? null : linkedLoan.getBorrowerLoanId(),
+          entry.getExecutionFeeAmount()
         );
       })
     );

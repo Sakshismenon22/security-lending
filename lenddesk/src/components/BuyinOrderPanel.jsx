@@ -1,3 +1,4 @@
+import CollateralSalePanel from "./CollateralSalePanel";
 import BuyinLoanCloseout from "./BuyinLoanCloseout";
 import { useRef, useState } from "react";
 import { canReportBuyin, defaultsBuyinsApi } from "../api/defaultsBuyinsApi";
@@ -82,6 +83,11 @@ export default function BuyinOrderPanel({
   );
   return (
     <section className="db-buyin-orders" aria-label="Buy-in orders">
+      <CollateralSalePanel
+        record={record}
+        organizationId={organizationId}
+        onRefresh={onRefresh}
+      />
       <div className="db-buyin-actions">
         <BuyinLoanCloseout
           record={record}
@@ -89,7 +95,7 @@ export default function BuyinOrderPanel({
           onRefresh={onRefresh}
           recordExecution={internalFill}
         />
-        {canReportBuyin(record) && (
+        {canReportBuyin(record) && !record.collateralFunding?.needsSale && (
           <>
             <button
               className="db-button db-primary"
@@ -109,7 +115,7 @@ export default function BuyinOrderPanel({
           </>
         )}
       </div>
-      {canReportBuyin(record) && (
+      {canReportBuyin(record) && !record.collateralFunding?.needsSale && (
         <p className="db-footnote">
           Place an order here, or record an external trade. Once execution is
           confirmed, record settlement to close the loan.
@@ -329,6 +335,16 @@ export default function BuyinOrderPanel({
                 </dd>
               </div>
             </dl>
+            {record.collateralFunding && (
+              <p className="db-form-note">
+                Available cash collateral:{" "}
+                {rupees(record.collateralFunding.cashHeld)}.{" "}
+                {estimatedTotal != null &&
+                estimatedTotal > Number(record.collateralFunding.cashHeld)
+                  ? "Additional cash collateral is required for this order."
+                  : "The purchase and execution fees will be settled from this collateral."}
+              </p>
+            )}
             <p className="db-form-note">
               Execution fees are optional and may be ₹0. Securities are
               purchased at the execution price; the final total is quantity ×
@@ -355,7 +371,16 @@ export default function BuyinOrderPanel({
               >
                 Cancel
               </button>
-              <button className="db-button db-primary" disabled={busy}>
+              <button
+                className="db-button db-primary"
+                disabled={
+                  busy ||
+                  record.collateralFunding?.needsSale ||
+                  (estimatedTotal != null &&
+                    record.collateralFunding?.cashHeld != null &&
+                    estimatedTotal > Number(record.collateralFunding.cashHeld))
+                }
+              >
                 {busy ? "Submitting…" : "Place order"}
               </button>
             </footer>

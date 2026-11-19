@@ -64,6 +64,7 @@ class LenderWorkflowTests {
   @Autowired RecallRepository recalls;
   @Autowired LoanDefaultRepository defaults;
   @Autowired BuyinOrderService buyinOrders;
+  @Autowired CollateralLiquidationService liquidation;
   @Autowired BuyinOrderRepository buyinOrderRows;
   @Autowired BuyinInventoryService buyinReceipts;
   @Autowired BuyinLoanCloseoutService buyinCloseouts;
@@ -291,6 +292,20 @@ class LenderWorkflowTests {
         .andExpect(jsonPath("$.data.records.totalElements").value(1))
         .andExpect(jsonPath("$.data.records.content[0].category").value("fees"))
         .andExpect(jsonPath("$.data.records.content[0].status").value("DUE"));
+    // Daily rows must reflect the actual linked settlement, not their original accrual status.
+    command(o, "FEE_PAYMENT_RECEIVED", 991003L, 10,
+        new FeePaymentCommand(l.getBorrowerLoanId(), bd("0.821918"), 771L));
+    mvc.perform(get(path).param("tab", "FEE"))
+        .andExpect(jsonPath("$.data.records.content[0].status").value("PAID"))
+        .andExpect(jsonPath("$.data.records.content[0].settlementStatus").value("PAID"));
+    lifecycle(o, "REBATE_ACCRUED", 991004L, 1, Map.of("loanId", l.getId(), "amount", "0.301370",
+        "rate", "0.01", "date", day, "paymentDate", day));
+    lifecycle(o, "REBATE_PAID", 991004L, 2, Map.of("loanId", l.getId(), "amount", "0.301370"));
+    mvc.perform(get(path).param("tab", "REBATE"))
+        .andExpect(jsonPath("$.data.records.content[0].status").value("PAID"))
+        .andExpect(jsonPath("$.data.records.content[0].settlementStatus").value("PAID"));
+    mvc.perform(get(path).param("tab", "DUE"))
+        .andExpect(jsonPath("$.data.records.totalElements").value(0));
     mvc.perform(get(path).param("tab", "INVALID")).andExpect(status().isBadRequest());
     var other = organization();
     mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/fees-rebates/overview"))
@@ -2385,6 +2400,54 @@ class LenderWorkflowTests {
   }
 
   @Test
+  void securitiesCollateralMustBeSoldBeforeBuyinAndProceedsSettleClosureExactlyOnce() throws Exception {
+    var org=organization();var conn=connection(org);
+    long security=security("100"), collateralSecurity=security("200");
+    inventory.create(org.getId(),new InventoryRequest(security,1000,"Custody"));
+    agreement(org,conn,collateralSecurity,true);reservation(org,conn,security,100);
+    var allocation=new AllocationRequest("SECURITY",collateralSecurity,60,BigDecimal.ZERO,null);
+    command(org,"COLLATERAL_PLEDGE_REQUESTED",300,10,new PledgeCommand(400,allocation));
+    command(org,"LOAN_REQUESTED",300,10,new LoanCommand(200,100,List.of(allocation)));
+    var loan=loans.findByConnectionIdAndBorrowerLoanId(conn.getId(),300L).orElseThrow();
+    var lot=positions.findByConnectionIdAndBorrowerPositionId(conn.getId(),400L).orElseThrow();
+    collateral.confirm(org.getId(),lot.getId(),"SECURITY-CUSTODY");loanService.decide(org.getId(),loan.getId(),true,"Approved");loanService.settle(org.getId(),loan.getId(),"SETTLED");
+    var def=reportDefaultForBuyinTest(org,loan,ids.incrementAndGet(),ids.incrementAndGet());
+    var parent=lifecycleRequests.buyIn(org.getId(),def.getId(),new LifecycleActionRequest("security-buyin"));
+    lifecycle(org,"LIFECYCLE_REQUEST_ACCEPTED",parent.getId(),1,Map.of("loanId",loan.getId()));
+    var request=new BuyinOrderRequest("funded-order",parent.getId(),"MARKET",100,null,bd("5"));
+    assertThrows(ResponseStatusException.class,()->buyinOrders.place(org.getId(),def.getId(),request));
+    String saleScope=(String)liquidation.preview(org.getId(),def.getId()).get("saleScope");
+    lot.setQuantity(61L);
+    assertThrows(ResponseStatusException.class,()->liquidation.sell(org.getId(),def.getId(),"sell-once",saleScope));
+    lot.setQuantity(60L);
+    // Missing market data must not sell stock or change its cash ledger.
+    var securityRow=securityMasterForScreenTest.findById(collateralSecurity).orElseThrow();
+    var quoteAt=securityRow.getPriceAt();securityRow.setPriceAt(null);
+    assertThrows(ResponseStatusException.class,()->liquidation.sell(org.getId(),def.getId(),"sell-once",saleScope));
+    assertEquals("SECURITY",lot.getAssetType());assertEquals(0,liquidation.cash(loan.getId()).signum());
+    securityRow.setPriceAt(quoteAt);
+    var sale=liquidation.sell(org.getId(),def.getId(),"sell-once",saleScope);
+    assertEquals(0,bd("12000").compareTo(sale.getProceeds()));
+    assertEquals(sale.getId(),liquidation.sell(org.getId(),def.getId(),"sell-once",saleScope).getId());
+    assertEquals("CASH",lot.getAssetType());assertNull(lot.getSecurityId());assertEquals(0,lot.getQuantity());
+    assertEquals(0,bd("12000").compareTo(accounts.findByOrganizationId(org.getId()).orElseThrow().getCashCollateralHeld()));
+    assertThrows(ResponseStatusException.class,()->liquidation.requireCashFunding(loan.getId(),100,bd("200"),bd("5")));
+    var order=buyinOrders.place(org.getId(),def.getId(),request);
+    assertEquals("EXECUTION_PENDING",order.getStatus());
+    lifecycle(org,"BUY_IN_REPORTED",ids.incrementAndGet(),1,orderFill(order,def));
+    assertEquals("FILLED",order.getStatus());
+    var closed=buyinCloseouts.close(org.getId(),def.getId(),"SECURITY-CLOSE");
+    assertEquals("CLOSED",loan.getStatus());assertEquals(0,bd("1995").compareTo(closed.getCashCollateralReturned()));
+    assertEquals(0,accounts.findByOrganizationId(org.getId()).orElseThrow().getCashCollateralHeld().signum());
+    assertEquals(sale.getId(),liquidation.sell(org.getId(),def.getId(),"sell-once",saleScope).getId());
+    assertEquals(1,events.findByOrganizationId(org.getId(),Pageable.unpaged()).stream().map(e->json.tree(e.getPayload()))
+        .filter(e->"COLLATERAL_LIQUIDATED".equals(e.path("type").asText())).count());
+    mvc.perform(post("/api/v1/organizations/"+organization().getId()+"/defaults/"+def.getId()+"/sell-collateral")
+        .contentType("application/json").content("{\"reference\":\"cross-tenant\",\"saleScope\":\"scope\"}"))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
   void buyinMarketOrderUsesOlderQuoteCreditsInventoryAndAuditsExactlyOnce() throws Exception {
     var org = organization();
     var conn = connection(org);
@@ -2503,6 +2566,7 @@ class LenderWorkflowTests {
       .toList();
     assertEquals(1, entries.size());
     assertEquals(0, bd("2005").compareTo(entries.get(0).getAmount()));
+    assertEquals(0, bd("5").compareTo(entries.get(0).getExecutionFeeAmount()));
     assertTrue(
       events
         .findByOrganizationId(org.getId(), Pageable.unpaged())
@@ -2887,6 +2951,26 @@ class LenderWorkflowTests {
     assertEquals(available, stockRow.getAvailableQuantity());
     assertEquals(0, bd("10005").compareTo(closed.getCashCollateralApplied()));
     assertEquals(0, bd("995").compareTo(closed.getCashCollateralReturned()));
+    var settlement = purchaseLedger.findByOrganizationId(org.getId(), Pageable.unpaged()).stream()
+        .filter(e -> "BUY_IN_PAYABLE_SETTLED".equals(e.getType())).findFirst().orElseThrow();
+    assertEquals(0, bd("5").compareTo(settlement.getExecutionFeeAmount()));
+    mvc.perform(get("/api/v1/organizations/" + org.getId() + "/lenddesk/ledger/overview")
+        .param("type", "BUY_IN_PAYABLE_SETTLED"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content[0].executionFeeAmount").value(5))
+        .andExpect(jsonPath("$.data.content[0].amount").value(-10005));
+    valuationEm.flush();
+    valuationEm.createQuery("update LenderAccountLedger e set e.executionFeeAmount=null where e.organizationId=:org")
+        .setParameter("org", org.getId()).executeUpdate();
+    String migration = new org.springframework.core.io.ClassPathResource("db/migration/V20__buyin_execution_fee_ledger.sql")
+        .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+    for (int attempt = 0; attempt < 2; attempt++) for (String statement : migration.split(";"))
+        if (statement.contains("UPDATE lender_account_ledger")) valuationEm.createNativeQuery(statement).executeUpdate();
+    valuationEm.refresh(settlement);
+    var repaired = settlement;
+    assertEquals(0, bd("5").compareTo(repaired.getExecutionFeeAmount()));
+    assertEquals(0, bd("-10005").compareTo(repaired.getAmount()));
+
     assertEquals(
       0,
       accounts

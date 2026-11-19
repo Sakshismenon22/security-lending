@@ -23,6 +23,7 @@ public class BackgroundJobs {
     private final TradingService trading;
     private final MarketService market;
     private final OutboxService outbox;
+    private final PaymentService payments;
 
     @Scheduled(fixedDelayString = "${borrower.outbox-poll-ms:2000}")
     public void outbox() {
@@ -32,6 +33,15 @@ public class BackgroundJobs {
             } catch (Exception e) {
                 log.warn("Outbox event {} remains pending: {}", r.get("id"), e.getMessage());
             }
+    }
+
+    @Scheduled(fixedDelayString = "${borrower.return-fee-repair-poll-ms:10000}")
+    public void resumeSettledReturnFees() {
+        for (var r : db.rows(PaymentRequest.class, eq("type", "FEE"), eq("status", "PENDING"))) {
+            if (r.get("loan_return_id") == null) continue;
+            try { payments.resumeSettledReturnFee(n(r, "organization_id"), n(r, "id")); }
+            catch (Exception e) { log.warn("Return fee payment {} remains pending: {}", r.get("id"), e.getMessage()); }
+        }
     }
 
     @Scheduled(fixedDelayString = "${borrower.market-poll-ms:60000}")

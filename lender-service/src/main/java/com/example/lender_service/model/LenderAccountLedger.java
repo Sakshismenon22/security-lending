@@ -13,6 +13,9 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class LenderAccountLedger {
+  @Column(name="execution_fee_amount", precision=24, scale=6)
+  private BigDecimal executionFeeAmount;
+
   @Column(name="loan_id")
   private Long loanId;
 

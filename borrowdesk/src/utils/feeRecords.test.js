@@ -15,3 +15,21 @@ test('a daily record only links bills that actually cover that date',()=>{
  const rows=buildFeeRecords(data);assert.equal(rows.find(r=>r.key==='accruals:1').bill.id,1);assert.equal(rows.find(r=>r.key==='accruals:2').bill,undefined);
 });
 test('bill history excludes days outside its period',()=>{assert.deepEqual(relatedFeeHistory(buildFeeRecords(data).find(r=>r.key==='fees:1'),data).map(r=>r.id),[1]);});
+
+test('paid fee and rebate settlements update their daily rows without treating closure as payment',()=>{
+ const input={...data,loans:[{...data.loans[0],status:'CLOSED'}],rebates:[{id:4,loanId:1,periodStart:'2026-11-16',periodEnd:'2026-11-16',amount:1,status:'ACCRUED'}],accruals:[...data.accruals,{id:3,loanId:1,accrualDate:'2026-11-16',type:'REBATE',amount:1}]};
+ let rows=buildFeeRecords(input);
+ assert.equal(rows.find(r=>r.key==='accruals:1').status,'DUE');
+ assert.equal(rows.find(r=>r.key==='accruals:3').status,'ACCRUED');
+ input.fees=input.fees.map(f=>({...f,status:'PAID'}));input.rebates=input.rebates.map(r=>({...r,status:'PAID'}));
+ rows=buildFeeRecords(input);
+ for(const key of ['fees:1','accruals:1','rebates:4','accruals:3'])assert.equal(rows.find(r=>r.key===key).status,'PAID');
+ assert.equal(rows.find(r=>r.key==='accruals:2').status,'RECORDED');
+});
+
+test('legacy one-day rebates without period fields link only the matching day',()=>{
+ const input={...data,rebates:[{id:4,loanId:1,accrualDate:'2026-11-16',amount:1,status:'PAID'}],accruals:[{id:5,loanId:1,type:'REBATE',accrualDate:'2026-11-16',amount:1},{id:6,loanId:1,type:'REBATE',accrualDate:'2026-11-15',amount:1}]};
+ const rows=buildFeeRecords(input);
+ assert.equal(rows.find(r=>r.key==='accruals:5').status,'PAID');
+ assert.equal(rows.find(r=>r.key==='accruals:6').status,'RECORDED');
+});

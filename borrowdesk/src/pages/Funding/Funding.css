@@ -109,3 +109,5 @@
 
 .funding-page .funding-pagination-controls label{display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--muted);font-size:11px}
 .funding-page .funding-pagination-controls select{height:27px;min-width:54px;padding:0 5px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--ink);font-size:11px}
+
+.funding-fee-note{display:block;margin-top:3px;color:var(--muted);font-size:10px;white-space:normal}

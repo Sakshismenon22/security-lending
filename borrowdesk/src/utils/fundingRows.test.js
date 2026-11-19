@@ -29,3 +29,9 @@ test('posted movement status stays separate from pending payment status',()=>{
  const [row]=fundingRows([{type:'PAYMENT_CASH_BLOCK',reference:'70',amount:-10}],context);
  assert.equal(row.status,'POSTED');assert.equal(row.paymentStatus,'PENDING');
 });
+
+test('buy-in execution fee allocations link the loan without changing cash totals',()=>{
+ const [row]=fundingRows([{type:'BUY_IN_EXECUTION_FEE',reference:'CLOSE-42',loanId:10,executionFeeAmount:5,amount:0}],context);
+ assert.equal(row.lenderName,'Lender A');assert.equal(row.securitySymbol,'INFY');assert.equal(row.executionFeeAmount,5);
+ assert.equal(cashTotal([row],isDebit),0);assert.equal(cashTotal([row],isCredit),0);
+});

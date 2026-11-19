@@ -75,6 +75,7 @@ public class BuyinInventoryService {
     entry.setLoanId(loan.getId());
     entry.setType("BUY_IN_PURCHASE_PAYABLE");
     entry.setAmount(amount);
+    entry.setExecutionFeeAmount(report.getCosts());
     entry.setReference(reference);
     entry.setCreatedAt(clock.instant());
     ledger.save(entry);
