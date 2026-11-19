@@ -12,6 +12,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Configuration
 @EnableScheduling
 public class ApplicationConfig implements WebMvcConfigurer {
+    @Value("${lendora.allowed-origins:http://localhost:5176,http://localhost:5175,http://localhost:5174,http://localhost:5173}") private String lendoraOrigins;
   private final String origin;
 
   public ApplicationConfig(
@@ -42,7 +43,7 @@ public class ApplicationConfig implements WebMvcConfigurer {
   public void addCorsMappings(CorsRegistry registry) {
     registry
         .addMapping("/api/**")
-        .allowedOriginPatterns("*")
+        .allowedOrigins(lendoraOrigins.split(","))
         .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
         .allowedHeaders("*")
         .allowCredentials(true);

@@ -14,6 +14,10 @@ import java.util.List;
 @Validated
 @ConfigurationProperties("adapter")
 public class AdapterProperties {
+    private boolean lendoraRoutingEnabled;
+    @NotBlank private String lendoraUrl="http://localhost:8086";
+    private String lendoraKey="";
+    @Min(1) @Max(60) private int lendoraCacheSeconds=5;
     @NotNull private AdapterSide side=AdapterSide.BORROWER;
     @NotBlank @Size(max=100) private String institutionId="BORROWER_DEMO";
     @NotBlank @Pattern(regexp="[A-Za-z0-9_.-]{1,64}") private String senderCompId="BORROWER_DEMO";

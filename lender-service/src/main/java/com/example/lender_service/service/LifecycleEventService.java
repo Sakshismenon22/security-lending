@@ -46,6 +46,7 @@ public class LifecycleEventService {
   private final EventService events;
   private final JsonService json;
   private final Clock clock;
+  private final BuyinOrderService buyinOrders;
 
   @Transactional
   public void receive(String body) {
@@ -108,9 +109,11 @@ public class LifecycleEventService {
         var r = found(requests.findByIdAndOrganizationId(e.referenceId(), e.organizationId()));
         require(
             Set.of("PENDING", "ACCEPTED").contains(r.getStatus())
-                || ("VALUATION_REQUESTED".equals(r.getType()) && "FAILED".equals(r.getStatus())),
+                || (Set.of("VALUATION_REQUESTED","BUY_IN_REQUESTED","BUY_IN_EXECUTION_REQUESTED").contains(r.getType()) && "FAILED".equals(r.getStatus())),
             "Lifecycle request already completed");
         r.setStatus(e.type().endsWith("ACCEPTED") ? "ACCEPTED" : "REJECTED");
+        if (Set.of("BUY_IN_REQUESTED","BUY_IN_EXECUTION_REQUESTED").contains(r.getType())) r.setFailureReason(e.type().endsWith("REJECTED") ? e.data().path("reason").asText("Buy-in request rejected") : null);
+        if("BUY_IN_EXECUTION_REQUESTED".equals(r.getType()) && e.type().endsWith("REJECTED")) buyinOrders.rejected(e.organizationId(),r.getId(),r.getFailureReason());
         if("VALUATION_REQUESTED".equals(r.getType()))r.setFailureReason(null);
         if (Set.of("VALUATION_REQUESTED", "FEE_ACCRUAL_REQUESTED", "REBATE_ACCRUAL_REQUESTED")
                 .contains(r.getType())
@@ -244,6 +247,11 @@ public class LifecycleEventService {
         completeRequest(e, loan);
       }
       case "MARGIN_CALL_UPDATED" -> {
+        var currentCall = calls.findByOrganizationIdAndOwnerReferenceId(e.organizationId(), e.referenceId());
+        if (currentCall.isPresent() && "CANCELLATION_PENDING".equals(currentCall.get().getStatus())) return;
+        boolean newMarginCycle = currentCall.isPresent()
+            && Set.of("CANCELLED", "FULFILLED", "REJECTED").contains(currentCall.get().getStatus())
+            && "OPEN".equals(text(d, "status"));
         if(d.hasNonNull("lifecycleRequestId")){
           var request =
               found(
@@ -294,6 +302,11 @@ public class LifecycleEventService {
                 calls.findByOrganizationIdAndOwnerReferenceId(e.organizationId(), e.referenceId()),
                 MarginCall::new);
         if (p == null) return;
+        if (newMarginCycle) {
+          p.setCreatedAt(e.occurredAt());
+          p.setCancellationReference(null);
+          p.setCancellationFailureReason(null);
+        }
         p.setAmount(decimal(d, "amount"));
         p.setFulfilledAmount(decimal(d, "fulfilledAmount"));
         require(
@@ -475,12 +488,18 @@ public class LifecycleEventService {
                     e.organizationId(), e.referenceId()),
                 LoanDefault::new);
         if (p == null) return;
+        if("CLOSED".equals(loan.getStatus())) p.setStatus("RESOLVED");
         p.setObligationId(number(d, "obligationId"));
         p.setObligationType(text(d, "obligationType"));
         p.setReason(text(d, "reason"));
         defaults.save(p);
+        events.audit(e.organizationId(), "DEFAULT_"+p.getStatus(), String.valueOf(p.getId()));
       }
       case "BUY_IN_REPORTED" -> {
+        var previous=buyIns.findByOrganizationIdAndOwnerReferenceId(e.organizationId(),e.referenceId());
+        if(previous.isPresent() && previous.get().getInventoryReceivedAt()!=null && e.version()>previous.get().getSourceVersion()) {
+          var booked=previous.get();require(booked.getQuantity()==number(d,"quantity") && booked.getPrice().compareTo(decimal(d,"price"))==0 && booked.getCosts().compareTo(decimal(d,"costs"))==0 && booked.getDefaultReferenceId()==number(d,"defaultId") && Set.of("EXECUTED","COMPLETED","SETTLED").contains(text(d,"status")),"Received buy-in economics cannot be amended without a reversal");
+        }
         var p =
             view(
                 e,
@@ -496,12 +515,24 @@ public class LifecycleEventService {
         p.setResidualBalance(decimal(d, "residualBalance"));
         buyIns.save(p);
         completeRequest(e, loan);
+        if(d.hasNonNull("executionRequestId")) {
+          var execution=found(requests.findByIdAndOrganizationId(number(d,"executionRequestId"),e.organizationId()));
+          require("BUY_IN_EXECUTION_REQUESTED".equals(execution.getType()) && Objects.equals(execution.getLoanId(),loan.getId()) && json.tree(execution.getPayload()).path("buyinRequestId").asLong()==number(d,"lifecycleRequestId"),"Execution request mismatch");
+          execution.setStatus("COMPLETED");execution.setFailureReason(null);
+          buyinOrders.confirmed(p,execution.getId(),d.path("executionReference").asText());
+        }
       }
       default -> throw new IllegalArgumentException("Unsupported lifecycle event " + e.type());
     }
     if (forward) {
       var data = new LinkedHashMap<>(json.map(d));
       data.put("loanId", loan.getBorrowerLoanId());
+      if ("MARGIN_CALL_UPDATED".equals(e.type())) {
+        var call = found(calls.findByOrganizationIdAndOwnerReferenceId(e.organizationId(), e.referenceId()));
+        data.put("issuedAt", call.getCreatedAt().toString());
+        call.setBorrowerDeliverySourceVersion(call.getSourceVersion());
+      }
+      if("CLOSED".equals(loan.getStatus()) && "DEFAULT_REPORTED".equals(e.type())) data.put("status","RESOLVED");
       events.confirm(connection, e.type(), resource, e.referenceId(), data);
     }
   }
@@ -513,6 +544,9 @@ public class LifecycleEventService {
               requests.findByIdAndOrganizationId(
                   number(e.data(), "lifecycleRequestId"), e.organizationId()));
       require(Objects.equals(r.getLoanId(), loan.getId()), "Lifecycle request loan mismatch");
+      if ("BUY_IN_REPORTED".equals(e.type())) {
+        require("BUY_IN_REQUESTED".equals(r.getType()) && json.tree(r.getPayload()).path("defaultReferenceId").asLong(-1) == e.data().path("defaultId").asLong(-2), "Buy-in report does not match the requested default");
+      }
       r.setStatus("COMPLETED");
       r.setFailureReason(null);
     }

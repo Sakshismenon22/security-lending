@@ -1,3 +1,4 @@
+import SessionBar from '../SessionBar'
 import { useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
@@ -13,6 +14,7 @@ export default function AppLayout() {
   return <div className={`app-shell${navCollapsed ? ' nav-collapsed' : ''}`}>
     <Sidebar collapsed={navCollapsed} onToggle={() => setNavCollapsed(value => !value)} />
     <main className="main-shell">
+      <SessionBar />
       {showTopbar && <Topbar />}
       <DeliveryFailures organizationId={ORG_ID} get={get} post={post} />
       <div className="route-outlet"><Outlet /></div>

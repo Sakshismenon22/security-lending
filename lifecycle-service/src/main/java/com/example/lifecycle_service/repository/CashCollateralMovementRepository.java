@@ -12,7 +12,7 @@ public interface CashCollateralMovementRepository extends Repository<CashCollate
       select new com.example.lifecycle_service.dto.CashCollateralChange(h.createdAt, h.type, coalesce(h.cashAmount, p.cashAmount))
       from CashCollateralMovement h, CollateralPosition p
       where h.positionId = p.id and p.loanId = :loanId and p.assetType = 'CASH'
-        and h.type in ('PLEDGE_CONFIRMED', 'RELEASE_CONFIRMED') and h.createdAt < :before
+        and h.type in ('PLEDGE_CONFIRMED', 'RELEASE_CONFIRMED', 'BUY_IN_COST_APPLIED') and h.createdAt < :before
       order by h.createdAt, h.id
       """)
   List<CashCollateralChange> cashChangesBefore(long loanId, Instant before);

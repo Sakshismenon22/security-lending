@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User,Long> {
+  Optional<User> findByOrganizationIdAndEmailIgnoreCase(Long organizationId,String email);
     List<User> findByOrganizationId(Long organizationId);
     Page<User> findByOrganizationId(Long organizationId,Pageable pageable);
     Optional<User> findByIdAndOrganizationId(Long id,Long organizationId);

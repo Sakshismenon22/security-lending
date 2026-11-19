@@ -1,0 +1,91 @@
+.deposit-admin-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #17112b77;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.deposit-admin-dialog {
+  width: min(800px, 100%);
+  max-height: 85vh;
+  overflow: auto;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 16px 50px #0003;
+}
+.deposit-admin-dialog header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.deposit-admin-dialog h2 {
+  font-size: 16px;
+  margin: 0;
+}
+.deposit-admin-dialog p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.deposit-admin-dialog button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 9px;
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 12px;
+}
+.deposit-admin-dialog button:disabled {
+  opacity: 0.5;
+}
+.deposit-admin-scroll {
+  overflow: auto;
+  max-height: 40vh;
+  margin-top: 10px;
+}
+.deposit-admin-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.deposit-admin-scroll th,
+.deposit-admin-scroll td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.deposit-admin-scroll th {
+  background: var(--surface-muted);
+}
+.deposit-admin-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  font-size: 12px;
+}
+.deposit-admin-confirm {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+.deposit-admin-confirm button {
+  margin-right: 8px;
+}
+.deposit-admin-dialog button.primary {
+  background: var(--primary);
+  color: #fff;
+}
+.deposit-admin-dialog .deposit-admin-error {
+  color: #b23d35;
+}

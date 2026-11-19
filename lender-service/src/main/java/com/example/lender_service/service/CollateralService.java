@@ -232,6 +232,51 @@ public class CollateralService {
     return p;
   }
 
+  public void applyToBuyin(
+    long org,
+    long id,
+    BigDecimal amount,
+    String reference
+  ) {
+    tenants.lock(org);
+    var p = found(collateral.findByIdAndOrganizationId(id, org));
+    require(
+      "CASH".equals(p.getAssetType()) &&
+        Set.of("POSTED", "RELEASE_REQUESTED").contains(p.getStatus()) &&
+        amount.signum() > 0 &&
+        amount.compareTo(p.getCashAmount()) <= 0,
+      "Invalid cash collateral application"
+    );
+    movement(p, "BUY_IN_COST_APPLIED", reference, amount);
+    p.setCashAmount(p.getCashAmount().subtract(amount));
+    if (p.getCashAmount().signum() == 0) {
+      p.setStatus("APPLIED");
+      p.setRequestedReleaseCash(null);
+      p.setRequestedReleaseQuantity(null);
+    }
+    var account = found(accounts.findByOrganizationId(org));
+    require(
+      account.getCashCollateralHeld().compareTo(amount) >= 0,
+      "Cash collateral ledger is inconsistent"
+    );
+    account.setCashCollateralHeld(
+      account.getCashCollateralHeld().subtract(amount)
+    );
+    events.confirm(
+      found(connections.findById(p.getConnectionId())),
+      "COLLATERAL_APPLIED",
+      "collateral_position",
+      p.getBorrowerPositionId(),
+      Map.of("amount", amount, "reference", reference)
+    );
+    events.local(
+      org,
+      "BUY_IN_COLLATERAL_APPLIED",
+      p.getId(),
+      Map.of("amount", amount, "reference", reference, "loanId", p.getLoanId())
+    );
+  }
+
   public void movement(CollateralPosition p, String type, String reference) {
     movement(p, type, reference, p.getCashAmount());
   }

@@ -6,6 +6,7 @@ import com.example.lender_service.dto.AgreementOfferRequest;
 import com.example.lender_service.model.*;
 import com.example.lender_service.repository.*;
 import java.util.HashSet;
+import org.springframework.data.domain.Pageable;
 import java.time.*;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,8 @@ public class AgreementService {
   private final EventService events;
   private final JsonService json;
   private final Clock clock;
+  private final OutboxEventRepository outbox;
+  @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
 
   public Msla active(long org, long id) {
     var a = found(agreements.findByIdAndOrganizationId(id, org));
@@ -90,6 +93,36 @@ public class AgreementService {
     events.offer(connection, lender, agreement, request);
     events.local(org, "AGREEMENT_OFFER_SENT", agreement.getId(), Map.of("agreement", agreement));
     return agreement;
+  }
+
+  /** Re-deliver the same immutable offer snapshot, retaining its domain ID and version. */
+  public Map<String,Object> resend(long org, long id) {
+    var lender = tenants.lock(org);
+    var agreement = found(agreements.findByIdAndOrganizationId(id, org));
+    require("OFFERED".equals(agreement.getStatus()), "Only an unanswered offer can be re-delivered");
+    var connection = tenants.connection(org, agreement.getConnectionId());
+    var pending = outbox.findByOrganizationId(org, Pageable.unpaged()).getContent();
+    for (var event : pending) {
+      var payload = json.tree(event.getPayload());
+      if ("AGREEMENT_OFFERED".equals(payload.path("type").asText()) && payload.path("referenceId").asLong() == id
+          && !event.getPublished() && "PENDING".equals(event.getStatus())) {
+        return Map.of("agreementId", id, "status", "QUEUED", "alreadyQueued", true);
+      }
+    }
+    for (var event : pending) {
+      var payload = json.tree(event.getPayload());
+      boolean offer = "AGREEMENT_OFFERED".equals(payload.path("type").asText()) && payload.path("referenceId").asLong() == id;
+      boolean reference = "LENDER_REFERENCE_UPDATED".equals(payload.path("type").asText()) && payload.path("organizationId").asLong() == connection.getBorrowerOrganizationId() && payload.path("referenceId").asLong() == lender.getPublicReferenceId();
+      if ((offer || reference) && "FAILED".equals(event.getStatus())) {
+        event.setStatus("CLOSED");
+        em.createQuery("update DeliveryFailure f set f.status='CLOSED' where f.organizationId=:org and f.eventId=:event and f.status in ('FAILED','RETRYING')")
+          .setParameter("org", org).setParameter("event", event.getEventId()).executeUpdate();
+      }
+    }
+    events.confirm(connection, "LENDER_REFERENCE_UPDATED", "LENDER_REFERENCE_UPDATED", lender.getPublicReferenceId(), Map.of("name", lender.getName(), "externalId", lender.getExternalId()));
+    events.offer(connection, lender, agreement, json.parse(agreement.getTerms(), AgreementOfferRequest.class));
+    events.audit(org, "AGREEMENT_DELIVERY_RETRIED", String.valueOf(id));
+    return Map.of("agreementId", id, "status", "QUEUED", "alreadyQueued", false);
   }
 
   /** Applies the borrower's response to a lender-originated offer. */

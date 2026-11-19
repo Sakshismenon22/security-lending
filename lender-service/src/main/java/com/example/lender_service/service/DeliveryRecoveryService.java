@@ -80,8 +80,9 @@ public class DeliveryRecoveryService {
     int attempts,
     String error
   ) {
-    if(ValuationDeliveryState.resolveTerminal(em,event))return;
+    if(ValuationDeliveryState.resolveTerminal(em,event) || BuyinDeliveryState.resolveTerminal(em,event))return;
     ValuationDeliveryState.fail(em,event,error);
+    BuyinDeliveryState.fail(em,event,error);
     String key = source + ":" + stage + ":" + transportId;
     var row = em.find(
       DeliveryFailure.class,
@@ -262,6 +263,7 @@ public class DeliveryRecoveryService {
         "Delivery status changed; refresh"
       );
       ValuationDeliveryState.decide(em,event,retry);
+      BuyinDeliveryState.decide(em,event,retry);
       event.setStatus(retry ? "PENDING" : "CLOSED");
       if (retry) {
         event.setAttempts(0);

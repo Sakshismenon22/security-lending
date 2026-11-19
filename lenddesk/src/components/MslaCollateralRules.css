@@ -1,0 +1,13 @@
+.msla-collateral-rules { border: 1px solid #ddd1f4; border-radius: 6px; margin: 18px 0 0; padding: 13px; }
+.msla-collateral-rules legend { color: #5b4182; font-size: 13px; font-weight: 650; padding: 0 7px; }
+.msla-collateral-rules p { color: #83718f; font-size: 11px; line-height: 1.6; }
+.msla-rules-scroll { overflow: auto; }
+.msla-collateral-rules table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+.msla-collateral-rules th { padding: 7px 5px; background: #f0e9fa; font-size: 10px; color: #6b5483; }
+.msla-collateral-rules td { padding: 7px 5px; border-bottom: 1px solid #ece3f6; }
+.msla-collateral-rules td:nth-child(2) { width: 50%; }
+.msla-collateral-rules input, .msla-collateral-rules select { width: 100%; min-width: 90px; background: #fff; border: 1px solid #d7c7ec; border-radius: 4px; padding: 8px; color: #3e2c56; font: inherit; }
+.msla-collateral-rules input[readonly] { background: #f2edf8; color: #91819f; }
+.msla-rules-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.msla-rules-actions button, .msla-collateral-rules td > button { border: 1px solid #d6c3ee; border-radius: 4px; padding: 7px 10px; color: #7750c6; background: #faf6ff; font-size: 11px; }
+.msla-collateral-rules td > button { font-size: 17px; padding: 2px 8px; }

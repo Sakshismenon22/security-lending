@@ -2,7 +2,8 @@ import TablePagination from '../../components/TablePagination';
 import useCollateralReleaseUpdates from '../../hooks/useCollateralReleaseUpdates';
 import CollateralReleaseStatus from '../../components/collateral/CollateralReleaseStatus';
 import CollateralReleaseRequest from '../../components/collateral/CollateralReleaseRequest';
-import{useCallback,useEffect,useMemo,useState}from'react';
+import{useCallback,useEffect,useMemo,useRef,useState}from'react';
+import BuyinClosureSummary from './BuyinClosureSummary';
 import{useNavigate,useParams}from'react-router-dom';
 import{ArrowLeft,ArrowDownUp,CalendarDays,CheckCircle2,ChevronRight,Clock3,Eye,FileText,MoreHorizontal,Plus,RefreshCw,RotateCcw,ShieldCheck,Wallet,X}from'lucide-react';
 import{lendingApi}from'../../api/lendingApi';
@@ -32,10 +33,11 @@ export default function LoanWorkspace(){
  const{loanId}=useParams(),navigate=useNavigate();
  const[data,setData]=useState({loan:null,agreements:[],lenders:[],securities:[],collateral:[],returns:[],recalls:[],fees:[],audit:[],marginCalls:[]});
  const[lastRefreshed,setLastRefreshed]=useState(null);
+ const activeLoad=useRef(null),loadSequence=useRef(0);
  const[loading,setLoading]=useState(true),[error,setError]=useState(''),[tab,setTab]=useState('Overview'),[refreshing,setRefreshing]=useState(false);
  const[modal,setModal]=useState(''),[assetType,setAssetType]=useState('CASH'),[cashAmount,setCashAmount]=useState(''),[securityId,setSecurityId]=useState(''),[securityQty,setSecurityQty]=useState(''),[quantity,setQuantity]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
- const load=useCallback(async(showLoader=true)=>{if(showLoader)setLoading(true);setError('');const names=['loan','agreements','lenders','securities','collateral','returns','recalls','fees','audit','marginCalls'];const requests=[lendingApi.loan(loanId),lendingApi.agreements(),lendingApi.lenders(),lendingApi.securities(),lendingApi.collateral(),lendingApi.returns(),lendingApi.recalls(),lendingApi.fees(),lendingApi.audit(),lendingApi.marginCalls()];const result=await Promise.allSettled(requests);setData(prev=>{const next={...prev};result.forEach((r,i)=>{if(r.status==='fulfilled')next[names[i]]=i===0?r.value:rows(r.value)});if(result[0].status==='rejected')next.loan=null;return next});if(result[0].status==='rejected')setError(result[0].reason?.message||'Unable to load this loan');setLoading(false);setRefreshing(false);if(result[0].status==='fulfilled')setLastRefreshed(new Date())},[loanId]);
- useEffect(()=>{load(true)},[loanId]);
+ const load=useCallback(async(showLoader=true)=>{if(activeLoad.current===String(loanId))return;activeLoad.current=String(loanId);const generation=++loadSequence.current;if(showLoader)setLoading(true);setError('');const names=['loan','agreements','lenders','securities','collateral','returns','recalls','fees','audit','marginCalls'];const requests=[lendingApi.loan(loanId),lendingApi.agreements(),lendingApi.lenders(),lendingApi.securities(),lendingApi.collateral(),lendingApi.returns(),lendingApi.recalls(),lendingApi.fees(),lendingApi.audit(),lendingApi.marginCalls()];const result=await Promise.allSettled(requests);if(generation!==loadSequence.current)return;activeLoad.current=null;setData(prev=>{const next={...prev};result.forEach((r,i)=>{if(r.status==='fulfilled')next[names[i]]=i===0?r.value:rows(r.value)});if(result[0].status==='rejected')next.loan=null;return next});if(result[0].status==='rejected')setError(result[0].reason?.message||'Unable to load this loan');setLoading(false);setRefreshing(false);if(result[0].status==='fulfilled')setLastRefreshed(new Date())},[loanId]);
+ useEffect(()=>{load(true);const timer=setInterval(()=>load(false),10000);return()=>{clearInterval(timer);loadSequence.current++;activeLoad.current=null}},[load]);
  useCollateralReleaseUpdates(data.collateral,load);
  const loan=data.loan?.loan??data.loan?.data??data.loan;
  const loanCode=labelId(val(loan,'loanCode','loan_code','loanId','loan_id','id')??loanId);
@@ -86,6 +88,7 @@ export default function LoanWorkspace(){
   <header className="lw-heading"><div className="lw-heading-title"><h1>{loanCode} / {securityName}</h1><Badge value={detailStatus}/></div><div className="lw-actions"><button className="lw-primary" disabled={!['ACTIVE','RETURN_PENDING'].includes(state(detailStatus))} onClick={()=>{setQuantity(String(outstanding||''));setModal('return')}}><RotateCcw size={13}/>Request return</button><button className="lw-outline" onClick={()=>{setAssetType('CASH');setCashAmount('');setSecurityId('');setSecurityQty('');setModal('collateral')}}><Plus size={13}/>Add collateral</button><CollateralReleaseRequest loanId={loanId} disabled={!['ACTIVE','RETURN_PENDING','CLOSED'].includes(state(detailStatus))} onComplete={message=>{setNotice(message);load(false)}}/><button className="lw-icon-btn" title="Refresh loan" onClick={()=>{setRefreshing(true);load(false)}}><RefreshCw size={14}/></button></div></header>
   <CollateralReleaseStatus positions={collateral}/>
   <section className="lw-summary"><div><span>Outstanding quantity</span><b>{n(outstanding)}</b><small>shares</small></div><div><span>Annual fee</span><b>{feeRate==null?'-':n(feePercent(feeRate))+'%'}</b></div><div><span>Coverage</span><b className={coverageSufficient?'positive':'negative'}>{pct(coverage)}</b></div><div><span>Lender</span><b>{lenderName}</b></div><div><span>Loan status</span><Badge value={detailStatus}/></div></section>
+  <BuyinClosureSummary summary={data.loan?.buyinClosure} pending={data.loan?.buyinClosurePending} fees={fees} rebates={getRows(data.loan,'rebate')} feeRate={feeRate} rebateRate={val(loan,'rebateRate','rebate_rate')??val(agreement,'rebateRate','rebate_rate')}/>
   <nav className="lw-tabs">{tabs.map(t=><button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{t}</button>)}</nav>
   {tab==='Overview'&&<section className="lw-overview">
    <div className="lw-column">

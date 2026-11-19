@@ -1,3 +1,4 @@
+import AdminInventoryReceipt from '../components/AdminInventoryReceipt'
 import DemoInventoryPage from './DemoInventoryPage'
 import { Fragment, useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
@@ -289,6 +290,7 @@ function LiveInventoryPage() {
     <section className="ld-inventory">
       <header className="ldi-heading">
         <div><h1>Securities Inventory</h1><small>{live ? 'Live lender inventory' : 'Demo inventory'}</small></div>
+        <AdminInventoryReceipt key={organizationId} organizationId={organizationId} onSaved={refresh}/>
         <div className="ldi-summary">
           {[['Total inventory', totals.total], ['Lent', totals.lent], ['Reserved', totals.reserved], ['Available', totals.available]].map(([label, value]) => (
             <div key={label}><span>{label}</span><strong>{loading || errors.inventory ? '—' : quantity(value)}</strong></div>

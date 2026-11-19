@@ -11,5 +11,7 @@ public interface RecallRecordRepository extends Repository<RecallRecord, Long> {
   List<RecallRecord> findByStatusInAndDueAtLessThanEqualOrderByDueAtAsc(
       Collection<String> statuses, Instant dueAt);
 
+  List<RecallRecord> findByLoanId(Long loanId);
+
   Optional<RecallRecord> findById(Long id);
 }

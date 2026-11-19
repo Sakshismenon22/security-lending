@@ -1,0 +1,111 @@
+.lw-closeout {
+  flex: none;
+  border-color: var(--border);
+}
+.lw-closeout > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+.lw-closeout > header h2 {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  height: auto;
+  font-size: 13px;
+}
+.lw-closeout > header p {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.lw-closeout-badge {
+  padding: 4px 7px;
+  white-space: nowrap;
+  border-radius: 4px;
+  background: var(--selection);
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 750;
+}
+.lw-closeout-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 18px;
+  margin: 0;
+  padding: 4px 12px;
+}
+.lw-closeout-fields > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  border-bottom: 1px solid var(--border);
+}
+.lw-closeout-fields dt {
+  font-size: 10px;
+  color: var(--muted);
+}
+.lw-closeout-fields dd {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.lw-closeout-settlements {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 9px 12px;
+}
+.lw-closeout-billing {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--canvas);
+}
+.lw-closeout-billing span,
+.lw-closeout-billing small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.lw-closeout-billing strong {
+  font-size: 11px;
+  color: var(--ink);
+}
+.lw-closeout-note,
+.lw-closeout-pending {
+  margin: 0;
+  padding: 3px 12px 10px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.lw-closeout-pending {
+  padding: 12px;
+}
+@media (max-width: 1050px) {
+  .lw-closeout-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 650px) {
+  .lw-closeout > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .lw-closeout-fields,
+  .lw-closeout-settlements {
+    grid-template-columns: 1fr;
+  }
+}

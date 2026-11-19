@@ -13,6 +13,10 @@ import org.springframework.data.jpa.repository.Query;
 public interface LoanRepository extends JpaRepository<Loan, Long> {
   Optional<Loan> findByIdAndOrganizationId(Long id, Long organizationId);
 
+  List<Loan> findByOrganizationIdAndStatusIn(Long org,java.util.Collection<String> statuses);
+
+  List<Loan> findByStatusIn(java.util.Collection<String> statuses);
+
   List<Loan> findAllByStatus(String status);
 
   @Query("select l.organizationId from Loan l where l.id = :loanId")

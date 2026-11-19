@@ -1,0 +1,226 @@
+.bd-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #20153566;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.borrower-directory {
+  width: 100%;
+  max-width: 800px;
+  max-height: 92vh;
+  overflow: auto;
+  border: 1px solid #dbd1f4;
+  border-radius: 9px;
+  background: #fcfaff;
+  color: #302442;
+  padding: 23px;
+  box-shadow: 0 12px 50px #20153524;
+}
+.borrower-directory header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 15px;
+}
+.borrower-directory header span {
+  color: #8b70ad;
+  font-size: 9px;
+  letter-spacing: 1.4px;
+  font-weight: 700;
+}
+.borrower-directory h2 {
+  font-size: 22px;
+  margin: 6px 0 0;
+  letter-spacing: -0.5px;
+}
+.borrower-directory > p {
+  color: #81728d;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.bd-close {
+  border: 0;
+  background: transparent;
+  color: #806491;
+  font-size: 23px;
+}
+.borrower-directory button {
+  font-family: inherit;
+  cursor: pointer;
+}
+.borrower-directory button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.borrower-directory :focus-visible {
+  outline: 2px solid #8060ef;
+  outline-offset: 2px;
+}
+.bd-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 17px 0 12px;
+}
+.bd-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+}
+.bd-toolbar input {
+  width: 100%;
+  border: 1px solid #d7c9ed;
+  border-radius: 5px;
+  background: white;
+  color: #463052;
+  font: inherit;
+  font-size: 12px;
+  padding: 10px;
+}
+.bd-toolbar button,
+.bd-pagination button,
+.borrower-directory footer > button,
+.bd-error button {
+  padding: 8px 11px;
+  border: 1px solid #d2c1ea;
+  border-radius: 5px;
+  background: #fcf9ff;
+  color: #6841c7;
+  font-size: 11px;
+}
+.bd-table-scroll {
+  overflow: auto;
+  border: 1px solid #e0d6f0;
+  border-radius: 5px;
+}
+.borrower-directory table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 12px;
+}
+.borrower-directory th {
+  background: #eee7fa;
+  color: #5c4274;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.borrower-directory th,
+.borrower-directory td {
+  padding: 10px;
+  border-bottom: 1px solid #e7ddf2;
+}
+.borrower-directory tr.selected {
+  background: #e9defb;
+}
+.borrower-directory input[type="radio"] {
+  accent-color: #7750dc;
+  cursor: pointer;
+}
+.borrower-directory td small {
+  display: block;
+  font-size: 10px;
+  color: #8e7a9c;
+  margin-top: 3px;
+}
+.bd-empty {
+  text-align: center;
+  padding: 30px 15px !important;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #8c7a98;
+}
+.bd-pagination,
+.bd-pagination > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bd-pagination {
+  justify-content: space-between;
+  margin: 10px 0 16px;
+  font-size: 10px;
+  color: #85728f;
+}
+.bd-pagination button {
+  padding: 5px 8px;
+}
+.bd-selected {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 14px;
+  border: 1px solid #d9c9ed;
+  border-radius: 5px;
+  background: #f1eafa;
+}
+.bd-selected span {
+  font-size: 10px;
+  color: #8c71a0;
+}
+.bd-selected strong {
+  font-size: 13px;
+}
+.bd-selected small {
+  font-size: 11px;
+  color: #8c71a0;
+}
+.bd-note {
+  font-size: 11px;
+  line-height: 1.7;
+  color: #8c7b98;
+}
+.bd-error {
+  background: #fff1f5;
+  color: #aa3a58;
+  border: 1px solid #ecc7d1;
+  border-radius: 5px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.bd-error button {
+  margin-left: 12px;
+}
+.borrower-directory footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+}
+.borrower-directory footer > button.ref-primary {
+  background: #7446e6;
+  border-color: #7446e6;
+  color: white;
+}
+.bd-full-page {
+  padding: 20px;
+}
+.bd-full-page > a {
+  display: inline-block;
+  color: #7951d6;
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+@media (max-width: 650px) {
+  .borrower-directory {
+    padding: 16px;
+  }
+  .borrower-directory table {
+    min-width: 600px;
+  }
+  .bd-backdrop {
+    padding: 10px;
+  }
+  .bd-full-page {
+    padding: 12px;
+  }
+}

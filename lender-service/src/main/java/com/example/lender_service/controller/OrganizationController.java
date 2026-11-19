@@ -23,8 +23,8 @@ public class OrganizationController {
   }
 
   @GetMapping
-  public ApiResponse<?> list() {
-    return ApiResponse.ok(organizations.findAll());
+  public ApiResponse<?> list(@RequestAttribute(name="lendora.organizationId",required=false)Long ownOrg) {
+    return ApiResponse.ok(ownOrg==null?organizations.findAll():organizations.findAllById(java.util.List.of(ownOrg)));
   }
 
   @GetMapping("/{org}")

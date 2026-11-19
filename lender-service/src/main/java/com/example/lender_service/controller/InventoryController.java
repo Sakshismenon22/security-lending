@@ -18,6 +18,9 @@ public class InventoryController {
     return ApiResponse.ok(inventory.create(org, r));
   }
 
+  @PostMapping("/receipts")
+  public ApiResponse<?> receive(@PathVariable long org,@Valid @RequestBody InventoryRequest r){return ApiResponse.ok(inventory.receive(org,r));}
+
   @PostMapping("/{id}/adjustments")
   public ApiResponse<?> adjust(
       @PathVariable long org,

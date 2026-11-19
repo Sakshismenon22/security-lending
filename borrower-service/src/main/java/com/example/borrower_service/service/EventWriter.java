@@ -30,6 +30,7 @@ public class EventWriter {
         if (type.endsWith("_REQUESTED")
                 || type.equals("AGREEMENT_ACCEPTED")
                 || type.equals("AGREEMENT_REJECTED")
+                || type.equals("MARGIN_CALL_CANCELLATION_RESPONDED")
                 || type.equals("FEE_PAYMENT_RECEIVED")) {
             payload.put(
                     "destination",
@@ -49,7 +50,7 @@ public class EventWriter {
                         mslaId =
                                 BorrowerRepository.n(
                                         db.owned(Reservation.class, org, id), "msla_id");
-                case "LOAN_REQUESTED", "COLLATERAL_PLEDGE_REQUESTED" ->
+                case "LOAN_REQUESTED", "COLLATERAL_PLEDGE_REQUESTED", "MARGIN_CALL_CANCELLATION_RESPONDED" ->
                         mslaId = BorrowerRepository.n(db.owned(Loan.class, org, id), "msla_id");
                 case "FEE_PAYMENT_RECEIVED" -> {
                     var fee = db.owned(LendingFee.class, org, id);

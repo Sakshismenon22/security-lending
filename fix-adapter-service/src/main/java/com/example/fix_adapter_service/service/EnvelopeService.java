@@ -15,9 +15,9 @@ import java.util.*;
 @Service
 public class EnvelopeService {
     private final AdapterProperties properties;private final RouteService routes;private final JsonMapper json;private final FixMessageViewFactory fixViews;
-    private static final Set<String> COMMANDS=Set.of("AGREEMENT_PROPOSED","AGREEMENT_ACCEPTED","AGREEMENT_REJECTED","LOCATE_REQUESTED","RESERVATION_REQUESTED","RESERVATION_RELEASE_REQUESTED","LOAN_REQUESTED","COLLATERAL_PLEDGE_REQUESTED","COLLATERAL_RELEASE_REQUESTED","RETURN_REQUESTED","FEE_PAYMENT_RECEIVED");
+    private static final Set<String> COMMANDS=Set.of("AGREEMENT_PROPOSED","AGREEMENT_ACCEPTED","AGREEMENT_REJECTED","LOCATE_REQUESTED","RESERVATION_REQUESTED","RESERVATION_RELEASE_REQUESTED","LOAN_REQUESTED","COLLATERAL_PLEDGE_REQUESTED","COLLATERAL_RELEASE_REQUESTED","RETURN_REQUESTED","FEE_PAYMENT_RECEIVED","MARGIN_CALL_CANCELLATION_RESPONDED");
     private static final Set<String> PAYMENTS=Set.of("DEPOSIT_REQUESTED","WITHDRAWAL_REQUESTED","FEE_REQUESTED");
-    private static final Set<String> CONFIRMATIONS=Set.of("LENDER_REFERENCE_UPDATED","AGREEMENT_OFFERED","AGREEMENT_ACCEPTED","AGREEMENT_REJECTED","LOCATE_APPROVED","LOCATE_REJECTED","LOCATE_EXPIRED","RESERVATION_CONFIRMED","RESERVATION_REJECTED","RESERVATION_RELEASED","RESERVATION_EXPIRED","RESERVATION_UPDATED","LOAN_SETTLED","LOAN_REJECTED","RETURN_SETTLED","RETURN_REJECTED","COLLATERAL_PLEDGED","COLLATERAL_REJECTED","COLLATERAL_RELEASED","COLLATERAL_RELEASE_REJECTED","PAYMENT_CONFIRMED","PAYMENT_REJECTED","FEE_BILL_ISSUED","ACCRUAL_REPORTED","REBATE_ACCRUED","REBATE_PAID","VALUATION_REPORTED","MARGIN_CALL_UPDATED","RECALL_UPDATED","DEFAULT_REPORTED","BUY_IN_REPORTED","LOAN_STATUS_UPDATED","HOLDING_IMPORTED");
+    private static final Set<String> CONFIRMATIONS=Set.of("LENDER_REFERENCE_UPDATED","AGREEMENT_OFFERED","AGREEMENT_ACCEPTED","AGREEMENT_REJECTED","LOCATE_APPROVED","LOCATE_REJECTED","LOCATE_EXPIRED","RESERVATION_CONFIRMED","RESERVATION_REJECTED","RESERVATION_RELEASED","RESERVATION_EXPIRED","RESERVATION_UPDATED","LOAN_SETTLED","LOAN_REJECTED","RETURN_SETTLED","RETURN_REJECTED","COLLATERAL_PLEDGED","COLLATERAL_REJECTED","COLLATERAL_RELEASED","COLLATERAL_APPLIED","COLLATERAL_RELEASE_REJECTED","PAYMENT_CONFIRMED","PAYMENT_REJECTED","FEE_BILL_ISSUED","ACCRUAL_REPORTED","REBATE_ACCRUED","REBATE_PAID","VALUATION_REPORTED","MARGIN_CALL_UPDATED","RECALL_UPDATED","DEFAULT_REPORTED","BUY_IN_REPORTED","BUY_IN_CLOSEOUT_REPORTED","LOAN_STATUS_UPDATED","HOLDING_IMPORTED");
     public EnvelopeService(AdapterProperties properties,RouteService routes,JsonMapper json) {this.properties=properties;this.routes=routes;this.json=json;this.fixViews=new FixMessageViewFactory();}
     public Optional<RoutedEnvelope> outbound(String body) {
         JsonNode root=parse(body);
@@ -38,7 +38,7 @@ public class EnvelopeService {
         var root=parse(message.payload());var envelope=validate(root,expected);
         if(!envelope.eventId().equals(message.eventId()) || !envelope.payloadHash().equals(message.payloadHash()))throw invalid("FIX envelope ID/hash does not match the JSON envelope");
         var route=routes.session(sessionKey,envelope.organizationId());
-        if(expected==MessageKind.COMMAND && !properties.getInstitutionId().equals(text(root,"lenderExternalId")))throw invalid("Command is addressed to another institution");
+        if(expected==MessageKind.COMMAND && !routes.acceptsCommandTarget(text(root,"lenderExternalId")))throw invalid("Command is addressed to another institution");
         return new RoutedEnvelope(envelope,sessionKey,route.getCounterpartyId());
     }
     private JsonNode parse(String body) {

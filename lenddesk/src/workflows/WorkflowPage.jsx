@@ -17,6 +17,7 @@ import './WorkflowPage.css'
 import { useDataSource } from '../hooks/useDataSource'
 import { activeLoans } from '../data/activeLoanData'
 import LiveLoanWorkflow from './LiveLoanWorkflow'
+import AddRegisteredBorrowerPage from '../pages/AddRegisteredBorrowerPage'
 const config={
  margin:{id:'LOAN-000006',section:'Margin Calls',back:'/margin-calls',title:'Issue margin call',initial:demoMarginCall,component:MarginCallWorkflow,review:'Review margin call',status:'Margin call reviewed locally (demo)',hint:'Review coverage impact, collateral eligibility and borrower notification before sending.'},
  loan:{id:'LOAN-000006',section:'Loans',back:'/loans',title:'Manage loan',initial:demoLoanAmendment,component:LoanAmendmentWorkflow,review:'Review loan amendment',status:'Loan amendment pending counterparty acknowledgment (demo)',hint:'Confirm collateral coverage and review amended economics and maturity. Terms remain proposed until borrower acknowledgment.'},
@@ -30,6 +31,7 @@ const config={
 export default function WorkflowPage({kind}){
  const params=useParams()
  const {mode}=useDataSource()
+ if(mode==='live'&&kind==='borrower')return <AddRegisteredBorrowerPage/>
  const settings=config[kind]
  const id=params.locateId??params.returnId??params.reservationId??params.loanId??settings.id
  if(mode==='live'&&['loan','margin','recall'].includes(kind))return <LiveLoanWorkflow key={`${kind}:${id}`} kind={kind} id={id}/>

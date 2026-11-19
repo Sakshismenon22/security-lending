@@ -20,6 +20,9 @@ public class AgreementController {
     return ApiResponse.ok(agreements.offer(org, request));
   }
 
+  @PostMapping("/{id}/resend")
+  public ApiResponse<?> resend(@PathVariable long org, @PathVariable long id) { return ApiResponse.ok(agreements.resend(org, id)); }
+
   @GetMapping("/{id}")
   public ApiResponse<?> detail(@PathVariable long org, @PathVariable long id) {
     return ApiResponse.ok(read.agreement(org, id));

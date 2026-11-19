@@ -451,3 +451,9 @@ ol small { display: block; color: var(--muted); font-size: 11px; }
   .generic-toolbar, .generic-toolbar > div:last-child, .generic-actions { align-items: stretch; flex-direction: column; }.generic-toolbar { padding: 8px; }.generic-toolbar .table-tabs { min-height: 40px; }.generic-workspace { padding: 0 8px 8px; }.generic-heading .primary-action { margin-left: 0; }
   .detail-grid { grid-template-columns: 1fr; }.detail-metrics { grid-template-columns: 1fr 1fr; }.detail-header { flex-direction: column; }.detail-header > div:last-child { padding-top: 0; }
 }
+
+.workspace-session-bar{display:flex;align-items:center;justify-content:space-between;gap:15px;min-height:32px;padding:6px 16px;border-bottom:1px solid var(--border);background:var(--surface,#fff);color:var(--muted,#655b83);font-size:11px;flex:none}.workspace-session-bar button{border:1px solid var(--border);background:var(--surface,#fff);color:var(--primary);border-radius:4px;padding:4px 10px}.workspace-session-bar [role=alert]{color:#b33143}
+
+.workspace-session-bar { padding-right: 90px; }
+.workspace-session-bar > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-session-bar > button { flex-shrink: 0; }

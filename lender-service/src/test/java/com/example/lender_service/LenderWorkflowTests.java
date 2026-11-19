@@ -60,8 +60,17 @@ class LenderWorkflowTests {
   @Autowired RebateRepository rebates;
   @Autowired LenderAccountRepository accounts;
   @Autowired MarginCallRepository calls;
+  @Autowired MarginCallService marginCallService;
   @Autowired RecallRepository recalls;
   @Autowired LoanDefaultRepository defaults;
+  @Autowired BuyinOrderService buyinOrders;
+  @Autowired BuyinOrderRepository buyinOrderRows;
+  @Autowired BuyinInventoryService buyinReceipts;
+  @Autowired BuyinLoanCloseoutService buyinCloseouts;
+  @Autowired BuyinLoanCloseoutRepository buyinCloseoutRows;
+  @Autowired BuyInRepository buyinReports;
+  @Autowired InventoryHistoryRepository inventoryHistory;
+  @Autowired LenderAccountLedgerRepository purchaseLedger;
   @Autowired MockMvc mvc;
   @Autowired LocateScreenService locateScreenForTests;
   @Autowired SecurityMasterRepository securityMasterForScreenTest;
@@ -719,6 +728,85 @@ class LenderWorkflowTests {
                         new MarginIssueRequest(
                             bd("1"), Instant.now().minusSeconds(1), "Invalid", "bad"))))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void marginCancellationWaitsForBorrowerRejectsSettlementsAndAllowsNewCall() throws Exception {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    lifecycle(org, "MARGIN_CALL_UPDATED", loan.getId(), 1, Map.of(
+        "loanId", loan.getId(), "externalId", "AUTO-MARGIN-1", "amount", "300",
+        "fulfilledAmount", "0", "status", "OPEN", "reason", "Shortfall",
+        "dueAt", Instant.now().plusSeconds(86400).toString()));
+    var call = calls.findByOrganizationIdAndOwnerReferenceId(org.getId(), loan.getId()).orElseThrow();
+    var service = marginCallService;
+    service.cancel(org.getId(), call.getId(), new SettlementRequest("cancel-1"));
+    assertEquals("CANCELLATION_PENDING", call.getStatus());
+    assertThrows(ResponseStatusException.class, () -> lifecycleRequests.margin(org.getId(), loan.getId(),
+        new MarginIssueRequest(bd("300"), Instant.now().plusSeconds(86400), "Again", "blocked")));
+    command(org, "MARGIN_CALL_CANCELLATION_RESPONDED", loan.getBorrowerLoanId(), 10,
+        Map.of("marginCallId", loan.getId(), "cancellationReference", "cancel-1", "accepted", false, "reason", "Borrower pledge is in transit"));
+    assertEquals("OPEN", call.getStatus());
+    assertEquals("Borrower pledge is in transit", call.getCancellationFailureReason());
+    service.cancel(org.getId(), call.getId(), new SettlementRequest("cancel-2"));
+    command(org, "MARGIN_CALL_CANCELLATION_RESPONDED", loan.getBorrowerLoanId(), 10,
+        Map.of("marginCallId", loan.getId(), "cancellationReference", "cancel-2", "accepted", true));
+    assertEquals("CANCELLED", call.getStatus());
+    // A delayed old owner snapshot must not reopen the cancelled call.
+    lifecycle(org, "MARGIN_CALL_UPDATED", loan.getId(), 2, Map.of(
+        "loanId", loan.getId(), "externalId", "AUTO-MARGIN-1", "amount", "300",
+        "fulfilledAmount", "0", "status", "OPEN", "reason", "Shortfall",
+        "dueAt", Instant.now().plusSeconds(86400).toString()));
+    assertEquals("CANCELLED", call.getStatus());
+    lifecycleRequests.setMarginGuardrail(org.getId(), false);
+    var nextDue = Instant.now().plusSeconds(86400);
+    var next = lifecycleRequests.margin(org.getId(), loan.getId(),
+        new MarginIssueRequest(bd("300"), nextDue, "Again", "new-call"));
+    assertEquals("PENDING", next.getStatus());
+    var previousIssueTime = call.getCreatedAt();
+    lifecycle(org, "MARGIN_CALL_UPDATED", loan.getId(), call.getSourceVersion() + 1, Map.of(
+        "loanId", loan.getId(), "lifecycleRequestId", next.getId(), "externalId", "MARGIN-" + next.getId(),
+        "amount", "300", "fulfilledAmount", "0", "status", "OPEN", "reason", "Again", "dueAt", nextDue.toString()));
+    assertEquals("OPEN", call.getStatus());
+    assertTrue(call.getCreatedAt().isAfter(previousIssueTime));
+    assertNull(call.getCancellationReference());
+    service.cancel(org.getId(), call.getId(), new SettlementRequest("cancel-3"));
+    // A pledge already in transit can arrive and settle during cancellation verification.
+    command(org, "COLLATERAL_PLEDGE_REQUESTED", loan.getBorrowerLoanId(), 10,
+        new PledgeCommand(499, new AllocationRequest("CASH", null, 0, bd("100"), loan.getId())));
+    var received = positions.findByConnectionIdAndBorrowerPositionId(conn.getId(), 499L).orElseThrow();
+    collateral.confirm(org.getId(), received.getId(), "IN-TRANSIT-RECEIPT");
+    assertEquals("CANCELLATION_PENDING", call.getStatus());
+    command(org, "MARGIN_CALL_CANCELLATION_RESPONDED", loan.getBorrowerLoanId(), 10,
+        Map.of("marginCallId", loan.getId(), "cancellationReference", "cancel-3", "accepted", false, "reason", "Collateral already submitted"));
+    assertEquals("PARTIALLY_FULFILLED", call.getStatus());
+    assertEquals(0, bd("100").compareTo(call.getFulfilledAmount()));
+    assertThrows(ResponseStatusException.class, () -> service.cancel(org.getId(), call.getId(), new SettlementRequest("cancel-4")));
+    mvc.perform(post("/api/v1/organizations/" + organization().getId() + "/margin-calls/" + call.getId() + "/cancel")
+        .contentType("application/json").content(json.write(new SettlementRequest("cross-tenant"))))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void marginDeliveryRepairForLegacyAutomaticCallQueuesExactlyOnce() {
+    var org = organization(); var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var call = new MarginCall();
+    call.setOrganizationId(org.getId()); call.setConnectionId(conn.getId()); call.setLoanId(loan.getId());
+    call.setOwnerReferenceId(loan.getId()); call.setSourceVersion(1L); call.setSourceData("{}");
+    call.setStatus("OPEN"); call.setCreatedAt(Instant.now()); call.setAmount(bd("300"));
+    call.setFulfilledAmount(BigDecimal.ZERO); call.setDueAt(Instant.now().plusSeconds(86400)); call.setReason("Automatic shortfall");
+    calls.saveAndFlush(call);
+    var service = marginCallService;
+    service.repairMissingDelivery(org.getId(), call.getId());
+    service.repairMissingDelivery(org.getId(), call.getId());
+    var deliveries = events.findByOrganizationId(org.getId(), Pageable.unpaged()).stream()
+        .filter(e -> "lender.confirmations.v1".equals(e.getTopic()))
+        .map(e -> json.tree(e.getPayload()))
+        .filter(e -> "MARGIN_CALL_UPDATED".equals(e.path("type").asText())).toList();
+    assertEquals(1, deliveries.size());
+    assertEquals(loan.getBorrowerLoanId().longValue(), deliveries.get(0).path("data").path("loanId").asLong());
   }
 
   @Test
@@ -1987,5 +2075,975 @@ class LenderWorkflowTests {
     assertThrows(
         ResponseStatusException.class,
         () -> lifecycleRequests.recall(o.getId(), second.getId(), body));
+  }
+
+  LoanDefault reportDefaultForBuyinTest(Organization org, Loan loan, long ownerId, long obligationId) {
+    lifecycle(org, "DEFAULT_REPORTED", ownerId, 1, Map.of(
+        "loanId", loan.getId(), "obligationId", obligationId, "obligationType", "RECALL",
+        "reason", "Recall deadline elapsed", "status", "OPEN"));
+    return defaults.findByOrganizationIdAndOwnerReferenceId(org.getId(), ownerId).orElseThrow();
+  }
+
+  @Test
+  void buyinScreenKeepsOwnerReferencesAndRequestsSeparate() throws Exception {
+    var org = organization(); var connection = connection(org);
+    var loan = activeLoan(org, connection, security("100"), true);
+    long recallOwner = ids.incrementAndGet();
+    lifecycle(org, "RECALL_UPDATED", recallOwner, 1, Map.of("loanId", loan.getId(), "quantity", 20,
+        "fulfilledQuantity", 5, "dueAt", Instant.now().minusSeconds(3600), "reason", "Recall", "status", "OVERDUE", "externalId", "REC-SCREEN"));
+    var first = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), recallOwner);
+    var second = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    var request = lifecycleRequests.buyIn(org.getId(), first.getId(), new LifecycleActionRequest("screen-buyin"));
+    var response = mvc.perform(get("/api/v1/organizations/" + org.getId() + "/lenddesk/defaults-buyins"))
+        .andExpect(status().isOk()).andReturn();
+    var rows = json.tree(response.getResponse().getContentAsString()).path("data");
+    assertEquals(2, rows.size());
+    for (var row : rows) {
+      if (row.path("default").path("id").asLong() == first.getId()) {
+        assertEquals(request.getId().longValue(), row.path("requests").get(0).path("id").asLong());
+        assertEquals(recallOwner, row.path("recall").path("ownerReferenceId").asLong());
+        assertEquals(first.getOwnerReferenceId().longValue(), row.path("default").path("ownerReferenceId").asLong());
+      } else {
+        assertEquals(second.getId().longValue(), row.path("default").path("id").asLong());
+        assertEquals(0, row.path("requests").size());
+        assertTrue(row.path("recall").isNull());
+      }
+    }
+    var other = organization();
+    mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/defaults-buyins"))
+        .andExpect(jsonPath("$.data.length()").value(0));
+    mvc.perform(post("/api/v1/organizations/" + other.getId() + "/defaults/" + first.getId() + "/buy-in-requests")
+        .contentType("application/json").content("{\"clientRequestId\":\"foreign\"}"))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void buyinRequestsAreIdempotentAndRejectedRequestsCanBeRetried() {
+    var org = organization(); var connection = connection(org);
+    var loan = activeLoan(org, connection, security("100"), true);
+    var def = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    var request = lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-first"));
+    assertEquals("PENDING", request.getStatus());
+    assertEquals(request.getId(), lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-first")).getId());
+    assertEquals(request.getId(), lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-second-click")).getId());
+    var second = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    assertThrows(ResponseStatusException.class, () -> lifecycleRequests.buyIn(org.getId(), second.getId(), new LifecycleActionRequest("buyin-first")));
+    lifecycle(org, "LIFECYCLE_REQUEST_REJECTED", request.getId(), 1, Map.of("reason", "No execution venue available"));
+    assertEquals("REJECTED", request.getStatus()); assertEquals("No execution venue available", request.getFailureReason());
+    var retry = lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-retry"));
+    assertNotEquals(request.getId(), retry.getId()); assertEquals("PENDING", retry.getStatus());
+    def.setStatus("RESOLVED");
+    assertEquals(retry.getId(), lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-retry")).getId());
+    assertThrows(ResponseStatusException.class, () -> lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-closed")));
+  }
+
+  @Test
+  void buyinReportsCompleteOnlyTheirDefaultAndDoNotSettleLoanOrCash() throws Exception {
+    var org = organization(); var connection = connection(org);
+    var loan = activeLoan(org, connection, security("100"), true);
+    var def = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    var request = lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-report"));
+    var initialCash = accounts.findByOrganizationId(org.getId()).orElseThrow().getCashCollateralHeld();
+    var data = new LinkedHashMap<String, Object>(Map.of("loanId", loan.getId(), "defaultId", def.getOwnerReferenceId(),
+        "quantity", 20, "price", "101", "costs", "5", "collateralApplied", "2025", "residualBalance", "0", "status", "COMPLETED", "lifecycleRequestId", request.getId()));
+    lifecycle(org, "BUY_IN_REPORTED", ids.incrementAndGet(), 1, data);
+    assertEquals("COMPLETED", request.getStatus());
+    assertEquals("ACTIVE", loans.findById(loan.getId()).orElseThrow().getStatus());
+    assertEquals(initialCash, accounts.findByOrganizationId(org.getId()).orElseThrow().getCashCollateralHeld());
+    assertThrows(ResponseStatusException.class, () -> lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("duplicate-after-report")));
+    var response = mvc.perform(get("/api/v1/organizations/" + org.getId() + "/lenddesk/defaults-buyins")).andExpect(status().isOk()).andReturn();
+    assertEquals(20L, json.tree(response.getResponse().getContentAsString()).path("data").get(0).path("buyIns").get(0).path("quantity").asLong());
+    data.put("defaultId", def.getOwnerReferenceId() + 1);
+    assertThrows(ResponseStatusException.class, () -> lifecycle(org, "BUY_IN_REPORTED", ids.incrementAndGet(), 1, data));
+  }
+
+  @Test
+  void exhaustedBuyinDeliveryFailsRequestAndNewAttemptRetiresFailedCommand() {
+    var org = organization(); var connection = connection(org);
+    var loan = activeLoan(org, connection, security("100"), true);
+    var def = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    var request = lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-delivery-first"));
+    var event = events.findAll().stream().filter(e -> e.getOrganizationId().equals(org.getId()) && json.tree(e.getPayload()).path("type").asText().equals("BUY_IN_REQUESTED")).findFirst().orElseThrow();
+    event.setStatus("FAILED");
+    BuyinDeliveryState.fail(valuationEm, event, "Kafka unavailable after retries");
+    valuationEm.refresh(request);
+    assertEquals("FAILED", request.getStatus()); assertEquals("Kafka unavailable after retries", request.getFailureReason());
+    var retry = lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("buyin-delivery-retry"));
+    assertEquals("PENDING", retry.getStatus()); assertNotEquals(request.getId(), retry.getId());
+    assertEquals("CLOSED", request.getStatus()); assertEquals("CLOSED", event.getStatus());
+    assertEquals("OPEN", def.getStatus());
+  }
+
+  @Test
+  void executionEndpointIsTenantScopedIdempotentAndCompletesBothRequests() throws Exception {
+    var org = organization();
+    var connection = connection(org);
+    var loan = activeLoan(org, connection, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("parent-execution")
+    );
+    var request = new BuyinExecutionRequest(
+      "execution-one",
+      parent.getId(),
+      20,
+      bd("101"),
+      bd("5"),
+      "TRADE-42"
+    );
+    assertThrows(ResponseStatusException.class, () ->
+      lifecycleRequests.reportBuyin(org.getId(), def.getId(), request)
+    );
+    lifecycle(
+      org,
+      "LIFECYCLE_REQUEST_ACCEPTED",
+      parent.getId(),
+      1,
+      Map.of("loanId", loan.getId())
+    );
+    String path =
+      "/api/v1/organizations/" +
+      org.getId() +
+      "/defaults/" +
+      def.getId() +
+      "/buy-in-executions";
+    var response = mvc
+      .perform(
+        post(path).contentType("application/json").content(json.write(request))
+      )
+      .andExpect(status().isOk())
+      .andReturn();
+    long executionId = json
+      .tree(response.getResponse().getContentAsString())
+      .path("data")
+      .path("id")
+      .asLong();
+    assertEquals(
+      executionId,
+      lifecycleRequests.reportBuyin(org.getId(), def.getId(), request).getId()
+    );
+    assertEquals(
+      executionId,
+      lifecycleRequests
+        .reportBuyin(
+          org.getId(),
+          def.getId(),
+          new BuyinExecutionRequest(
+            "execution-double-click",
+            parent.getId(),
+            20,
+            bd("101"),
+            bd("5"),
+            "TRADE-42"
+          )
+        )
+        .getId()
+    );
+    var other = organization();
+    mvc
+      .perform(
+        post(
+          "/api/v1/organizations/" +
+            other.getId() +
+            "/defaults/" +
+            def.getId() +
+            "/buy-in-executions"
+        )
+          .contentType("application/json")
+          .content(json.write(request))
+      )
+      .andExpect(status().isNotFound());
+    mvc
+      .perform(
+        post(path)
+          .contentType("application/json")
+          .content(
+            json.write(
+              new BuyinExecutionRequest(
+                "negative",
+                parent.getId(),
+                20,
+                bd("-1"),
+                bd("0"),
+                "x"
+              )
+            )
+          )
+      )
+      .andExpect(status().isBadRequest());
+    var executionEvent = events
+      .findAll()
+      .stream()
+      .filter(
+        e ->
+          json
+            .tree(e.getPayload())
+            .path("type")
+            .asText()
+            .equals("BUY_IN_EXECUTION_REQUESTED") &&
+          json.tree(e.getPayload()).path("referenceId").asLong() == executionId
+      )
+      .findFirst()
+      .orElseThrow();
+    executionEvent.setStatus("FAILED");
+    BuyinDeliveryState.fail(valuationEm, executionEvent, "Kafka unavailable");
+    valuationEm.refresh(valuationEm.find(LifecycleRequest.class, executionId));
+    assertEquals(
+      "FAILED",
+      valuationEm.find(LifecycleRequest.class, executionId).getStatus()
+    );
+    assertEquals("ACCEPTED", parent.getStatus());
+    BuyinDeliveryState.decide(valuationEm, executionEvent, true);
+    valuationEm.refresh(valuationEm.find(LifecycleRequest.class, executionId));
+    assertEquals(
+      "PENDING",
+      valuationEm.find(LifecycleRequest.class, executionId).getStatus()
+    );
+    var data = new LinkedHashMap<String, Object>();
+    data.put("loanId", loan.getId());
+    data.put("defaultId", def.getOwnerReferenceId());
+    data.put("lifecycleRequestId", parent.getId());
+    data.put("executionRequestId", executionId);
+    data.put("quantity", 20);
+    data.put("price", "101");
+    data.put("costs", "5");
+    data.put("collateralApplied", "0");
+    data.put("residualBalance", "2025");
+    data.put("status", "EXECUTED");
+    data.put("executionReference", "TRADE-42");
+    long report = ids.incrementAndGet();
+    lifecycle(org, "BUY_IN_REPORTED", report, 1, data);
+    lifecycle(org, "BUY_IN_REPORTED", report, 1, data);
+    assertEquals("COMPLETED", parent.getStatus());
+    assertEquals(
+      "COMPLETED",
+      valuationEm.find(LifecycleRequest.class, executionId).getStatus()
+    );
+    var snapshot = mvc
+      .perform(
+        get(
+          "/api/v1/organizations/" + org.getId() + "/lenddesk/defaults-buyins"
+        )
+      )
+      .andExpect(status().isOk())
+      .andReturn();
+    var row = json
+      .tree(snapshot.getResponse().getContentAsString())
+      .path("data")
+      .get(0);
+    assertEquals(2, row.path("requests").size());
+    assertEquals(1, row.path("buyIns").size());
+    assertEquals(
+      "TRADE-42",
+      row.path("buyIns").get(0).path("executionReference").asText()
+    );
+    assertEquals("ACTIVE", loan.getStatus());
+    assertEquals("OPEN", def.getStatus());
+    assertThrows(ResponseStatusException.class, () ->
+      lifecycleRequests.reportBuyin(
+        org.getId(),
+        def.getId(),
+        new BuyinExecutionRequest(
+          "another",
+          parent.getId(),
+          20,
+          bd("101"),
+          bd("5"),
+          "TRADE-43"
+        )
+      )
+    );
+  }
+
+  Map<String, Object> orderFill(BuyinOrder order, LoanDefault def) {
+    var data = new LinkedHashMap<String, Object>();
+    data.put("loanId", order.getLoanId());
+    data.put("defaultId", def.getOwnerReferenceId());
+    data.put("lifecycleRequestId", order.getBuyinRequestId());
+    data.put("executionRequestId", order.getExecutionRequestId());
+    data.put("quantity", order.getQuantity());
+    data.put("price", order.getExecutionPrice());
+    data.put("costs", order.getCosts());
+    data.put("collateralApplied", "0");
+    data.put(
+      "residualBalance",
+      order
+        .getExecutionPrice()
+        .multiply(BigDecimal.valueOf(order.getQuantity()))
+        .add(order.getCosts())
+    );
+    data.put("status", "EXECUTED");
+    data.put("executionReference", order.getExecutionReference());
+    return data;
+  }
+
+  @Test
+  void buyinMarketOrderUsesOlderQuoteCreditsInventoryAndAuditsExactlyOnce() throws Exception {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("market-parent")
+    );
+    lifecycle(
+      org,
+      "LIFECYCLE_REQUEST_ACCEPTED",
+      parent.getId(),
+      1,
+      Map.of("loanId", loan.getId())
+    );
+    var cachedQuote = securityMasterForScreenTest
+      .findById(loan.getSecurityId())
+      .orElseThrow();
+    cachedQuote.setPriceAt(Instant.now().minusSeconds(86400));
+    var stockBefore = inventory.position(org.getId(), loan.getSecurityId());
+    long total = stockBefore.getTotalQuantity(),
+      available = stockBefore.getAvailableQuantity(),
+      loaned = stockBefore.getLoanedQuantity(),
+      outstanding = loan.getOutstandingQuantity();
+    var request = new BuyinOrderRequest(
+      "market-order",
+      parent.getId(),
+      "MARKET",
+      20,
+      null,
+      bd("5")
+    );
+    var order = buyinOrders.place(org.getId(), def.getId(), request);
+    var http = mvc
+      .perform(
+        post(
+          "/api/v1/organizations/" +
+            org.getId() +
+            "/defaults/" +
+            def.getId() +
+            "/buy-in-orders"
+        )
+          .contentType("application/json")
+          .content(json.write(request))
+      )
+      .andExpect(status().isOk())
+      .andReturn();
+    assertEquals(
+      order.getId().longValue(),
+      json
+        .tree(http.getResponse().getContentAsString())
+        .path("data")
+        .path("id")
+        .asLong()
+    );
+    assertEquals("EXECUTION_PENDING", order.getStatus());
+    assertEquals(cachedQuote.getPriceAt(), order.getQuoteAt());
+    assertNull(order.getFailureReason());
+    assertEquals(
+      order.getId(),
+      buyinOrders.place(org.getId(), def.getId(), request).getId()
+    );
+    assertEquals(total, stockBefore.getTotalQuantity());
+    assertThrows(ResponseStatusException.class, () ->
+      lifecycleRequests.reportBuyin(
+        org.getId(),
+        def.getId(),
+        new BuyinExecutionRequest(
+          "manual-overlap",
+          parent.getId(),
+          20,
+          bd("101"),
+          bd("5"),
+          "OTHER"
+        )
+      )
+    );
+    long reportId = ids.incrementAndGet();
+    var payload = orderFill(order, def);
+    lifecycle(org, "BUY_IN_REPORTED", reportId, 1, payload);
+    lifecycle(org, "BUY_IN_REPORTED", reportId, 1, payload);
+    assertEquals("FILLED", order.getStatus());
+    assertEquals(total + 20, stockBefore.getTotalQuantity());
+    assertEquals(available + 20, stockBefore.getAvailableQuantity());
+    assertEquals(loaned, stockBefore.getLoanedQuantity());
+    assertEquals(outstanding, loan.getOutstandingQuantity());
+    assertEquals("ACTIVE", loan.getStatus());
+    var report = buyinReports
+      .findByOrganizationIdAndOwnerReferenceId(org.getId(), reportId)
+      .orElseThrow();
+    assertNotNull(report.getInventoryReceivedAt());
+    buyinReceipts.receive(
+      org.getId(),
+      report.getId(),
+      order.getExecutionReference()
+    );
+    assertEquals(
+      1,
+      inventoryHistory
+        .findByOrganizationId(org.getId(), Pageable.unpaged())
+        .stream()
+        .filter(h -> h.getType().equals("BUY_IN_SECURITIES_RECEIVED"))
+        .count()
+    );
+    var entries = purchaseLedger
+      .findByOrganizationId(org.getId(), Pageable.unpaged())
+      .stream()
+      .filter(l -> l.getType().equals("BUY_IN_PURCHASE_PAYABLE"))
+      .toList();
+    assertEquals(1, entries.size());
+    assertEquals(0, bd("2005").compareTo(entries.get(0).getAmount()));
+    assertTrue(
+      events
+        .findByOrganizationId(org.getId(), Pageable.unpaged())
+        .stream()
+        .anyMatch(e ->
+          json
+            .tree(e.getPayload())
+            .path("type")
+            .asText()
+            .equals("BUY_IN_ORDER_FILLED")
+        )
+    );
+    assertEquals(
+      1L,
+      valuationEm
+        .createQuery(
+          "select count(a) from AuditEvent a where a.organizationId=:org and a.type='BUY_IN_ORDER_FILLED'",
+          Long.class
+        )
+        .setParameter("org", org.getId())
+        .getSingleResult()
+    );
+    mvc
+      .perform(
+        post(
+          "/api/v1/organizations/" +
+            org.getId() +
+            "/buy-ins/" +
+            report.getId() +
+            "/inventory-receipts"
+        )
+          .contentType("application/json")
+          .content(
+            json.write(Map.of("reference", order.getExecutionReference()))
+          )
+      )
+      .andExpect(status().isOk());
+    assertThrows(ResponseStatusException.class, () ->
+      buyinOrders.cancel(org.getId(), order.getId())
+    );
+    var other = organization();
+    mvc
+      .perform(
+        post(
+          "/api/v1/organizations/" +
+            other.getId() +
+            "/buy-in-orders/" +
+            order.getId() +
+            "/cancel"
+        )
+      )
+      .andExpect(status().isNotFound());
+    var response = mvc
+      .perform(
+        get(
+          "/api/v1/organizations/" + org.getId() + "/lenddesk/defaults-buyins"
+        )
+      )
+      .andExpect(status().isOk())
+      .andReturn();
+    var row = json
+      .tree(response.getResponse().getContentAsString())
+      .path("data")
+      .get(0);
+    assertEquals("FILLED", row.path("orders").get(0).path("status").asText());
+    assertFalse(row.path("buyIns").get(0).path("inventoryReceivedAt").isNull());
+  }
+
+  @Test
+  void buyinLimitOrderWaitsCancelsAndMatchesOnlyAtOrBelowLimit() {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("limit-parent")
+    );
+    lifecycle(
+      org,
+      "LIFECYCLE_REQUEST_ACCEPTED",
+      parent.getId(),
+      1,
+      Map.of("loanId", loan.getId())
+    );
+    var order = buyinOrders.place(
+      org.getId(),
+      def.getId(),
+      new BuyinOrderRequest(
+        "limit-cancel",
+        parent.getId(),
+        "LIMIT",
+        20,
+        bd("90"),
+        bd("0")
+      )
+    );
+    assertEquals("PENDING", order.getStatus());
+    assertNull(order.getExecutionRequestId());
+    assertThrows(ResponseStatusException.class, () ->
+      buyinOrders.place(
+        org.getId(),
+        def.getId(),
+        new BuyinOrderRequest(
+          "duplicate-pending",
+          parent.getId(),
+          "MARKET",
+          20,
+          null,
+          bd("0")
+        )
+      )
+    );
+    buyinOrders.cancel(org.getId(), order.getId());
+    buyinOrders.cancel(org.getId(), order.getId());
+    assertEquals("CANCELLED", order.getStatus());
+    var replacement = buyinOrders.place(
+      org.getId(),
+      def.getId(),
+      new BuyinOrderRequest(
+        "limit-fill",
+        parent.getId(),
+        "LIMIT",
+        20,
+        bd("90"),
+        bd("0")
+      )
+    );
+    assertEquals("PENDING", replacement.getStatus());
+    market.quote(loan.getSecurityId(), bd("89"), Instant.now());
+    buyinOrders.match(org.getId(), replacement.getId());
+    assertEquals("EXECUTION_PENDING", replacement.getStatus());
+    assertEquals(0, bd("89").compareTo(replacement.getExecutionPrice()));
+    assertThrows(ResponseStatusException.class, () ->
+      buyinOrders.cancel(org.getId(), replacement.getId())
+    );
+  }
+
+  @Test
+  void buyinLimitUsesOlderQuoteAndRejectsChangedObligationsWithoutCreditingInventory() {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("stale-parent")
+    );
+    lifecycle(
+      org,
+      "LIFECYCLE_REQUEST_ACCEPTED",
+      parent.getId(),
+      1,
+      Map.of("loanId", loan.getId())
+    );
+    var sec = securityMasterForScreenTest
+      .findById(loan.getSecurityId())
+      .orElseThrow();
+    sec.setPriceAt(Instant.now().minusSeconds(600));
+    long total = inventory
+      .position(org.getId(), loan.getSecurityId())
+      .getTotalQuantity();
+    var order = buyinOrders.place(
+      org.getId(),
+      def.getId(),
+      new BuyinOrderRequest(
+        "stale-order",
+        parent.getId(),
+        "LIMIT",
+        20,
+        bd("90"),
+        bd("0")
+      )
+    );
+    assertEquals("PENDING", order.getStatus());
+    assertNull(order.getFailureReason());
+    assertNull(order.getExecutionRequestId());
+    loan.setOutstandingQuantity(10L);
+    market.quote(loan.getSecurityId(), bd("100"), Instant.now());
+    buyinOrders.match(org.getId(), order.getId());
+    assertEquals("REJECTED", order.getStatus());
+    assertEquals(
+      total,
+      inventory.position(org.getId(), loan.getSecurityId()).getTotalQuantity()
+    );
+  }
+
+  @Test
+  void externalBuyinReceiptRequiresConfirmationAndCannotCreditTwice() {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("external-parent")
+    );
+    long total = inventory
+      .position(org.getId(), loan.getSecurityId())
+      .getTotalQuantity();
+    var payload = new LinkedHashMap<String, Object>(
+      Map.of(
+        "loanId",
+        loan.getId(),
+        "defaultId",
+        def.getOwnerReferenceId(),
+        "quantity",
+        20,
+        "price",
+        "100",
+        "costs",
+        "0",
+        "collateralApplied",
+        "0",
+        "residualBalance",
+        "2000",
+        "status",
+        "EXECUTED",
+        "lifecycleRequestId",
+        parent.getId()
+      )
+    );
+    payload.put("executionReference", "EXTERNAL-TRADE");
+    long owner = ids.incrementAndGet();
+    lifecycle(org, "BUY_IN_REPORTED", owner, 1, payload);
+    var report = buyinReports
+      .findByOrganizationIdAndOwnerReferenceId(org.getId(), owner)
+      .orElseThrow();
+    assertEquals(
+      total,
+      inventory.position(org.getId(), loan.getSecurityId()).getTotalQuantity()
+    );
+    buyinReceipts.receive(org.getId(), report.getId(), "CUSTODY-42");
+    buyinReceipts.receive(org.getId(), report.getId(), "CUSTODY-42");
+    assertEquals(
+      total + 20,
+      inventory.position(org.getId(), loan.getSecurityId()).getTotalQuantity()
+    );
+    assertThrows(ResponseStatusException.class, () ->
+      buyinReceipts.receive(org.getId(), report.getId(), "OTHER-CUSTODY")
+    );
+    var other = organization();
+    assertThrows(ResponseStatusException.class, () ->
+      buyinReceipts.receive(other.getId(), report.getId(), "CUSTODY-42")
+    );
+  }
+
+  BuyIn receivedBuyinForCloseout(
+    Organization org,
+    Loan loan,
+    LoanDefault def,
+    long quantity,
+    String price
+  ) {
+    var parent = lifecycleRequests.buyIn(
+      org.getId(),
+      def.getId(),
+      new LifecycleActionRequest("close-parent-" + ids.incrementAndGet())
+    );
+    var data = new LinkedHashMap<String, Object>(
+      Map.of(
+        "loanId",
+        loan.getId(),
+        "defaultId",
+        def.getOwnerReferenceId(),
+        "quantity",
+        quantity,
+        "price",
+        price,
+        "costs",
+        "5",
+        "collateralApplied",
+        "0",
+        "residualBalance",
+        "0",
+        "status",
+        "EXECUTED",
+        "lifecycleRequestId",
+        parent.getId()
+      )
+    );
+    long owner = ids.incrementAndGet();
+    lifecycle(org, "BUY_IN_REPORTED", owner, 1, data);
+    var report = buyinReports
+      .findByOrganizationIdAndOwnerReferenceId(org.getId(), owner)
+      .orElseThrow();
+    buyinReceipts.receive(org.getId(), report.getId(), "receipt-" + owner);
+    return report;
+  }
+
+  @Test
+  void buyinLoanCloseoutAppliesCostReleasesSurplusAndQueuesFinalBillingExactlyOnce() throws Exception {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    var receipt = receivedBuyinForCloseout(org, loan, def, 100, "100");
+    assertThrows(ResponseStatusException.class, () ->
+      lifecycle(
+        org,
+        "BUY_IN_REPORTED",
+        receipt.getOwnerReferenceId(),
+        2,
+        Map.of(
+          "loanId",
+          loan.getId(),
+          "defaultId",
+          def.getOwnerReferenceId(),
+          "quantity",
+          100,
+          "price",
+          "200",
+          "costs",
+          "5",
+          "collateralApplied",
+          "0",
+          "residualBalance",
+          "0",
+          "status",
+          "EXECUTED"
+        )
+      )
+    );
+    var stockRow = inventory.position(org.getId(), loan.getSecurityId());
+    assertEquals(1100, stockRow.getTotalQuantity());
+    long available = stockRow.getAvailableQuantity();
+    assertEquals(
+      true,
+      buyinCloseouts.preview(org.getId(), def.getId()).get("eligible")
+    );
+    String path =
+      "/api/v1/organizations/" +
+      org.getId() +
+      "/defaults/" +
+      def.getId() +
+      "/close-loan";
+    mvc
+      .perform(
+        post(path)
+          .contentType("application/json")
+          .content("{\"reference\":\"CLOSE-42\"}")
+      )
+      .andExpect(status().isOk());
+    var closed = buyinCloseouts.close(org.getId(), def.getId(), "CLOSE-42");
+    assertEquals(
+      1,
+      buyinCloseoutRows
+        .findAll()
+        .stream()
+        .filter(c -> c.getLoanId().equals(loan.getId()))
+        .count()
+    );
+    assertEquals("CLOSED", loan.getStatus());
+    assertEquals(0, loan.getOutstandingQuantity());
+    assertNotNull(loan.getClosedAt());
+    assertEquals(100, receipt.getCloseoutQuantity());
+    assertEquals(1000, stockRow.getTotalQuantity());
+    assertEquals(0, stockRow.getLoanedQuantity());
+    assertEquals(available, stockRow.getAvailableQuantity());
+    assertEquals(0, bd("10005").compareTo(closed.getCashCollateralApplied()));
+    assertEquals(0, bd("995").compareTo(closed.getCashCollateralReturned()));
+    assertEquals(
+      0,
+      accounts
+        .findByOrganizationId(org.getId())
+        .orElseThrow()
+        .getCashCollateralHeld()
+        .signum()
+    );
+    assertEquals("RESOLVED", def.getStatus());
+    assertTrue(
+      positions
+        .findByLoanId(loan.getId())
+        .stream()
+        .allMatch(p -> Set.of("APPLIED", "RELEASED").contains(p.getStatus()))
+    );
+    var all = events
+      .findByOrganizationId(org.getId(), Pageable.unpaged())
+      .getContent();
+    assertEquals(
+      1,
+      all
+        .stream()
+        .filter(e ->
+          json.tree(e.getPayload()).path("type").asText().equals("LOAN_CLOSED")
+        )
+        .count()
+    );
+    assertEquals(
+      1,
+      all
+        .stream()
+        .filter(e ->
+          json
+            .tree(e.getPayload())
+            .path("type")
+            .asText()
+            .equals("COLLATERAL_APPLIED")
+        )
+        .count()
+    );
+    assertTrue(
+      all
+        .stream()
+        .anyMatch(
+          e ->
+            json
+              .tree(e.getPayload())
+              .path("type")
+              .asText()
+              .equals("LOAN_STATUS_UPDATED") &&
+            json
+              .tree(e.getPayload())
+              .path("data")
+              .path("buyinCloseout")
+              .asBoolean()
+        )
+    );
+    var caseSnapshot=mvc.perform(get("/api/v1/organizations/"+org.getId()+"/lenddesk/defaults-buyins")).andExpect(status().isOk()).andReturn();assertEquals(0,bd("10005").compareTo(new BigDecimal(json.tree(caseSnapshot.getResponse().getContentAsString()).path("data").get(0).path("closeout").path("cashCollateralApplied").asText())));assertEquals(0,bd("10000").compareTo(new BigDecimal(json.tree(caseSnapshot.getResponse().getContentAsString()).path("data").get(0).path("closeout").path("purchaseValue").asText())));assertEquals(0,bd("5").compareTo(new BigDecimal(json.tree(caseSnapshot.getResponse().getContentAsString()).path("data").get(0).path("closeout").path("executionCosts").asText())));
+    var summaries=all.stream().filter(e->json.tree(e.getPayload()).path("type").asText().equals("BUY_IN_CLOSEOUT_REPORTED")).toList();assertEquals(1,summaries.size());var summary=json.tree(summaries.get(0).getPayload()).path("data");assertEquals(loan.getBorrowerLoanId().longValue(),summary.path("loanId").asLong());assertEquals(0,bd("10000").compareTo(new BigDecimal(summary.path("purchaseValue").asText())));assertEquals(0,bd("5").compareTo(new BigDecimal(summary.path("executionCosts").asText())));assertEquals(0,bd("995").compareTo(new BigDecimal(summary.path("cashCollateralReturned").asText())));assertTrue(closed.isBorrowerSummaryQueued());
+    closed.setBorrowerSummaryQueued(false);assertTrue(buyinCloseouts.pendingSummaries().stream().anyMatch(c->c.getId().equals(closed.getId())));buyinCloseouts.publishSummary(org.getId(),closed.getId());buyinCloseouts.publishSummary(org.getId(),closed.getId());assertEquals(2,events.findByOrganizationId(org.getId(),Pageable.unpaged()).stream().filter(e->json.tree(e.getPayload()).path("type").asText().equals("BUY_IN_CLOSEOUT_REPORTED")).count());assertEquals(1000,stockRow.getTotalQuantity());assertEquals(0,accounts.findByOrganizationId(org.getId()).orElseThrow().getCashCollateralHeld().signum());
+    assertThrows(ResponseStatusException.class, () ->
+      buyinCloseouts.close(org.getId(), def.getId(), "ANOTHER")
+    );
+    var other = organization();
+    mvc
+      .perform(
+        post(
+          "/api/v1/organizations/" +
+            other.getId() +
+            "/defaults/" +
+            def.getId() +
+            "/close-loan"
+        )
+          .contentType("application/json")
+          .content("{\"reference\":\"CLOSE-42\"}")
+      )
+      .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void buyinLoanCloseoutBlocksPartialReceiptAndInsufficientCashWithoutChangingBalances() {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var def = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    receivedBuyinForCloseout(org, loan, def, 20, "100");
+    assertEquals(
+      false,
+      buyinCloseouts.preview(org.getId(), def.getId()).get("eligible")
+    );
+    assertThrows(ResponseStatusException.class, () ->
+      buyinCloseouts.close(org.getId(), def.getId(), "partial")
+    );
+    assertEquals("ACTIVE", loan.getStatus());
+    assertEquals(100, loan.getOutstandingQuantity());
+    var another = reportDefaultForBuyinTest(
+      org,
+      loan,
+      ids.incrementAndGet(),
+      ids.incrementAndGet()
+    );
+    receivedBuyinForCloseout(org, loan, another, 80, "200");
+    assertEquals(
+      false,
+      buyinCloseouts.preview(org.getId(), another.getId()).get("eligible")
+    );
+    assertThrows(ResponseStatusException.class, () ->
+      buyinCloseouts.close(org.getId(), another.getId(), "cash-shortfall")
+    );
+    assertEquals(
+      0,
+      accounts
+        .findByOrganizationId(org.getId())
+        .orElseThrow()
+        .getCashCollateralHeld()
+        .compareTo(bd("11000"))
+    );
+    assertEquals(
+      0,
+      buyinCloseoutRows
+        .findAll()
+        .stream()
+        .filter(c -> c.getLoanId().equals(loan.getId()))
+        .count()
+    );
+  }
+
+  @Test
+  void lenderOfferPublishesExactlyTheSelectedCollateralTypesAndHaircuts() {
+    var org = organization(); var connection = connection(org); long sec = security("100");
+    var securityOnly = new AgreementOfferRequest(connection.getId(), "MSLA-SECURITY-ONLY", LocalDate.now(), LocalDate.now().plusYears(1),
+        bd("100000"), bd("0.03"), bd("0.01"), bd("1.05"), "MONTHLY", 365, true, 24, 48,
+        List.of(new RuleRequest("SECURITY", sec, bd("0.15"))), "AT_CLOSE");
+    var agreement = agreementService.offer(org.getId(), securityOnly);
+    var offered = events.findAll().stream().filter(e -> e.getOrganizationId().equals(org.getId()) && json.tree(e.getPayload()).path("type").asText().equals("AGREEMENT_OFFERED")).findFirst().orElseThrow();
+    var rules = json.tree(offered.getPayload()).path("data").path("collateralRules");
+    assertEquals(1, rules.size()); assertEquals("SECURITY", rules.get(0).path("assetType").asText());
+    assertEquals(0, bd("0.15").compareTo(new BigDecimal(rules.get(0).path("haircut").asText())));
+    assertEquals("OFFERED", agreement.getStatus());
+    assertEquals(connection.getBorrowerOrganizationId().longValue(), json.tree(offered.getPayload()).path("organizationId").asLong());
+    long before = events.count();
+    assertEquals(true, agreementService.resend(org.getId(), agreement.getId()).get("alreadyQueued"));
+    assertEquals(before, events.count());
+    offered.setPublished(true); offered.setStatus("PUBLISHED");
+    assertEquals(false, agreementService.resend(org.getId(), agreement.getId()).get("alreadyQueued"));
+    assertEquals(1, agreements.findByOrganizationId(org.getId(), Pageable.unpaged()).getTotalElements());
+    var replay = events.findAll().stream().filter(e -> e.getOrganizationId().equals(org.getId()) && json.tree(e.getPayload()).path("type").asText().equals("AGREEMENT_OFFERED") && !e.getId().equals(offered.getId())).findFirst().orElseThrow();
+    assertEquals(agreement.getId().longValue(), json.tree(replay.getPayload()).path("referenceId").asLong());
+    assertEquals(1, json.tree(replay.getPayload()).path("version").asLong());
+    assertEquals(json.tree(offered.getPayload()).path("data"), json.tree(replay.getPayload()).path("data"));
+    assertThrows(ResponseStatusException.class, () -> agreementService.resend(organization().getId(), agreement.getId()));
+    agreement.setStatus("ACTIVE");
+    assertThrows(ResponseStatusException.class, () -> agreementService.resend(org.getId(), agreement.getId()));
   }
 }

@@ -10,6 +10,7 @@ export async function sendRequest({
   const targetSide = path.startsWith("/api/v1/lifecycle") ? "lifecycle" : side;
   const response = await fetch(`/bridge/${targetSide}${path}`, {
     method,
+    credentials: "omit",
     headers: {
       Accept: "application/json",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
@@ -45,3 +46,19 @@ export const rowsOf = (payload) => {
       ? data.content
       : [];
 };
+
+export function requestError(result, fallback = "Request failed") {
+  const detail =
+    typeof result.payload?.detail === "string"
+      ? result.payload.detail
+      : typeof result.payload?.message === "string"
+        ? result.payload.message
+        : "";
+  if (
+    ["borrower", "lender"].includes(result.side) &&
+    [401, 403].includes(result.status)
+  ) {
+    return `${result.side === "borrower" ? "Borrower" : "Lender"} API returned ${result.status}. Lendora authentication is enabled or access is restricted. This test console does not log in as its selected organization/user. For local cross-platform testing, stop the existing borrower and lender backend processes and run start-demo.cmd (without -Lendora). Use Lendora/BorrowDesk/LendDesk for authenticated access.${detail ? " Service response: " + detail : ""}`;
+  }
+  return `${fallback} (HTTP ${result.status})${detail ? ": " + detail : ""}`;
+}
