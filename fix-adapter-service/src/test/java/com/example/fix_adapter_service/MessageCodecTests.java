@@ -27,6 +27,16 @@ class MessageCodecTests {
     }
     static void header(Message message) {message.getHeader().setString(8,"FIX.4.4");message.getHeader().setString(49,"BORROWER_DEMO");message.getHeader().setString(56,"LENDER_DEMO");message.getHeader().setInt(34,1);message.getHeader().setString(52,"20261108-12:00:00.000");}
 
+    @Test void collateralLiquidationIsAcceptedByBothAdapters() throws Exception {
+        var lender=properties(AdapterSide.LENDER);
+        String payload=confirmation("collateral-sale-event").replace("LOCATE_APPROVED","COLLATERAL_LIQUIDATED");
+        var source=new EnvelopeService(lender,new RouteService(lender),JSON).outbound(payload).orElseThrow();
+        var codec=new FixMessageCodec(lender);var decoded=codec.decode(codec.business(outbound(source)));
+        var borrower=properties(AdapterSide.BORROWER);
+        var target=new EnvelopeService(borrower,new RouteService(borrower),JSON).inbound(decoded,"FIX.4.4:BORROWER_DEMO->LENDER_DEMO");
+        assertEquals("COLLATERAL_LIQUIDATED",JSON.readTree(target.envelope().payload()).path("type").asText());
+    }
+
     @Test void collateralCostApplicationRoundTripsToBorrower() throws Exception {
         var lender=properties(AdapterSide.LENDER);String payload=confirmation("collateral-cost-event").replace("LOCATE_APPROVED","COLLATERAL_APPLIED").replace("\"approvedQuantity\":100","\"amount\":1500");
         var source=new EnvelopeService(lender,new RouteService(lender),JSON).outbound(payload).orElseThrow();var codec=new FixMessageCodec(lender);var decoded=codec.decode(codec.business(outbound(source)));

@@ -43,6 +43,7 @@ const columns = [
   ["type", "Entry Type"],
   ["debit", "Debit"],
   ["credit", "Credit"],
+  ["executionFeeAmount", "Execution fee (included)"],
   ["currency", "Currency"],
   ["borrower", "Borrower"],
   ["loan", "Loan ID"],
@@ -135,6 +136,7 @@ function JournalDetails({ row }) {
           Entry Type: {row.type} | Posted: {row.timestamp} IST
         </small>
       </header>
+      {row.executionFeeAmount != null && <p>Execution fee: <b>{money(row.executionFeeAmount)}</b>, included in this {money(Math.abs(row.amount))} buy-in entry. It is not an additional charge.</p>}
       <div className="live-ledger-tabs" role="tablist">
         <button
           type="button"
@@ -252,6 +254,7 @@ export default function LiveLedgerPage() {
       debit: amount,
       credit: amount,
       amount,
+      executionFeeAmount: entry.executionFeeAmount == null ? null : Number(entry.executionFeeAmount),
       currency: "INR",
       borrower: entry.borrowerName ?? "—",
       connectionId: entry.connectionId,
@@ -328,6 +331,7 @@ export default function LiveLedgerPage() {
       return <Link to={`/loans/${row.loanId}`}>{row.loan}</Link>;
     if (["settlement", "status"].includes(key))
       return <FinanceState value={row[key]} />;
+    if (key === "executionFeeAmount") return row[key] == null ? "—" : <span className="finance-number" title="Included in the recorded purchase or settlement amount">{money(row[key])}</span>;
     if (["debit", "credit"].includes(key))
       return <span className="finance-number">{money(row[key])}</span>;
     return row[key];

@@ -909,3 +909,8 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+
+.db-collateral-sale { min-width: 0; margin-bottom: 10px; font-size: 12px; line-height: 1.5; }
+.db-collateral-sale p { margin: 6px 0; }
+.db-collateral-sale-lots { display: grid; gap: 10px; margin-bottom: 12px; }
+.db-collateral-sale-lots article { display: grid; gap: 5px; padding: 10px; border: 1px solid #e0d6f6; border-radius: 5px; overflow-wrap: anywhere; }

@@ -145,6 +145,32 @@ public class CollateralService {
                         r.assetType(), r.securityId(), r.quantity(), r.cashAmount(), callId));
     }
 
+    /** Applies a lender-confirmed sale; proceeds remain pledged, never available cash. */
+    void applyLiquidation(long org,long id,Map<String,Object> d) {
+        var p=db.owned(CollateralPosition.class,org,id);
+        long security=Long.parseLong(d.get("securityId").toString()),qty=Long.parseLong(d.get("quantity").toString());
+        BigDecimal price=new BigDecimal(d.get("price").toString()),proceeds=new BigDecimal(d.get("proceeds").toString());
+        require("SECURITY".equals(p.get("asset_type")) && Set.of("POSTED","RELEASE_REQUESTED").contains(p.get("status"))
+            && n(p,"loan_id")==Long.parseLong(d.get("loanId").toString()) && n(p,"security_id")==security
+            && n(p,"quantity")==qty && qty>0 && price.signum()>0
+            && proceeds.compareTo(amount(price.multiply(BigDecimal.valueOf(qty))))==0,"Liquidation does not match held collateral");
+        var holding=db.find(Holding.class,new HoldingId(org,security));
+        require(holding!=null && holding.getOwnedQuantity()>=qty && holding.getPledgedQuantity()>=qty,"Pledged security holding is inconsistent");
+        holding.setOwnedQuantity(holding.getOwnedQuantity()-qty);holding.setPledgedQuantity(holding.getPledgedQuantity()-qty);
+        holding.setRealizedPnl(holding.getRealizedPnl().add(amount(price.subtract(holding.getAverageCost()).multiply(BigDecimal.valueOf(qty)))));
+        if(holding.getOwnedQuantity()==0)holding.setAverageCost(BigDecimal.ZERO);
+        long cashAsset=n(db.matchingRow(Asset.class,eq("assetName","CASH")),"id");
+        db.edit(CollateralPosition.class,id,e->{e.setAssetType("CASH");e.setAssetId(cashAsset);e.setSecurityId(null);e.setQuantity(0L);
+            e.setCashAmount(proceeds);e.setHaircut(BigDecimal.ZERO);e.setStatus("POSTED");e.setRequestedReleaseQuantity(null);e.setRequestedReleaseCash(null);
+            e.setReleaseRequestStatus(null);e.setReleaseRejectionReason(null);});
+        db.editMatching(TraderAccount.class,e->e.setPledged(e.getPledged().add(proceeds)),eq("organizationId",org));
+        movement(org,n(p,"loan_id"),id,"SECURITIES_LIQUIDATED",proceeds,qty,cashAsset,security);
+        var account=db.matchingRow(TraderAccount.class,eq("organizationId",org));
+        db.create(TraderAccountTransaction::new,e->{e.setOrganizationId(org);e.setLoanId(n(p,"loan_id"));
+            e.setType("COLLATERAL_SECURITY_SOLD");e.setAmount(BigDecimal.ZERO);e.setCollateralSaleProceeds(proceeds);
+            e.setReference(String.valueOf(d.get("reference")));e.setBalanceAfter(money(account,"available"));});
+    }
+
     void applyPledgeConfirmation(long org, long id) {
         var p = db.owned(CollateralPosition.class, org, id);
         require("PLEDGE_PENDING".equals(p.get("status")), "Collateral pledge is not pending");

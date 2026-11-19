@@ -354,7 +354,7 @@ public class PortfolioService {
 
     public String statement(long org) {
         db.row(Organization.class, org);
-        var out = new StringBuilder("id,type,amount,balance_after,reference,created_at\r\n");
+        var out = new StringBuilder("id,type,amount,balance_after,reference,created_at,loan_id,execution_fee_amount,collateral_sale_proceeds\r\n");
         for (var row :
                 db.rows(
                         TraderAccountTransaction.class,
@@ -363,8 +363,8 @@ public class PortfolioService {
                         eq("organizationId", org))) {
             out.append(n(row, "id"));
             for (String key :
-                    List.of("type", "amount", "balance_after", "reference", "created_at")) {
-                String value = String.valueOf(row.get(key));
+                    List.of("type", "amount", "balance_after", "reference", "created_at", "loan_id", "execution_fee_amount", "collateral_sale_proceeds")) {
+                String value = row.get(key) == null ? "" : String.valueOf(row.get(key));
                 if (value.matches("^[=+@].*")
                         || (value.startsWith("-") && !value.matches("-?[0-9]+(\\.[0-9]+)?")))
                     value = "'" + value;

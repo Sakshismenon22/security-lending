@@ -33,7 +33,10 @@ export default function LiveFeesRebatesPage() {
     scope = `${organizationId}:${refreshKey}:${queryText}`
   useEffect(() => {
     const a = new AbortController()
+    let inFlight = false
     async function load() {
+      if (inFlight) return
+      inFlight = true
       try {
         let page = 0,
           data,
@@ -48,11 +51,16 @@ export default function LiveFeesRebatesPage() {
         if (!a.signal.aborted)
           setState({ scope, data: { ...data, rows }, error: '' })
       } catch (e) {
-        if (!a.signal.aborted) setState({ scope, data: null, error: e.message })
+        if (!a.signal.aborted) setState(previous => ({ scope, data: previous.scope === scope ? previous.data : null, error: e.message }))
+      } finally {
+        inFlight = false
       }
     }
     load()
-    return () => a.abort()
+    const timer = setInterval(() => { if (!document.hidden) load() }, 10000)
+    const focus = () => load()
+    window.addEventListener('focus', focus)
+    return () => { a.abort(); clearInterval(timer); window.removeEventListener('focus', focus) }
   }, [organizationId, refreshKey, queryText, scope])
   const data = state.scope === scope ? state.data : null,
     options =
