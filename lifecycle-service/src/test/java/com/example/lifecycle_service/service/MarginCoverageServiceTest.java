@@ -12,7 +12,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
-import org.springframework.kafka.core.KafkaTemplate;
 
 class MarginCoverageServiceTest {
 
@@ -24,7 +23,7 @@ class MarginCoverageServiceTest {
           null,
           null,
           null,
-          (KafkaTemplate<String, String>) null,
+          (com.example.lifecycle_service.repository.LenderOutboxEventRepository) null,
           new ObjectMapper().registerModule(new JavaTimeModule()));
 
   @Test

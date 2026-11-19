@@ -247,6 +247,11 @@ public class LifecycleEventService {
         completeRequest(e, loan);
       }
       case "MARGIN_CALL_UPDATED" -> {
+        var currentCall = calls.findByOrganizationIdAndOwnerReferenceId(e.organizationId(), e.referenceId());
+        if (currentCall.isPresent() && "CANCELLATION_PENDING".equals(currentCall.get().getStatus())) return;
+        boolean newMarginCycle = currentCall.isPresent()
+            && Set.of("CANCELLED", "FULFILLED", "REJECTED").contains(currentCall.get().getStatus())
+            && "OPEN".equals(text(d, "status"));
         if(d.hasNonNull("lifecycleRequestId")){
           var request =
               found(
@@ -297,6 +302,11 @@ public class LifecycleEventService {
                 calls.findByOrganizationIdAndOwnerReferenceId(e.organizationId(), e.referenceId()),
                 MarginCall::new);
         if (p == null) return;
+        if (newMarginCycle) {
+          p.setCreatedAt(e.occurredAt());
+          p.setCancellationReference(null);
+          p.setCancellationFailureReason(null);
+        }
         p.setAmount(decimal(d, "amount"));
         p.setFulfilledAmount(decimal(d, "fulfilledAmount"));
         require(
@@ -517,6 +527,11 @@ public class LifecycleEventService {
     if (forward) {
       var data = new LinkedHashMap<>(json.map(d));
       data.put("loanId", loan.getBorrowerLoanId());
+      if ("MARGIN_CALL_UPDATED".equals(e.type())) {
+        var call = found(calls.findByOrganizationIdAndOwnerReferenceId(e.organizationId(), e.referenceId()));
+        data.put("issuedAt", call.getCreatedAt().toString());
+        call.setBorrowerDeliverySourceVersion(call.getSourceVersion());
+      }
       if("CLOSED".equals(loan.getStatus()) && "DEFAULT_REPORTED".equals(e.type())) data.put("status","RESOLVED");
       events.confirm(connection, e.type(), resource, e.referenceId(), data);
     }

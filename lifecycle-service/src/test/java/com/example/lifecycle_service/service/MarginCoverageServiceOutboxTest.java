@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.lifecycle_service.model.LenderOutboxEvent;
 import com.example.lifecycle_service.model.Loan;
 import com.example.lifecycle_service.model.LoanValuation;
 import com.example.lifecycle_service.model.MarginCall;
@@ -16,38 +17,53 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
-class MarginCoverageServiceKafkaTest {
-  @Mock private LoanRepository loanRepository;
-  @Mock private MslaRepository mslaRepository;
-  @Mock private CollateralPositionRepository collateralPositionRepository;
-  @Mock private LoanValuationRepository loanValuationRepository;
-  @Mock private MarginCallRepository marginCallRepository;
-  @Mock private KafkaTemplate<String, String> kafkaTemplate;
+class MarginCoverageServiceOutboxTest {
+
+  @Mock
+  private LoanRepository loanRepository;
+
+  @Mock
+  private MslaRepository mslaRepository;
+
+  @Mock
+  private CollateralPositionRepository collateralPositionRepository;
+
+  @Mock
+  private LoanValuationRepository loanValuationRepository;
+
+  @Mock
+  private MarginCallRepository marginCallRepository;
+
+  @Mock
+  private LenderOutboxEventRepository outbox;
 
   private MarginCoverageService service;
 
   @BeforeEach
   void setUp() {
     service = new MarginCoverageService(
-        loanRepository,
-        org.mockito.Mockito.mock(RecallRequestRecordRepository.class),
-        mslaRepository,
-        collateralPositionRepository,
-        loanValuationRepository,
-        marginCallRepository,
-        kafkaTemplate,
-        new ObjectMapper().registerModule(new JavaTimeModule()));
-    ReflectionTestUtils.setField(service, "lenderEventsTopic", "lender.lifecycle.events.v1");
+      loanRepository,
+      org.mockito.Mockito.mock(RecallRequestRecordRepository.class),
+      mslaRepository,
+      collateralPositionRepository,
+      loanValuationRepository,
+      marginCallRepository,
+      outbox,
+      new ObjectMapper().registerModule(new JavaTimeModule())
+    );
+    ReflectionTestUtils.setField(
+      service,
+      "lenderEventsTopic",
+      "lender.lifecycle.events.v1"
+    );
   }
 
   @Test
@@ -70,19 +86,24 @@ class MarginCoverageServiceKafkaTest {
 
     when(loanRepository.findById(7L)).thenReturn(Optional.of(loan));
     when(mslaRepository.findById(5L)).thenReturn(Optional.of(msla));
-    when(loanValuationRepository.findFirstByLoanIdOrderByValuedAtDescIdDesc(7L))
-        .thenReturn(Optional.of(valuation));
+    when(
+      loanValuationRepository.findFirstByLoanIdOrderByValuedAtDescIdDesc(7L)
+    ).thenReturn(Optional.of(valuation));
     when(collateralPositionRepository.findByLoanId(7L)).thenReturn(List.of());
-    when(marginCallRepository.save(any(MarginCall.class))).thenAnswer(invocation -> {
-      MarginCall saved = invocation.getArgument(0);
-      saved.setId(101L);
-      return saved;
-    });
 
+    when(outbox.existsByEventId("auto-margin-1-7-1")).thenReturn(false, true);
     var decision = service.triggerMarginCallForLoan(7L, new BigDecimal("200"));
+    service.triggerMarginCallForLoan(7L, new BigDecimal("200"));
 
     assertEquals("MARGIN_CALL_ISSUED", decision.getStatus());
-    verify(kafkaTemplate).send(any(ProducerRecord.class));
+    var capture = org.mockito.ArgumentCaptor.forClass(LenderOutboxEvent.class);
+    verify(outbox).save(capture.capture());
+    org.mockito.Mockito.verify(
+      marginCallRepository,
+      org.mockito.Mockito.never()
+    ).save(any(MarginCall.class));
+    var event = new ObjectMapper().readTree(capture.getValue().getPayload());
+    assertEquals("MARGIN_CALL_UPDATED", event.path("type").asText());
   }
 
   @Test
@@ -120,19 +141,32 @@ class MarginCoverageServiceKafkaTest {
 
     when(loanRepository.findById(7L)).thenReturn(Optional.of(loan));
     when(mslaRepository.findById(5L)).thenReturn(Optional.of(msla));
-    when(loanValuationRepository.findFirstByLoanIdOrderByValuedAtDescIdDesc(7L))
-        .thenReturn(Optional.of(valuation));
+    when(
+      loanValuationRepository.findFirstByLoanIdOrderByValuedAtDescIdDesc(7L)
+    ).thenReturn(Optional.of(valuation));
     when(collateralPositionRepository.findByLoanId(7L)).thenReturn(List.of());
-    when(marginCallRepository.findFirstByOrganizationIdAndOwnerReferenceIdOrderByCreatedAtDesc(1L, 7L))
-        .thenReturn(Optional.of(existingCall));
-    when(marginCallRepository.save(any(MarginCall.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    when(
+      marginCallRepository.findFirstByOrganizationIdAndOwnerReferenceIdOrderByCreatedAtDesc(
+        1L,
+        7L
+      )
+    ).thenReturn(Optional.of(existingCall));
 
     var decision = service.triggerMarginCallForLoan(7L, new BigDecimal("200"));
 
     assertEquals("MARGIN_CALL_REFRESHED", decision.getStatus());
     assertEquals("PARTIALLY_FULFILLED", existingCall.getStatus());
     assertEquals(new BigDecimal("50"), existingCall.getFulfilledAmount());
-    assertEquals(new BigDecimal("250"), existingCall.getAmount());
-    verify(kafkaTemplate).send(any(ProducerRecord.class));
+    assertEquals(new BigDecimal("150"), existingCall.getAmount());
+    var capture = org.mockito.ArgumentCaptor.forClass(LenderOutboxEvent.class);
+    verify(outbox).save(capture.capture());
+    org.mockito.Mockito.verify(
+      marginCallRepository,
+      org.mockito.Mockito.never()
+    ).save(any(MarginCall.class));
+    var event = new ObjectMapper().readTree(capture.getValue().getPayload());
+    assertEquals(2, event.path("version").asLong());
+    assertEquals(150, event.path("data").path("amount").asInt());
+    assertEquals(50, event.path("data").path("fulfilledAmount").asInt());
   }
 }

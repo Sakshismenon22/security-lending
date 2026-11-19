@@ -1510,6 +1510,45 @@ class BorrowerWorkflowTests {
     }
 
     @Test
+    void marginCancellationChecksUnconfirmedAndConfirmedPledgesAndFencesNewResponses() {
+        for (int response = 0; response < 3; response++) {
+            long org = org(), security = security("100");
+            fund(org, "10000");
+            long loan = loan(org, security, agreement(org, 0), 10), call = sequence.incrementAndGet();
+            apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+            var fields = new HashMap<String, Object>();
+            fields.put("loanId", loan); fields.put("externalId", "call-" + call);
+            fields.put("amount", "300"); fields.put("fulfilledAmount", "0");
+            fields.put("reason", "Shortfall"); fields.put("status", "OPEN");
+            fields.put("issuedAt", Instant.now().minusSeconds(60).toString());
+            fields.put("dueAt", Instant.now().plusSeconds(86400).toString());
+            if (response > 0) apply(org, "MARGIN_CALL_UPDATED", call, 1, fields);
+            if (response > 0) {
+                long position = n(collateral.respondToMarginCall(org, call,
+                    new AllocationRequest("CASH", null, 0, bd("100"))), "id");
+                if (response == 2) apply(org, "COLLATERAL_PLEDGED", position, 1, Map.of());
+            }
+            fields.put("cancellationRequested", true); fields.put("cancellationReference", "cancel-" + call);
+            var cancellation = event(org, "MARGIN_CALL_UPDATED", call, 2, fields);
+            projections.apply(cancellation); projections.apply(cancellation);
+            assertEquals(response == 0 ? "CANCELLED" : "OPEN", db.owned(MarginCall.class, org, call).get("status"));
+            var decisions = db.rows(OutboxEvent.class, eq("organizationId", org), eq("eventType", "MARGIN_CALL_CANCELLATION_RESPONDED"));
+            assertEquals(1, decisions.size());
+            var payload = tools.jackson.databind.json.JsonMapper.builder().build().readTree(decisions.get(0).get("payload").toString());
+            assertEquals(response == 0, payload.path("data").path("accepted").asBoolean());
+            assertEquals("COUNTERPARTY", payload.path("destination").asText());
+            assertTrue(payload.hasNonNull("mslaId")); assertTrue(payload.hasNonNull("lenderExternalId"));
+            if (response == 0) {
+                assertThrows(ResponseStatusException.class, () -> collateral.respondToMarginCall(org, call,
+                    new AllocationRequest("CASH", null, 0, bd("100"))));
+                fields.remove("cancellationRequested");
+                apply(org, "MARGIN_CALL_UPDATED", call, 1, fields);
+                assertEquals("CANCELLED", db.owned(MarginCall.class, org, call).get("status"));
+            }
+        }
+    }
+
+    @Test
     void recallResponseWaitsForExternalRecallStatusUpdates() {
         long org = org(), security = security("100");
         fund(org, "10000");

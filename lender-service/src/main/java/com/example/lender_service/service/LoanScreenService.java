@@ -34,7 +34,7 @@ public class LoanScreenService {
   private final JsonService json;
   private final Clock clock;
   private static final Set<String> OPEN =
-      Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE");
+      Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE", "CANCELLATION_PENDING");
 
   static Map<String, Object> map(Object... pairs) {
     var m = new LinkedHashMap<String, Object>();

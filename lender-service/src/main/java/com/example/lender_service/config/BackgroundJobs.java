@@ -15,6 +15,7 @@ public class BackgroundJobs {
   private static final Logger log = LoggerFactory.getLogger(BackgroundJobs.class);
   private final OutboxService outbox;
   private final MarketService market;
+  private final MarginCallService marginCalls;
   private final BuyinOrderService buyinOrders;
   private final BuyinLoanCloseoutService buyinCloseouts;
   private final SecurityMasterRepository securities;
@@ -39,6 +40,13 @@ public class BackgroundJobs {
   public void deliverBuyinSummaries() {
     for(var closeout:buyinCloseouts.pendingSummaries()) try {buyinCloseouts.publishSummary(closeout.getOrganizationId(),closeout.getId());}
     catch(Exception e) {log.warn("Buy-in closure summary {} remains pending: {}",closeout.getId(),e.getMessage());}
+  }
+
+  @Scheduled(fixedDelayString = "${lender.margin-delivery-repair-poll-ms:5000}")
+  public void repairMarginDelivery() {
+    for (var call : marginCalls.pendingDeliveryRepair()) try {
+      marginCalls.repairMissingDelivery(call.getOrganizationId(), call.getId());
+    } catch (Exception e) { log.warn("Margin call {} delivery repair pending: {}", call.getId(), e.getMessage()); }
   }
 
   @Scheduled(fixedDelayString = "${lender.market-poll-ms:60000}")

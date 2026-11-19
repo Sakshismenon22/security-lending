@@ -38,6 +38,22 @@ class MessageCodecTests {
         var source=new EnvelopeService(lender,new RouteService(lender),JSON).outbound(payload).orElseThrow();var codec=new FixMessageCodec(lender);var decoded=codec.decode(codec.business(outbound(source)));var borrower=properties(AdapterSide.BORROWER);var target=new EnvelopeService(borrower,new RouteService(borrower),JSON).inbound(decoded,"FIX.4.4:BORROWER_DEMO->LENDER_DEMO");var data=JSON.readTree(target.envelope().payload());assertEquals("BUY_IN_CLOSEOUT_REPORTED",data.path("type").asText());assertEquals(41,data.path("data").path("loanId").asLong());assertEquals(0,new java.math.BigDecimal("10005.123456").compareTo(data.path("data").path("purchaseCost").decimalValue()));
     }
 
+    @Test void marginCancellationDecisionRoundTripsThroughBothAdapters() throws Exception {
+        var payload = new LinkedHashMap<String,Object>(JSON.readValue(command("margin-cancel-1"), new tools.jackson.core.type.TypeReference<Map<String,Object>>(){}));
+        payload.put("type", "MARGIN_CALL_CANCELLATION_RESPONDED");
+        payload.put("data", Map.of("marginCallId", 7, "cancellationReference", "cancel-1", "accepted", false, "reason", "Pledge in transit"));
+        var borrower = properties(AdapterSide.BORROWER);
+        var source = new EnvelopeService(borrower, new RouteService(borrower), JSON).outbound(JSON.writeValueAsString(payload)).orElseThrow();
+        var codec = new FixMessageCodec(borrower);
+        var decoded = codec.decode(codec.business(outbound(source)));
+        var lender = properties(AdapterSide.LENDER);
+        var target = new EnvelopeService(lender, new RouteService(lender), JSON).inbound(decoded, "FIX.4.4:LENDER_DEMO->BORROWER_DEMO");
+        var data = JSON.readTree(target.envelope().payload());
+        assertEquals("MARGIN_CALL_CANCELLATION_RESPONDED", data.path("type").asText());
+        assertFalse(data.path("data").path("accepted").asBoolean());
+        assertEquals("cancel-1", data.path("data").path("cancellationReference").asText());
+    }
+
     @Test void commandRoundTripsWithUnicodeControlCharactersAndExactDecimalPrecision() throws Exception {
         var borrower=properties(AdapterSide.BORROWER);var source=new EnvelopeService(borrower,new RouteService(borrower),JSON).outbound(command("event-1")).orElseThrow();
         var codec=new FixMessageCodec(borrower);var decoded=codec.decode(codec.business(outbound(source)));

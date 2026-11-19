@@ -6,6 +6,7 @@ import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.*;
 
 public interface MarginCallRepository extends JpaRepository<MarginCall, Long> {
+  List<MarginCall> findByStatusIn(Collection<String> statuses);
   List<MarginCall> findByLoanId(Long loanId);
   Page<MarginCall> findByOrganizationId(Long organizationId, Pageable pageable);
 

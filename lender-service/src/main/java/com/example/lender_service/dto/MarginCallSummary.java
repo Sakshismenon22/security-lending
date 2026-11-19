@@ -19,4 +19,6 @@ public record MarginCallSummary(
     Instant dueAt,
     String reason,
     String status,
-    Instant createdAt) {}
+    Instant createdAt,
+    boolean canCancel,
+    String cancellationFailureReason) {}

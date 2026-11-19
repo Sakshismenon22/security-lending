@@ -60,6 +60,7 @@ class LenderWorkflowTests {
   @Autowired RebateRepository rebates;
   @Autowired LenderAccountRepository accounts;
   @Autowired MarginCallRepository calls;
+  @Autowired MarginCallService marginCallService;
   @Autowired RecallRepository recalls;
   @Autowired LoanDefaultRepository defaults;
   @Autowired BuyinOrderService buyinOrders;
@@ -727,6 +728,85 @@ class LenderWorkflowTests {
                         new MarginIssueRequest(
                             bd("1"), Instant.now().minusSeconds(1), "Invalid", "bad"))))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void marginCancellationWaitsForBorrowerRejectsSettlementsAndAllowsNewCall() throws Exception {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    lifecycle(org, "MARGIN_CALL_UPDATED", loan.getId(), 1, Map.of(
+        "loanId", loan.getId(), "externalId", "AUTO-MARGIN-1", "amount", "300",
+        "fulfilledAmount", "0", "status", "OPEN", "reason", "Shortfall",
+        "dueAt", Instant.now().plusSeconds(86400).toString()));
+    var call = calls.findByOrganizationIdAndOwnerReferenceId(org.getId(), loan.getId()).orElseThrow();
+    var service = marginCallService;
+    service.cancel(org.getId(), call.getId(), new SettlementRequest("cancel-1"));
+    assertEquals("CANCELLATION_PENDING", call.getStatus());
+    assertThrows(ResponseStatusException.class, () -> lifecycleRequests.margin(org.getId(), loan.getId(),
+        new MarginIssueRequest(bd("300"), Instant.now().plusSeconds(86400), "Again", "blocked")));
+    command(org, "MARGIN_CALL_CANCELLATION_RESPONDED", loan.getBorrowerLoanId(), 10,
+        Map.of("marginCallId", loan.getId(), "cancellationReference", "cancel-1", "accepted", false, "reason", "Borrower pledge is in transit"));
+    assertEquals("OPEN", call.getStatus());
+    assertEquals("Borrower pledge is in transit", call.getCancellationFailureReason());
+    service.cancel(org.getId(), call.getId(), new SettlementRequest("cancel-2"));
+    command(org, "MARGIN_CALL_CANCELLATION_RESPONDED", loan.getBorrowerLoanId(), 10,
+        Map.of("marginCallId", loan.getId(), "cancellationReference", "cancel-2", "accepted", true));
+    assertEquals("CANCELLED", call.getStatus());
+    // A delayed old owner snapshot must not reopen the cancelled call.
+    lifecycle(org, "MARGIN_CALL_UPDATED", loan.getId(), 2, Map.of(
+        "loanId", loan.getId(), "externalId", "AUTO-MARGIN-1", "amount", "300",
+        "fulfilledAmount", "0", "status", "OPEN", "reason", "Shortfall",
+        "dueAt", Instant.now().plusSeconds(86400).toString()));
+    assertEquals("CANCELLED", call.getStatus());
+    lifecycleRequests.setMarginGuardrail(org.getId(), false);
+    var nextDue = Instant.now().plusSeconds(86400);
+    var next = lifecycleRequests.margin(org.getId(), loan.getId(),
+        new MarginIssueRequest(bd("300"), nextDue, "Again", "new-call"));
+    assertEquals("PENDING", next.getStatus());
+    var previousIssueTime = call.getCreatedAt();
+    lifecycle(org, "MARGIN_CALL_UPDATED", loan.getId(), call.getSourceVersion() + 1, Map.of(
+        "loanId", loan.getId(), "lifecycleRequestId", next.getId(), "externalId", "MARGIN-" + next.getId(),
+        "amount", "300", "fulfilledAmount", "0", "status", "OPEN", "reason", "Again", "dueAt", nextDue.toString()));
+    assertEquals("OPEN", call.getStatus());
+    assertTrue(call.getCreatedAt().isAfter(previousIssueTime));
+    assertNull(call.getCancellationReference());
+    service.cancel(org.getId(), call.getId(), new SettlementRequest("cancel-3"));
+    // A pledge already in transit can arrive and settle during cancellation verification.
+    command(org, "COLLATERAL_PLEDGE_REQUESTED", loan.getBorrowerLoanId(), 10,
+        new PledgeCommand(499, new AllocationRequest("CASH", null, 0, bd("100"), loan.getId())));
+    var received = positions.findByConnectionIdAndBorrowerPositionId(conn.getId(), 499L).orElseThrow();
+    collateral.confirm(org.getId(), received.getId(), "IN-TRANSIT-RECEIPT");
+    assertEquals("CANCELLATION_PENDING", call.getStatus());
+    command(org, "MARGIN_CALL_CANCELLATION_RESPONDED", loan.getBorrowerLoanId(), 10,
+        Map.of("marginCallId", loan.getId(), "cancellationReference", "cancel-3", "accepted", false, "reason", "Collateral already submitted"));
+    assertEquals("PARTIALLY_FULFILLED", call.getStatus());
+    assertEquals(0, bd("100").compareTo(call.getFulfilledAmount()));
+    assertThrows(ResponseStatusException.class, () -> service.cancel(org.getId(), call.getId(), new SettlementRequest("cancel-4")));
+    mvc.perform(post("/api/v1/organizations/" + organization().getId() + "/margin-calls/" + call.getId() + "/cancel")
+        .contentType("application/json").content(json.write(new SettlementRequest("cross-tenant"))))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void marginDeliveryRepairForLegacyAutomaticCallQueuesExactlyOnce() {
+    var org = organization(); var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var call = new MarginCall();
+    call.setOrganizationId(org.getId()); call.setConnectionId(conn.getId()); call.setLoanId(loan.getId());
+    call.setOwnerReferenceId(loan.getId()); call.setSourceVersion(1L); call.setSourceData("{}");
+    call.setStatus("OPEN"); call.setCreatedAt(Instant.now()); call.setAmount(bd("300"));
+    call.setFulfilledAmount(BigDecimal.ZERO); call.setDueAt(Instant.now().plusSeconds(86400)); call.setReason("Automatic shortfall");
+    calls.saveAndFlush(call);
+    var service = marginCallService;
+    service.repairMissingDelivery(org.getId(), call.getId());
+    service.repairMissingDelivery(org.getId(), call.getId());
+    var deliveries = events.findByOrganizationId(org.getId(), Pageable.unpaged()).stream()
+        .filter(e -> "lender.confirmations.v1".equals(e.getTopic()))
+        .map(e -> json.tree(e.getPayload()))
+        .filter(e -> "MARGIN_CALL_UPDATED".equals(e.path("type").asText())).toList();
+    assertEquals(1, deliveries.size());
+    assertEquals(loan.getBorrowerLoanId().longValue(), deliveries.get(0).path("data").path("loanId").asLong());
   }
 
   @Test

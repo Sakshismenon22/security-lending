@@ -824,6 +824,29 @@ public class BorrowerEventProjectionService {
     }
 
     private void margin(long org, long id, Map<String, Object> d) {
+        if (Boolean.TRUE.equals(d.get("cancellationRequested"))) {
+            var snapshot = new LinkedHashMap<>(d);
+            snapshot.remove("cancellationRequested");
+            var existing = db.rows(MarginCall.class, eq("id", id));
+            if (existing.isEmpty() || (d.get("issuedAt") != null
+                && instantValue(d, "issuedAt").isAfter(instant(db.owned(MarginCall.class, org, id), "request_time")))) {
+                margin(org, id, snapshot);
+            }
+            var call = db.owned(MarginCall.class, org, id);
+            require(n(call, "loan_id") == number(d, "loanId"), "Margin cancellation loan mismatch");
+            boolean submitted = db.rows(CollateralPosition.class, eq("organizationId", org), eq("marginCallId", id)).stream()
+                .anyMatch(p -> !Set.of("FAILED", "REJECTED", "CANCELLED").contains(p.get("status"))
+                    && db.rows(CollateralHistory.class, eq("positionId", n(p, "id"))).stream()
+                        .noneMatch(h -> "PLEDGE_REQUESTED".equals(h.get("type"))
+                            && instant(h, "created_at").isBefore(instant(call, "request_time"))));
+            boolean accepted = money(call, "fulfilled_amount").signum() == 0 && !submitted
+                && Set.of("OPEN", "OVERDUE", "CANCELLED").contains(call.get("status"));
+            if (accepted) db.edit(MarginCall.class, id, entity -> entity.setStatus("CANCELLED"));
+            events.write(org, "MARGIN_CALL_CANCELLATION_RESPONDED", number(d, "loanId"), Map.of(
+                "marginCallId", id, "cancellationReference", text(d, "cancellationReference"), "accepted", accepted,
+                "reason", accepted ? "Cancelled before collateral submission" : "Collateral has already been submitted or the call is resolved"));
+            return;
+        }
         long loan = number(d, "loanId");
         db.owned(Loan.class, org, loan);
         String reportedStatus = obligationStatus(d);
@@ -841,6 +864,7 @@ public class BorrowerEventProjectionService {
                         entity.setReason(text(d, "reason"));
                         entity.setStatus(status);
                         entity.setDueAt(instantValue(d, "dueAt"));
+                        if (d.get("issuedAt") != null) entity.setRequestTime(instantValue(d, "issuedAt"));
                     });
         else {
             db.owned(MarginCall.class, org, id);
@@ -852,6 +876,9 @@ public class BorrowerEventProjectionService {
                         entity.setFulfilledAmount(decimal(d, "fulfilledAmount"));
                         entity.setStatus(status);
                         entity.setDueAt(instantValue(d, "dueAt"));
+                        entity.setExternalId(text(d, "externalId"));
+                        entity.setReason(text(d, "reason"));
+                        if (d.get("issuedAt") != null) entity.setRequestTime(instantValue(d, "issuedAt"));
                     });
         }
     }

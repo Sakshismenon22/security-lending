@@ -140,6 +140,7 @@ public class OutboxService {
       type.endsWith("_REQUESTED") ||
       type.equals("AGREEMENT_ACCEPTED") ||
       type.equals("AGREEMENT_REJECTED") ||
+      type.equals("MARGIN_CALL_CANCELLATION_RESPONDED") ||
       type.equals("FEE_PAYMENT_RECEIVED")
     );
   }

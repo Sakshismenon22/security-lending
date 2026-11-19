@@ -269,7 +269,13 @@ public class ReadService {
                       call.getDueAt(),
                       call.getReason(),
                       call.getStatus(),
-                      call.getCreatedAt());
+                      call.getCreatedAt(),
+                      Set.of("PENDING", "OPEN", "OVERDUE").contains(call.getStatus()) && fulfilled.signum() == 0
+                          && collateralPosition.findByLoanId(call.getLoanId()).stream().noneMatch(p ->
+                              Objects.equals(p.getMarginCallId(), call.getOwnerReferenceId())
+                                  && !p.getCreatedAt().isBefore(call.getCreatedAt())
+                                  && !Set.of("REJECTED", "FAILED", "CANCELLED").contains(p.getStatus())),
+                      call.getCancellationFailureReason());
                 })
             .toList();
     return new PageResponse<>(

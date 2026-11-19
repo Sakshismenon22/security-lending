@@ -78,7 +78,7 @@ public class LifecycleRequestService {
     tenants.connection(org, loan.getConnectionId());
     require("ACTIVE".equals(loan.getStatus()), "Margin call requires an active loan");
     require(r.dueAt().isAfter(clock.instant()), "Response deadline must be future");
-    var open = Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE");
+    var open = Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE", "CANCELLATION_PENDING");
     require(
         marginCalls.findByOrganizationIdAndLoanIdIn(org, List.of(loanId)).stream()
             .noneMatch(x -> open.contains(x.getStatus())),
