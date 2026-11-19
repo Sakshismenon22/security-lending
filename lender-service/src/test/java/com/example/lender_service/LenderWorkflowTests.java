@@ -291,6 +291,20 @@ class LenderWorkflowTests {
         .andExpect(jsonPath("$.data.records.totalElements").value(1))
         .andExpect(jsonPath("$.data.records.content[0].category").value("fees"))
         .andExpect(jsonPath("$.data.records.content[0].status").value("DUE"));
+    // Daily rows must reflect the actual linked settlement, not their original accrual status.
+    command(o, "FEE_PAYMENT_RECEIVED", 991003L, 10,
+        new FeePaymentCommand(l.getBorrowerLoanId(), bd("0.821918"), 771L));
+    mvc.perform(get(path).param("tab", "FEE"))
+        .andExpect(jsonPath("$.data.records.content[0].status").value("PAID"))
+        .andExpect(jsonPath("$.data.records.content[0].settlementStatus").value("PAID"));
+    lifecycle(o, "REBATE_ACCRUED", 991004L, 1, Map.of("loanId", l.getId(), "amount", "0.301370",
+        "rate", "0.01", "date", day, "paymentDate", day));
+    lifecycle(o, "REBATE_PAID", 991004L, 2, Map.of("loanId", l.getId(), "amount", "0.301370"));
+    mvc.perform(get(path).param("tab", "REBATE"))
+        .andExpect(jsonPath("$.data.records.content[0].status").value("PAID"))
+        .andExpect(jsonPath("$.data.records.content[0].settlementStatus").value("PAID"));
+    mvc.perform(get(path).param("tab", "DUE"))
+        .andExpect(jsonPath("$.data.records.totalElements").value(0));
     mvc.perform(get(path).param("tab", "INVALID")).andExpect(status().isBadRequest());
     var other = organization();
     mvc.perform(get("/api/v1/organizations/" + other.getId() + "/lenddesk/fees-rebates/overview"))

@@ -659,8 +659,8 @@ public class BorrowerEventProjectionService {
                             entity.setStatus("CLOSED");
                             entity.setClosedAt(Instant.now());
                         });
-                payments.submitBlockedReturnFees(org, id);
             }
+            payments.submitBlockedReturnFees(org, id);
         } else {
             payments.releaseBlockedReturnFees(org, id);
             var h =

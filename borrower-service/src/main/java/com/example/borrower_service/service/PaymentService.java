@@ -117,8 +117,23 @@ public class PaymentService {
         }
     }
 
+    /** Resumes legacy return fees whose cash is already reserved; never debits cash again. */
+    public void resumeSettledReturnFee(long org, long requestId) {
+        db.lock(org);
+        var request = db.owned(PaymentRequest.class, org, requestId);
+        if (!"FEE".equals(request.get("type")) || !"PENDING".equals(request.get("status"))
+                || request.get("loan_return_id") == null) return;
+        var returned = db.owned(LoanReturn.class, org, n(request, "loan_return_id"));
+        if (!"SETTLED".equals(returned.get("status"))) return;
+        var fee = db.owned(LendingFee.class, org, n(request, "fee_id"));
+        require(n(fee, "loan_id") == n(returned, "loan_id"), "Return fee loan mismatch");
+        submitBlockedFee(org, request);
+    }
+
     /** Pays a final owner-issued bill that arrives after the loan has already closed. */
     void autoSettleClosedLoanFee(long org, long feeId) {
+        var fee = db.owned(LendingFee.class, org, feeId);
+        if ("PAID".equals(fee.get("status"))) return;
         var request = payFee(org, feeId, "loan-close-fee-" + feeId);
         submitBlockedFee(org, request);
     }
@@ -127,6 +142,10 @@ public class PaymentService {
         long requestId = n(request, "id");
         long feeId = n(request, "fee_id");
         var fee = db.owned(LendingFee.class, org, feeId);
+        if (Set.of("SETTLEMENT_SUBMITTED", "CONFIRMED").contains(request.get("status"))) return;
+        require("PENDING".equals(request.get("status")), "Fee payment is not pending");
+        require(Set.of("DUE", "PAYMENT_PENDING").contains(fee.get("status")), "Fee bill is already settled");
+        db.edit(LendingFee.class, feeId, entity -> entity.setStatus("PAYMENT_PENDING"));
         db.edit(PaymentRequest.class, requestId, entity -> entity.setStatus("SETTLEMENT_SUBMITTED"));
         events.write(
                 org,
@@ -204,13 +223,16 @@ public class PaymentService {
     Map<String, Object> applyConfirmation(
             long org, long id, boolean confirmed, BigDecimal actualAmount) {
         var request = db.owned(PaymentRequest.class, org, id);
-        require(
-                Set.of("PENDING", "SETTLEMENT_SUBMITTED").contains(request.get("status")),
-                "Payment is no longer pending");
         BigDecimal value = money(request, "amount");
         require(
                 actualAmount != null && actualAmount.compareTo(value) == 0,
                 "Confirmation amount does not match payment request");
+        // Standalone fee settlement also receives the lender's acknowledgement after the
+        // provider confirmation. It must not release blocked cash or publish a receipt twice.
+        if (confirmed && "FEE".equals(request.get("type")) && "CONFIRMED".equals(request.get("status")))
+            return request;
+        require(Set.of("PENDING", "SETTLEMENT_SUBMITTED").contains(request.get("status")),
+                "Payment is no longer pending");
         if ("DEPOSIT".equals(request.get("type"))) {
             if (confirmed) accounts.changeCash(org, value, "DEPOSIT_CONFIRMED", String.valueOf(id));
         } else {
@@ -221,20 +243,13 @@ public class PaymentService {
                     },
                     eq("organizationId", org));
             if (!confirmed) accounts.changeCash(org, value, "PAYMENT_REFUNDED", String.valueOf(id));
-            // Return-linked fees have already been sent to the lender when RETURN_SETTLED arrived.
+            // Return-linked and post-closure fees were already sent to the lender.
             // Do not publish the receipt a second time when that lender confirmation comes back.
             if (confirmed
                     && "FEE".equals(request.get("type"))
                     && request.get("loan_return_id") == null
                     && "PENDING".equals(request.get("status"))) {
                 var feeId = n(request, "fee_id");
-                db.edit(
-                        LendingFee.class,
-                        feeId,
-                        entity -> {
-                            entity.setStatus("PAID");
-                            entity.setPaidAt(Instant.now());
-                        });
                 var fee = db.owned(LendingFee.class, org, feeId);
                 events.write(
                         org,
@@ -248,6 +263,15 @@ public class PaymentService {
                                 "borrowerPaymentRequestId",
                                 id));
             }
+        }
+        if ("FEE".equals(request.get("type"))) {
+            long feeId = n(request, "fee_id");
+            var fee = db.owned(LendingFee.class, org, feeId);
+            require(value.compareTo(money(fee, "fee_amount")) == 0, "Payment does not match the fee bill");
+            db.edit(LendingFee.class, feeId, entity -> {
+                entity.setStatus(confirmed ? "PAID" : "DUE");
+                entity.setPaidAt(confirmed ? Instant.now() : null);
+            });
         }
         db.edit(
                 PaymentRequest.class,

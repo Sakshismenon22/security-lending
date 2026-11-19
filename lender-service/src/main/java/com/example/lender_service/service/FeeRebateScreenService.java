@@ -169,10 +169,9 @@ public class FeeRebateScreenService {
                 .filter(
                     x ->
                         x.getLoanId().equals(l.getId())
-                            && x.getPeriodStart() != null
-                            && x.getPeriodEnd() != null
-                            && !d.getEntryDate().isBefore(x.getPeriodStart())
-                            && !d.getEntryDate().isAfter(x.getPeriodEnd()))
+                            && (x.getPeriodStart() != null && x.getPeriodEnd() != null
+                                ? !d.getEntryDate().isBefore(x.getPeriodStart()) && !d.getEntryDate().isAfter(x.getPeriodEnd())
+                                : d.getEntryDate().equals(x.getAccrualDate())))
                 .findFirst();
         if (bill.isPresent()) {
           due = bill.get().getPaymentDate();
@@ -195,6 +194,8 @@ public class FeeRebateScreenService {
               "dueDate",
               due,
               "status",
+              settlementId == null ? d.getStatus() : settlementStatus,
+              "accrualStatus",
               d.getStatus(),
               "settlementStatus",
               settlementStatus,
