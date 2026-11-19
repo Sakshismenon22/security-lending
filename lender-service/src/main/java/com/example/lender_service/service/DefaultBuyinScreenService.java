@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class DefaultBuyinScreenService {
 
   private final TenantService tenants;
+  private final CollateralLiquidationService liquidation;
   private final LoanDefaultRepository defaults;
   private final BuyInRepository buyIns;
   private final BuyinLoanCloseoutRepository closeouts;
@@ -65,6 +66,7 @@ public class DefaultBuyinScreenService {
         var row = new LinkedHashMap<String, Object>();
         var loan = found(Optional.ofNullable(allLoans.get(def.getLoanId())));
         row.put("default", def);
+        row.put("collateralFunding",liquidation.preview(org,def.getId()));
         row.put(
           "orders",
           allOrders

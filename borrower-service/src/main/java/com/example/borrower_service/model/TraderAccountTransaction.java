@@ -15,6 +15,9 @@ import java.time.LocalDate;
 @Setter
 @NoArgsConstructor
 public class TraderAccountTransaction {
+    @Column(name="collateral_sale_proceeds",precision=24,scale=6)
+    private BigDecimal collateralSaleProceeds;
+
     @Column(name="execution_fee_amount",precision=24,scale=6)
     private BigDecimal executionFeeAmount;
 

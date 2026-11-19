@@ -64,6 +64,7 @@ class LenderWorkflowTests {
   @Autowired RecallRepository recalls;
   @Autowired LoanDefaultRepository defaults;
   @Autowired BuyinOrderService buyinOrders;
+  @Autowired CollateralLiquidationService liquidation;
   @Autowired BuyinOrderRepository buyinOrderRows;
   @Autowired BuyinInventoryService buyinReceipts;
   @Autowired BuyinLoanCloseoutService buyinCloseouts;
@@ -2396,6 +2397,54 @@ class LenderWorkflowTests {
     data.put("status", "EXECUTED");
     data.put("executionReference", order.getExecutionReference());
     return data;
+  }
+
+  @Test
+  void securitiesCollateralMustBeSoldBeforeBuyinAndProceedsSettleClosureExactlyOnce() throws Exception {
+    var org=organization();var conn=connection(org);
+    long security=security("100"), collateralSecurity=security("200");
+    inventory.create(org.getId(),new InventoryRequest(security,1000,"Custody"));
+    agreement(org,conn,collateralSecurity,true);reservation(org,conn,security,100);
+    var allocation=new AllocationRequest("SECURITY",collateralSecurity,60,BigDecimal.ZERO,null);
+    command(org,"COLLATERAL_PLEDGE_REQUESTED",300,10,new PledgeCommand(400,allocation));
+    command(org,"LOAN_REQUESTED",300,10,new LoanCommand(200,100,List.of(allocation)));
+    var loan=loans.findByConnectionIdAndBorrowerLoanId(conn.getId(),300L).orElseThrow();
+    var lot=positions.findByConnectionIdAndBorrowerPositionId(conn.getId(),400L).orElseThrow();
+    collateral.confirm(org.getId(),lot.getId(),"SECURITY-CUSTODY");loanService.decide(org.getId(),loan.getId(),true,"Approved");loanService.settle(org.getId(),loan.getId(),"SETTLED");
+    var def=reportDefaultForBuyinTest(org,loan,ids.incrementAndGet(),ids.incrementAndGet());
+    var parent=lifecycleRequests.buyIn(org.getId(),def.getId(),new LifecycleActionRequest("security-buyin"));
+    lifecycle(org,"LIFECYCLE_REQUEST_ACCEPTED",parent.getId(),1,Map.of("loanId",loan.getId()));
+    var request=new BuyinOrderRequest("funded-order",parent.getId(),"MARKET",100,null,bd("5"));
+    assertThrows(ResponseStatusException.class,()->buyinOrders.place(org.getId(),def.getId(),request));
+    String saleScope=(String)liquidation.preview(org.getId(),def.getId()).get("saleScope");
+    lot.setQuantity(61L);
+    assertThrows(ResponseStatusException.class,()->liquidation.sell(org.getId(),def.getId(),"sell-once",saleScope));
+    lot.setQuantity(60L);
+    // Missing market data must not sell stock or change its cash ledger.
+    var securityRow=securityMasterForScreenTest.findById(collateralSecurity).orElseThrow();
+    var quoteAt=securityRow.getPriceAt();securityRow.setPriceAt(null);
+    assertThrows(ResponseStatusException.class,()->liquidation.sell(org.getId(),def.getId(),"sell-once",saleScope));
+    assertEquals("SECURITY",lot.getAssetType());assertEquals(0,liquidation.cash(loan.getId()).signum());
+    securityRow.setPriceAt(quoteAt);
+    var sale=liquidation.sell(org.getId(),def.getId(),"sell-once",saleScope);
+    assertEquals(0,bd("12000").compareTo(sale.getProceeds()));
+    assertEquals(sale.getId(),liquidation.sell(org.getId(),def.getId(),"sell-once",saleScope).getId());
+    assertEquals("CASH",lot.getAssetType());assertNull(lot.getSecurityId());assertEquals(0,lot.getQuantity());
+    assertEquals(0,bd("12000").compareTo(accounts.findByOrganizationId(org.getId()).orElseThrow().getCashCollateralHeld()));
+    assertThrows(ResponseStatusException.class,()->liquidation.requireCashFunding(loan.getId(),100,bd("200"),bd("5")));
+    var order=buyinOrders.place(org.getId(),def.getId(),request);
+    assertEquals("EXECUTION_PENDING",order.getStatus());
+    lifecycle(org,"BUY_IN_REPORTED",ids.incrementAndGet(),1,orderFill(order,def));
+    assertEquals("FILLED",order.getStatus());
+    var closed=buyinCloseouts.close(org.getId(),def.getId(),"SECURITY-CLOSE");
+    assertEquals("CLOSED",loan.getStatus());assertEquals(0,bd("1995").compareTo(closed.getCashCollateralReturned()));
+    assertEquals(0,accounts.findByOrganizationId(org.getId()).orElseThrow().getCashCollateralHeld().signum());
+    assertEquals(sale.getId(),liquidation.sell(org.getId(),def.getId(),"sell-once",saleScope).getId());
+    assertEquals(1,events.findByOrganizationId(org.getId(),Pageable.unpaged()).stream().map(e->json.tree(e.getPayload()))
+        .filter(e->"COLLATERAL_LIQUIDATED".equals(e.path("type").asText())).count());
+    mvc.perform(post("/api/v1/organizations/"+organization().getId()+"/defaults/"+def.getId()+"/sell-collateral")
+        .contentType("application/json").content("{\"reference\":\"cross-tenant\",\"saleScope\":\"scope\"}"))
+        .andExpect(status().isNotFound());
   }
 
   @Test

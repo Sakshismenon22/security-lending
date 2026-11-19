@@ -81,6 +81,7 @@ export function liveDefaultRecord(row) {
     notices: [],
     reports,
     buyinOrders: row.orders || [],
+    collateralFunding: row.collateralFunding || null,
     marketPrice: row.security?.price ?? null,
     quoteAt: row.security?.priceAt ?? null,
     request,
@@ -140,6 +141,15 @@ export const defaultsBuyinsApi = {
     lenderPost(`/api/v1/organizations/${org}/defaults/${id}/close-loan`, {
       reference,
     }),
+  collateralSalePreview: (org, id) =>
+    lenderGet(
+      `/api/v1/organizations/${org}/defaults/${id}/collateral-sale-preview`,
+    ),
+  sellCollateral: (org, id, payload) =>
+    lenderPost(
+      `/api/v1/organizations/${org}/defaults/${id}/sell-collateral`,
+      payload,
+    ),
   placeOrder: (org, id, payload) =>
     lenderPost(
       `/api/v1/organizations/${org}/defaults/${id}/buy-in-orders`,

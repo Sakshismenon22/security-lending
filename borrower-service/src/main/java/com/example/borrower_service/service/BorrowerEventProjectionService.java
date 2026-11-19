@@ -97,6 +97,7 @@ public class BorrowerEventProjectionService {
             case "LOAN_REJECTED" -> loanRejected(org, id);
             case "RETURN_SETTLED", "RETURN_REJECTED" ->
                     returned(org, id, event.type().equals("RETURN_SETTLED"));
+            case "COLLATERAL_LIQUIDATED" -> collateral.applyLiquidation(org,id,d);
             case "COLLATERAL_PLEDGED" -> collateral.applyPledgeConfirmation(org, id);
             case "COLLATERAL_REJECTED" -> collateral.applyReleaseConfirmation(org, id, true);
             case "COLLATERAL_APPLIED" -> collateralApplied(org,id,d);
@@ -214,6 +215,7 @@ public class BorrowerEventProjectionService {
                         "REBATE_PAID",
                         "COLLATERAL_RELEASED",
                         "COLLATERAL_APPLIED",
+                        "COLLATERAL_LIQUIDATED",
                         "LOAN_STATUS_UPDATED",
                         "COLLATERAL_RELEASE_REJECTED")
                 .contains(event.type()))

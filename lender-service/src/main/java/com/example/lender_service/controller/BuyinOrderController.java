@@ -14,10 +14,18 @@ import org.springframework.web.bind.annotation.*;
 public class BuyinOrderController {
 
   private final BuyinOrderService orders;
+  private final CollateralLiquidationService liquidation;
   private final BuyinInventoryService receipts;
   private final BuyinLoanCloseoutService closeouts;
 
+  public record SaleRequest(@NotBlank @Size(max=120) String reference,@NotBlank @Size(max=64) String saleScope) {}
+
   public record ReceiptRequest(@NotBlank @Size(max = 120) String reference) {}
+
+  @GetMapping("/defaults/{id}/collateral-sale-preview")
+  public ApiResponse<?> salePreview(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(liquidation.preview(org,id));}
+  @PostMapping("/defaults/{id}/sell-collateral")
+  public ApiResponse<?> sellCollateral(@PathVariable long org,@PathVariable long id,@Valid @RequestBody SaleRequest r) {return ApiResponse.ok(liquidation.sell(org,id,r.reference(),r.saleScope()));}
 
   @GetMapping("/defaults/{id}/loan-closeout-preview")
   public ApiResponse<?> closeoutPreview(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(closeouts.preview(org,id));}

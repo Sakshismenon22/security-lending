@@ -1699,6 +1699,35 @@ class BorrowerWorkflowTests {
     }
 
     @Test
+    void securitiesCollateralLiquidationRemovesSoldHoldingsAndHoldsCashUntilSettlement() {
+        long org=org(), security=security("100"), pledgedSecurity=security("200");
+        fund(org,"20000");
+        long loan=loan(org,security,agreement(org,pledgedSecurity),10);
+        apply(org,"LOAN_SETTLED",loan,1,Map.of());
+        db.holding(org,pledgedSecurity);
+        db.edit(Holding.class,new HoldingId(org,pledgedSecurity),h->{h.setOwnedQuantity(100L);h.setAverageCost(bd("100"));});
+        long position=n(collateral.post(org,loan,new AllocationRequest("SECURITY",pledgedSecurity,60,BigDecimal.ZERO)),"id");
+        apply(org,"COLLATERAL_PLEDGED",position,1,Map.of());
+        var available=money(account(org),"available");var pledged=money(account(org),"pledged");
+        var data=Map.<String,Object>of("loanId",loan,"securityId",pledgedSecurity,"quantity",60,"price","200","proceeds","12000","reference","SECURITY-SALE");
+        var sale=event(org,"COLLATERAL_LIQUIDATED",position,2,data);
+        projections.apply(sale);projections.apply(sale);
+        var holding=db.find(Holding.class,new HoldingId(org,pledgedSecurity));
+        assertEquals(40,holding.getOwnedQuantity());assertEquals(0,holding.getPledgedQuantity());
+        assertEquals(0,bd("6000").compareTo(holding.getRealizedPnl()));
+        var lot=db.owned(CollateralPosition.class,org,position);
+        assertEquals("CASH",lot.get("asset_type"));assertEquals(0,bd("12000").compareTo(money(lot,"cash_amount")));
+        assertEquals(0,available.compareTo(money(account(org),"available")));
+        assertEquals(0,pledged.add(bd("12000")).compareTo(money(account(org),"pledged")));
+        assertEquals(1,db.rows(TraderAccountTransaction.class,eq("organizationId",org),eq("type","COLLATERAL_SECURITY_SOLD")).size());
+        apply(org,"COLLATERAL_APPLIED",position,3,Map.of("amount","10005","reference","SECURITY-CLOSE"));
+        apply(org,"COLLATERAL_RELEASED",position,4,Map.of("cashAmount","1995","quantity",0));
+        assertEquals(0,available.add(bd("1995")).compareTo(money(account(org),"available")));
+        assertEquals(0,pledged.compareTo(money(account(org),"pledged")));
+        assertEquals(40,holding.getOwnedQuantity());
+    }
+
+    @Test
     void externallyCalculatedRebatesCreditExactlyTheReportedAmount() throws Exception {
         long org = org(), security = security("100");
         fund(org, "10000");
