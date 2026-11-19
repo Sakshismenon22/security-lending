@@ -22,7 +22,7 @@ public class LedgerScreenService {
   private static final String FROM =
     " from LenderAccountLedger e left join Loan l on l.id=e.loanId and l.organizationId=e.organizationId left join BorrowerConnection b on b.id=l.connectionId and b.organizationId=e.organizationId";
   private static final String SELECT =
-    "select new com.example.lender_service.dto.LedgerSummary(e.id,e.organizationId,e.type,e.amount,e.reference,e.createdAt,l.id,b.id,b.name,l.borrowerLoanId)";
+    "select new com.example.lender_service.dto.LedgerSummary(e.id,e.organizationId,e.type,e.amount,e.reference,e.createdAt,l.id,b.id,b.name,l.borrowerLoanId,e.executionFeeAmount)";
 
   private String contains(String value) {
     return (

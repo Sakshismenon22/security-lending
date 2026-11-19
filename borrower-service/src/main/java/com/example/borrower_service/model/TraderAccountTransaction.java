@@ -15,6 +15,12 @@ import java.time.LocalDate;
 @Setter
 @NoArgsConstructor
 public class TraderAccountTransaction {
+    @Column(name="execution_fee_amount",precision=24,scale=6)
+    private BigDecimal executionFeeAmount;
+
+    @Column(name="loan_id")
+    private Long loanId;
+
     @Id
     @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id",nullable=false)

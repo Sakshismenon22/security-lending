@@ -462,6 +462,20 @@ public class BorrowerEventProjectionService {
         e.setReference(reference);
         e.setClosedAt(instantValue(d, "closedAt"));
       });
+      if (costs.signum() > 0) {
+        // The fee is already included in collateral applied to the buy-in. Record its
+        // allocation without debiting available cash or duplicating the purchase cost.
+        var account = db.matchingRow(TraderAccount.class, eq("organizationId", org));
+        db.create(TraderAccountTransaction::new, e -> {
+          e.setOrganizationId(org);
+          e.setLoanId(loanId);
+          e.setType("BUY_IN_EXECUTION_FEE");
+          e.setAmount(BigDecimal.ZERO);
+          e.setExecutionFeeAmount(costs);
+          e.setBalanceAfter(money(account, "available"));
+          e.setReference(reference);
+        });
+      }
     }
 
     private void collateralApplied(long org, long id, Map<String, Object> d) {

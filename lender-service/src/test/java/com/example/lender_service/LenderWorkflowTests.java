@@ -2517,6 +2517,7 @@ class LenderWorkflowTests {
       .toList();
     assertEquals(1, entries.size());
     assertEquals(0, bd("2005").compareTo(entries.get(0).getAmount()));
+    assertEquals(0, bd("5").compareTo(entries.get(0).getExecutionFeeAmount()));
     assertTrue(
       events
         .findByOrganizationId(org.getId(), Pageable.unpaged())
@@ -2901,6 +2902,26 @@ class LenderWorkflowTests {
     assertEquals(available, stockRow.getAvailableQuantity());
     assertEquals(0, bd("10005").compareTo(closed.getCashCollateralApplied()));
     assertEquals(0, bd("995").compareTo(closed.getCashCollateralReturned()));
+    var settlement = purchaseLedger.findByOrganizationId(org.getId(), Pageable.unpaged()).stream()
+        .filter(e -> "BUY_IN_PAYABLE_SETTLED".equals(e.getType())).findFirst().orElseThrow();
+    assertEquals(0, bd("5").compareTo(settlement.getExecutionFeeAmount()));
+    mvc.perform(get("/api/v1/organizations/" + org.getId() + "/lenddesk/ledger/overview")
+        .param("type", "BUY_IN_PAYABLE_SETTLED"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content[0].executionFeeAmount").value(5))
+        .andExpect(jsonPath("$.data.content[0].amount").value(-10005));
+    valuationEm.flush();
+    valuationEm.createQuery("update LenderAccountLedger e set e.executionFeeAmount=null where e.organizationId=:org")
+        .setParameter("org", org.getId()).executeUpdate();
+    String migration = new org.springframework.core.io.ClassPathResource("db/migration/V20__buyin_execution_fee_ledger.sql")
+        .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+    for (int attempt = 0; attempt < 2; attempt++) for (String statement : migration.split(";"))
+        if (statement.contains("UPDATE lender_account_ledger")) valuationEm.createNativeQuery(statement).executeUpdate();
+    valuationEm.refresh(settlement);
+    var repaired = settlement;
+    assertEquals(0, bd("5").compareTo(repaired.getExecutionFeeAmount()));
+    assertEquals(0, bd("-10005").compareTo(repaired.getAmount()));
+
     assertEquals(
       0,
       accounts

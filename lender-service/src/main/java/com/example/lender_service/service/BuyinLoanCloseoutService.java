@@ -226,6 +226,7 @@ public class BuyinLoanCloseoutService {
     journal.setLoanId(loan.getId());
     journal.setType("BUY_IN_PAYABLE_SETTLED");
     journal.setAmount(cost.negate());
+    journal.setExecutionFeeAmount(cost.subtract(value));
     journal.setReference(reference);
     journal.setCreatedAt(clock.instant());
     ledger.save(journal);

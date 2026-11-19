@@ -376,6 +376,26 @@ class BorrowerWorkflowTests {
         0,
         bd("8000").compareTo(db.find(TraderAccount.class, org).getAvailable())
       );
+      var feeEntries = db.rows(TraderAccountTransaction.class, eq("organizationId", org), eq("type", "BUY_IN_EXECUTION_FEE"));
+      assertEquals(1, feeEntries.size());
+      assertEquals(0, money(feeEntries.get(0), "amount").signum());
+      assertEquals(0, bd("5").compareTo(money(feeEntries.get(0), "execution_fee_amount")));
+      assertEquals(loan, n(feeEntries.get(0), "loan_id"));
+      mvc.perform(get("/api/v1/organizations/" + org + "/transactions"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.content[0].executionFeeAmount").value(5));
+      assertTrue(portfolio.statement(org).contains("execution_fee_amount"));
+      // Reconstruct a pre-upgrade closure with no fee allocation, then backfill twice.
+      billingEm.flush();
+      billingEm.createQuery("delete from TraderAccountTransaction t where t.organizationId=:org and t.type='BUY_IN_EXECUTION_FEE'")
+          .setParameter("org", org).executeUpdate();
+      String migration = new org.springframework.core.io.ClassPathResource("db/migration/V20__buyin_execution_fee_ledger.sql")
+          .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+      for (int attempt = 0; attempt < 2; attempt++) for (String statement : migration.split(";"))
+          if (statement.contains("INSERT INTO")) billingEm.createNativeQuery(statement).executeUpdate();
+      billingEm.clear();
+      assertEquals(1, db.rows(TraderAccountTransaction.class, eq("organizationId", org), eq("type", "BUY_IN_EXECUTION_FEE")).size());
+      assertEquals(0, bd("8000").compareTo(money(account(org), "available")));
       long other = org();
       mvc
         .perform(get("/api/v1/organizations/" + other + "/loans/" + loan))
