@@ -1,5 +1,6 @@
 param(
     [switch]$Plan,
+    [switch]$Lendora,
     [ValidateRange(10, 1800)]
     [int]$StartupTimeoutSeconds = 240
 )
@@ -40,14 +41,14 @@ $services = @(
         Folder = 'borrower-service'
         Port = 8081
         ReadyPath = '/actuator/health'
-        Command = 'call mvnw.cmd spring-boot:run'
+        Command = 'call mvnw.cmd spring-boot:run -Dspring-boot.run.arguments=--lendora.auth-enabled=false'
     },
     @{
         Name = 'Lender service'
         Folder = 'lender-service'
         Port = 8084
         ReadyPath = '/actuator/health'
-        Command = 'call mvnw.cmd spring-boot:run'
+        Command = 'call mvnw.cmd spring-boot:run -Dspring-boot.run.arguments=--lendora.auth-enabled=false'
     },
     @{
         Name = 'Lifecycle service'
@@ -59,10 +60,63 @@ $services = @(
 )
 $frontend = @{
     Name = 'Lending test frontend'
+    ExpectedTitle = 'Lending lab'
     Folder = 'security-lending-test-demo'
     Port = 5176
     ReadyPath = '/'
     Command = 'if exist node_modules\vite\package.json (call npm run dev) else (call npm ci && call npm run dev)'
+}
+
+$frontends = @($frontend)
+if ($Lendora) {
+    foreach ($service in $services) {
+        if ($service.Port -in @(8081, 8084)) {
+            $service.Command = 'call mvnw.cmd spring-boot:run -Dspring-boot.run.arguments=--lendora.auth-enabled=true'
+        }
+    }
+    $services += @{
+        Name = 'Lendora account service'
+        Folder = 'lendora-service'
+        Port = 8086
+        ReadyPath = '/api/v1/auth/me'
+        Command = 'call mvnw.cmd spring-boot:run'
+    }
+    $frontends = @(
+        @{ Name = 'BorrowDesk'; Folder = 'borrowdesk'; Port = 5173; ReadyPath = '/'; ExpectedTitle = 'BorrowDesk' },
+        @{ Name = 'LendDesk'; Folder = 'lenddesk'; Port = 5175; ReadyPath = '/'; ExpectedTitle = 'lenddesk' },
+        @{ Name = 'Lendora'; Folder = 'lendora'; Port = 5176; ReadyPath = '/'; ExpectedTitle = 'Lendora' }
+    )
+    foreach ($app in $frontends) {
+        $app.Command = "if exist node_modules\vite\package.json (call npm run dev -- --port $($app.Port) --strictPort) else (call npm ci && call npm run dev -- --port $($app.Port) --strictPort)"
+    }
+}
+
+function Initialize-LendoraKey {
+    if (-not [string]::IsNullOrWhiteSpace($env:LENDORA_PROVISIONING_KEY)) { return }
+    $directory = Join-Path $PSScriptRoot 'runtime'
+    $path = Join-Path $directory 'lendora-provisioning.key'
+    if (-not (Test-Path -LiteralPath $path)) {
+        $null = New-Item -ItemType Directory -Path $directory -Force
+        $bytes = New-Object byte[] 32
+        $random = [Security.Cryptography.RandomNumberGenerator]::Create()
+        try { $random.GetBytes($bytes) } finally { $random.Dispose() }
+        $value = [BitConverter]::ToString($bytes).Replace('-', '').ToLowerInvariant()
+        [IO.File]::WriteAllText($path, $value)
+    }
+    $env:LENDORA_PROVISIONING_KEY = [IO.File]::ReadAllText($path).Trim()
+    if ($env:LENDORA_PROVISIONING_KEY.Length -lt 32) {
+        throw 'The saved provisioning key is invalid. Set LENDORA_PROVISIONING_KEY or replace runtime/lendora-provisioning.key.'
+    }
+    Write-Host 'Using the saved local provisioning key for all three backend services.'
+}
+
+function Test-LoginRequired([int]$Port, [string]$Path) {
+    try {
+        $null = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port$Path" -TimeoutSec 4
+        return $false
+    } catch {
+        return $null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 401
+    }
 }
 
 function Test-Port([int]$Port) {
@@ -101,12 +155,27 @@ function Start-Component($Component) {
     }
     if (Test-Port $Component.Port) {
         Write-Host "Checking existing $($Component.Name) on port $($Component.Port)..."
+        if (-not $Lendora -and $Component.Port -in @(8081, 8084) -and (Test-LoginRequired $Component.Port '/api/v1/organizations')) {
+            throw "The existing $($Component.Name) requires Lendora login. Stop the borrower and lender backend windows, then rerun start-demo.cmd without -Lendora for the test console. The launcher will not silently reuse authenticated backends in anonymous test mode."
+        }
+        if ($Lendora -and $Component.Port -in @(8081, 8084)) {
+            if (-not (Test-LoginRequired $Component.Port '/api/v1/organizations')) {
+                throw "Stop the existing $($Component.Name) and rerun in Lendora mode so authentication and the shared key are loaded."
+            }
+        }
+        if ($Component.ExpectedTitle) {
+            $existing = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$($Component.Port)/" -TimeoutSec 4
+            if ($existing.Content -notmatch "<title>[^<]*$([regex]::Escape($Component.ExpectedTitle))") {
+                throw "Port $($Component.Port) is occupied by another frontend. Stop it before starting $($Component.Name)."
+            }
+        }
     } else {
         Write-Host "Starting $($Component.Name) on port $($Component.Port)..."
         Start-Process -FilePath $env:ComSpec -WorkingDirectory $directory -WindowStyle Normal `
             -ArgumentList "/d /k title $($Component.Name) & $($Component.Command)"
     }
     $null = Wait-Ready $Component.Name {
+        if ($Component.ReadyPath -eq '/api/v1/auth/me') { return Test-LoginRequired $Component.Port $Component.ReadyPath }
         if ($Component.ReadyPath -eq '/') {
             try {
                 $page = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$($Component.Port)/" -TimeoutSec 4
@@ -127,7 +196,7 @@ function Invoke-PortalPost([string]$Path) {
 
 try {
     if ($Plan) {
-        @($portal) + $services + @($frontend) | ForEach-Object {
+        @($portal) + $services + $frontends | ForEach-Object {
             $directory = Join-Path $PSScriptRoot $_.Folder
             if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
                 throw "Missing service folder: $directory"
@@ -142,6 +211,17 @@ try {
     }
     if (-not (Test-Port 5432)) {
         throw 'Start PostgreSQL on port 5432 and create the databases listed in START_DEMO.md.'
+    }
+
+    if ($Lendora) {
+        foreach ($port in @(8081, 8082, 8083, 8084, 8086)) {
+            if (Test-Port $port) {
+                throw "Port $port already has a backend running. Stop the borrower, lender, Lendora and both FIX adapter windows first, then rerun to load the shared provisioning key and routing mode consistently."
+            }
+        }
+        Initialize-LendoraKey
+        $env:LENDORA_ROUTING_ENABLED = 'true'
+        Write-Host 'Lendora mode requires the lendora_db PostgreSQL database in addition to the existing demo databases.'
     }
 
     Start-Component $portal
@@ -162,10 +242,16 @@ try {
         $adapter = Get-LocalJson 8082 '/api/v1/adapter/status'
         @($adapter.data.sessions | Where-Object { $_.loggedOn }).Count -gt 0
     }
-    Start-Component $frontend
+    foreach ($app in $frontends) { Start-Component $app }
 
     Write-Host ''
-    Write-Host 'Test frontend: http://127.0.0.1:5176'
+    if ($Lendora) {
+        Write-Host 'Lendora:    http://localhost:5176'
+        Write-Host 'BorrowDesk: http://localhost:5173'
+        Write-Host 'LendDesk:   http://localhost:5175'
+    } else {
+        Write-Host 'Test frontend: http://127.0.0.1:5176'
+    }
     Write-Host 'Kafka UI:      http://127.0.0.1:3001'
     Write-Host 'Each application runs in its own Command Prompt.'
 } catch {

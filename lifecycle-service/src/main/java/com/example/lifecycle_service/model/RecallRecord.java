@@ -19,6 +19,9 @@ public class RecallRecord {
   @Column(name = "due_at")
   private Instant dueAt;
 
+  @Column(name = "loan_id")
+  private Long loanId;
+
   private String status;
   private Long quantity;
 

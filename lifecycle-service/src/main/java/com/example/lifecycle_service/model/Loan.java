@@ -54,6 +54,9 @@ public class Loan {
   @Column(name = "settled_at")
   private Instant settledAt;
 
+  @Column(name = "maturity_at")
+  private Instant maturityAt;
+
   @Column(name = "closed_at")
   private Instant closedAt;
 

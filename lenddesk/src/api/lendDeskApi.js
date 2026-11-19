@@ -1,3 +1,4 @@
+import { lendoraUrl } from './sessionApi'
 const API_BASE_URL = import.meta.env.VITE_LENDER_API_URL ?? 'http://localhost:8084'
 
 function unwrap(payload) {
@@ -6,7 +7,8 @@ function unwrap(payload) {
 }
 
 export async function lenderGet(path, signal) {
-  const response = await fetch(`${API_BASE_URL}${path}`, { headers: { Accept: 'application/json' }, signal })
+  const response = await fetch(`${API_BASE_URL}${path}`, { credentials: 'include', headers: { Accept: 'application/json' }, signal })
+  if (response.status === 401 && import.meta.env.VITE_LENDORA_AUTH_REQUIRED !== 'false') window.location.replace(lendoraUrl + '/login')
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     throw new Error(body?.detail ?? `Lender API returned ${response.status}`)
@@ -16,9 +18,10 @@ export async function lenderGet(path, signal) {
 
 export async function lenderPost(path, body, signal) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    credentials: 'include', method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify(body), signal,
   })
+  if (response.status === 401 && import.meta.env.VITE_LENDORA_AUTH_REQUIRED !== 'false') window.location.replace(lendoraUrl + '/login')
   const payload = await response.json().catch(() => null)
   if (!response.ok) throw new Error(payload?.detail ?? `Lender API returned ${response.status}`)
   return unwrap(payload)
@@ -26,9 +29,10 @@ export async function lenderPost(path, body, signal) {
 
 export async function lenderPatch(path, body, signal) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'PATCH', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    credentials: 'include', method: 'PATCH', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify(body), signal,
   })
+  if (response.status === 401 && import.meta.env.VITE_LENDORA_AUTH_REQUIRED !== 'false') window.location.replace(lendoraUrl + '/login')
   const payload = await response.json().catch(() => null)
   if (!response.ok) throw new Error(payload?.detail ?? `Lender API returned ${response.status}`)
   return unwrap(payload)
@@ -36,9 +40,10 @@ export async function lenderPatch(path, body, signal) {
 
 export async function lenderPut(path, body, signal) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'PUT', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    credentials: 'include', method: 'PUT', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify(body), signal,
   })
+  if (response.status === 401 && import.meta.env.VITE_LENDORA_AUTH_REQUIRED !== 'false') window.location.replace(lendoraUrl + '/login')
   const payload = await response.json().catch(() => null)
   if (!response.ok) throw new Error(payload?.detail ?? `Lender API returned ${response.status}`)
   return unwrap(payload)

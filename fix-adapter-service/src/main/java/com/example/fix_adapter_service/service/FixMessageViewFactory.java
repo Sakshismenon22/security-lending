@@ -129,7 +129,7 @@ final class FixMessageViewFactory {
         return switch (type) {
             case "LOCATE_REQUESTED" -> new Mapping(1, "Request For Security", "AF", "Request security availability and quantity.");
             case "COLLATERAL_PLEDGE_REQUESTED" -> new Mapping(2, "Collateral Inquiry", "BB", "Submit collateral details and eligibility requirements.");
-            case "COLLATERAL_PLEDGED", "COLLATERAL_RELEASED" -> new Mapping(3, "Collateral Report", "BA", "Report collateral allocation, release, or valuation outcome.");
+            case "COLLATERAL_PLEDGED", "COLLATERAL_RELEASED", "COLLATERAL_APPLIED" -> new Mapping(3, "Collateral Report", "BA", "Report collateral allocation, release, or valuation outcome.");
             case "LOAN_REQUESTED" -> new Mapping(4, "Trade Capture Report", "AE", "Submit agreed loan quantity, lending fee, and settlement details.");
             case "LOAN_SETTLED", "LOAN_REJECTED" -> new Mapping(5, "Trade Confirmation", "AK", "Confirm the lending contract outcome and applied MSLA checks.");
             default -> new Mapping(6, "Security Status", "f", "Report the current securities-lending workflow status.");

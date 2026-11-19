@@ -31,3 +31,9 @@ button:disabled { cursor: not-allowed; }
 .sidebar.collapsed .brand { gap: 3px; padding: 0 4px; justify-content: center; }
 .sidebar.collapsed .brand b { font-size: 20px; }
 .sidebar.collapsed .sidebar-toggle { position: static; width: 20px; height: 20px; margin: 0; flex: none; }
+
+.workspace-session-bar{display:flex;align-items:center;justify-content:space-between;gap:15px;min-height:32px;padding:6px 16px;border-bottom:1px solid var(--border);background:var(--surface,#fff);color:var(--muted,#655b83);font-size:11px;flex:none}.workspace-session-bar button{border:1px solid var(--border);background:var(--surface,#fff);color:var(--primary);border-radius:4px;padding:4px 10px}.workspace-session-bar [role=alert]{color:#b33143}
+
+.workspace-session-bar { padding-right: 90px; }
+.workspace-session-bar > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-session-bar > button { flex-shrink: 0; }

@@ -1,34 +1,16 @@
 import { Fragment, useEffect, useState } from 'react'
-import { lenderGet, lenderPost } from '../api/lendDeskApi'
+import { lenderGet } from '../api/lendDeskApi'
 import { useDataSource } from '../hooks/useDataSource'
 import ReferenceTable, { Badge } from '../components/reference/ReferenceTable'
 import { useReferenceSort } from '../hooks/useReferenceSort'
 import './ReferencePages.css'
+import BorrowerDirectoryPicker from '../components/BorrowerDirectoryPicker'
 
 const label = value => value == null ? '—' : String(value).toLowerCase().replaceAll('_', ' ').replace(/^./, value => value.toUpperCase())
 const timestamp = value => value ? new Date(value).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata' }) : '—'
 const number = value => value == null ? '—' : Number(value).toLocaleString('en-IN')
 const money = value => value == null ? '—' : new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value)
 const tone = value => /ACTIVE|SETTLED|PAID|FULFILLED/.test(value ?? '') ? 'good' : /REJECTED|CLOSED|EXPIRED|OVERDUE/.test(value ?? '') ? 'risk' : 'warn'
-
-function NewBorrowerDialog({ organizationId, onClose, onCreated }) {
-  const [form, setForm] = useState({ name: '', externalId: '', borrowerOrganizationId: '' })
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  const update = (key, value) => setForm(current => ({ ...current, [key]: value }))
-  async function submit(event) {
-    event.preventDefault()
-    setError('')
-    setSaving(true)
-    try {
-      const borrower = await lenderPost(`/api/v1/organizations/${organizationId}/borrowers`, {
-        name: form.name.trim(), externalId: form.externalId.trim(), borrowerOrganizationId: Number(form.borrowerOrganizationId),
-      })
-      onCreated(borrower)
-    } catch (requestError) { setError(requestError.message) } finally { setSaving(false) }
-  }
-  return <div className="agreement-offer-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose() }}><section className="borrower-connect-dialog" role="dialog" aria-modal="true" aria-labelledby="connect-borrower-title"><header><div><p>COUNTERPARTY DIRECTORY</p><h2 id="connect-borrower-title">Connect borrower institution</h2></div><button type="button" className="agreement-offer-close" onClick={onClose} disabled={saving} aria-label="Close">×</button></header><p>The external ID and borrower organization ID must match the borrower service. Connecting also sends the lender reference through the existing FIX/Kafka channel.</p><form onSubmit={submit}><label>Institution name<input value={form.name} maxLength="160" onChange={event => update('name', event.target.value)} placeholder="Example Borrower LLP" required /></label><label>Borrower external ID<input value={form.externalId} maxLength="100" onChange={event => update('externalId', event.target.value)} placeholder="BORROWER_DEMO" required /></label><label>Borrower organization ID<input type="number" min="1" step="1" value={form.borrowerOrganizationId} onChange={event => update('borrowerOrganizationId', event.target.value)} placeholder="1" required /></label>{error && <p className="live-error" role="alert">{error}</p>}<footer><button type="button" onClick={onClose} disabled={saving}>Cancel</button><button className="ref-primary" type="submit" disabled={saving}>{saving ? 'Connecting…' : 'Connect borrower'}</button></footer></form></section></div>
-}
 
 function BorrowerDetails({ organizationId, id, refreshKey }) {
   const [state, setState] = useState({ scope: '', data: null, error: '' })
@@ -70,5 +52,5 @@ export default function LiveBorrowersPage() {
     if (key === 'createdAt') return timestamp(row.createdAt)
     return row[key] ?? '—'
   }
-  return <section className="ref-page borrower-reference live-borrowers-page"><header className="ref-heading"><h1>Borrowers &amp; Counterparties</h1><span className="ref-active-count">{loading ? 'Loading…' : `${state.rows.filter(row => row.active).length} connected`}</span><button className="ref-primary" type="button" onClick={() => { setNotice(''); setDialogOpen(true) }} disabled={loading || Boolean(state.error)}>Add borrower</button></header>{notice && <p className="live-agreement-notice" role="status">{notice}</p>}{loading ? <p className="ref-empty" role="status">Loading connected borrowers…</p> : state.error ? <p className="live-error" role="alert">Borrower directory unavailable: {state.error}</p> : <div className="ref-scroll"><table className="ref-main-table borrower-reference-table"><thead><tr><th aria-label="Expand borrower" />{columns.map(([key, title]) => sortHeading(key, title))}</tr></thead><tbody>{sorted.map(row => <Fragment key={row.id}><tr className={expanded === row.id ? 'ref-selected' : ''}><td><button type="button" className="ref-expander" aria-label={`${expanded === row.id ? 'Collapse' : 'Expand'} ${row.name}`} aria-expanded={expanded === row.id} onClick={() => setExpanded(current => current === row.id ? null : row.id)}>{expanded === row.id ? '⌄' : '›'}</button></td>{columns.map(([key]) => <td key={key}>{cell(row, key)}</td>)}</tr>{expanded === row.id && <tr className="ref-child"><td colSpan={columns.length + 1}><BorrowerDetails organizationId={organizationId} id={row.id} refreshKey={refreshKey} /></td></tr>}</Fragment>)}{sorted.length === 0 && <tr><td className="ref-empty" colSpan={columns.length + 1}>No borrowers are connected to this lender organization.</td></tr>}</tbody></table></div>}{dialogOpen && <NewBorrowerDialog organizationId={organizationId} onClose={() => setDialogOpen(false)} onCreated={borrower => { setDialogOpen(false); setNotice(`${borrower.name} was connected. The lender reference has been sent to the borrower.`); refresh() }} />}</section>
+  return <section className="ref-page borrower-reference live-borrowers-page"><header className="ref-heading"><h1>Borrowers &amp; Counterparties</h1><span className="ref-active-count">{loading ? 'Loading…' : `${state.rows.filter(row => row.active).length} connected`}</span><button className="ref-primary" type="button" onClick={() => { setNotice(''); setDialogOpen(true) }} disabled={loading || Boolean(state.error)}>Add borrower</button></header>{notice && <p className="live-agreement-notice" role="status">{notice}</p>}{loading ? <p className="ref-empty" role="status">Loading connected borrowers…</p> : state.error ? <p className="live-error" role="alert">Borrower directory unavailable: {state.error}</p> : <div className="ref-scroll"><table className="ref-main-table borrower-reference-table"><thead><tr><th aria-label="Expand borrower" />{columns.map(([key, title]) => sortHeading(key, title))}</tr></thead><tbody>{sorted.map(row => <Fragment key={row.id}><tr className={expanded === row.id ? 'ref-selected' : ''}><td><button type="button" className="ref-expander" aria-label={`${expanded === row.id ? 'Collapse' : 'Expand'} ${row.name}`} aria-expanded={expanded === row.id} onClick={() => setExpanded(current => current === row.id ? null : row.id)}>{expanded === row.id ? '⌄' : '›'}</button></td>{columns.map(([key]) => <td key={key}>{cell(row, key)}</td>)}</tr>{expanded === row.id && <tr className="ref-child"><td colSpan={columns.length + 1}><BorrowerDetails organizationId={organizationId} id={row.id} refreshKey={refreshKey} /></td></tr>}</Fragment>)}{sorted.length === 0 && <tr><td className="ref-empty" colSpan={columns.length + 1}>No borrowers are connected to this lender organization.</td></tr>}</tbody></table></div>}{dialogOpen && <BorrowerDirectoryPicker organizationId={organizationId} onClose={() => setDialogOpen(false)} onConnected={borrower => { setDialogOpen(false); setNotice(`${borrower.name} was connected. The lender reference is queued for delivery to the borrower.`); refresh() }} />}</section>
 }

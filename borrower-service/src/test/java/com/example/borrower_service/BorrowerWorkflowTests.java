@@ -157,6 +157,235 @@ class BorrowerWorkflowTests {
     }
 
     @Test
+    void buyinClosureAppliesCashAndClosesLoanWithoutCreditingOrDebitingCashTwice() {
+      long org = org(),
+        security = security("100");
+      fund(org, "10000");
+      long loan = loan(org, security, agreement(org, 0), 10);
+      long position = n(
+        db.rows(CollateralPosition.class, eq("loanId", loan)).get(0),
+        "id"
+      );
+      apply(org, "COLLATERAL_PLEDGED", position, 1, Map.of());
+      apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+      var application = event(
+        org,
+        "COLLATERAL_APPLIED",
+        position,
+        2,
+        Map.of("amount", "1500", "reference", "BUYIN-CLOSE")
+      );
+      projections.apply(application);
+      projections.apply(application);
+      assertEquals(
+        0,
+        bd("500").compareTo(db.find(TraderAccount.class, org).getPledged())
+      );
+      assertEquals(
+        0,
+        bd("8000").compareTo(db.find(TraderAccount.class, org).getAvailable())
+      );
+      apply(
+        org,
+        "COLLATERAL_RELEASED",
+        position,
+        3,
+        Map.of("cashAmount", "500", "quantity", 0, "reference", "BUYIN-CLOSE")
+      );
+      var close = event(
+        org,
+        "LOAN_STATUS_UPDATED",
+        loan,
+        2,
+        Map.of(
+          "status",
+          "CLOSED",
+          "outstandingQuantity",
+          0,
+          "buyinCloseout",
+          true,
+          "closedQuantity",
+          10,
+          "buyinPrice",
+          "150",
+          "closedAt",
+          Instant.now().toString(),
+          "reference",
+          "BUYIN-CLOSE"
+        )
+      );
+      projections.apply(close);
+      projections.apply(close);
+      assertEquals("CLOSED", db.find(Loan.class, loan).getStatus());
+      assertEquals(0, db.find(Loan.class, loan).getOutstandingQuantity());
+      assertNotNull(db.find(Loan.class, loan).getClosedAt());
+      var holding = db.find(Holding.class, new HoldingId(org, security));
+      assertEquals(0, holding.getBorrowedQuantity());
+      assertEquals(10, holding.getOwnedQuantity());
+      assertEquals(0, bd("150").compareTo(holding.getAverageCost()));
+      assertEquals(0, db.find(TraderAccount.class, org).getPledged().signum());
+      assertEquals(
+        0,
+        bd("8500").compareTo(db.find(TraderAccount.class, org).getAvailable())
+      );
+    }
+
+    @Test
+    void buyinClosureCoversSoldShortLotsAndCancelsPendingBorrowedOrders() {
+      long org = org(),
+        security = security("100");
+      fund(org, "10000");
+      long loan = loan(org, security, agreement(org, 0), 10);
+      long position = n(
+        db.rows(CollateralPosition.class, eq("loanId", loan)).get(0),
+        "id"
+      );
+      apply(org, "COLLATERAL_PLEDGED", position, 1, Map.of());
+      apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+      trading.order(
+        org,
+        new OrderRequest(security, "SELL", "MARKET", "BORROWED", 6, null)
+      );
+      long pending = n(
+        trading.order(
+          org,
+          new OrderRequest(security, "SELL", "LIMIT", "BORROWED", 4, bd("200"))
+        ),
+        "id"
+      );
+      apply(
+        org,
+        "LOAN_STATUS_UPDATED",
+        loan,
+        2,
+        Map.of(
+          "status",
+          "CLOSED",
+          "outstandingQuantity",
+          0,
+          "buyinCloseout",
+          true,
+          "closedQuantity",
+          10,
+          "buyinPrice",
+          "110",
+          "reference",
+          "SHORT-CLOSE"
+        )
+      );
+      assertEquals("CANCELLED", db.find(TradeOrder.class, pending).getStatus());
+      assertEquals(
+        0L,
+        db.sum(
+          ShortLot.class,
+          "openQuantity",
+          Long.class,
+          eq("organizationId", org),
+          eq("securityId", security)
+        )
+      );
+      var holding = db.find(Holding.class, new HoldingId(org, security));
+      assertEquals(0, holding.getBorrowedQuantity());
+      assertEquals(4, holding.getOwnedQuantity());
+      assertEquals(0, bd("-60").compareTo(holding.getRealizedPnl()));
+    }
+
+    @Test
+    void buyinSummaryPersistsAcrossApiReadsAndReplayWithoutTouchingHoldingsOrCash() throws Exception {
+      long org = org(),
+        security = security("100");
+      fund(org, "10000");
+      long loan = loan(org, security, agreement(org, 0), 10);
+      long position = n(
+        db.rows(CollateralPosition.class, eq("loanId", loan)).get(0),
+        "id"
+      );
+      apply(org, "COLLATERAL_PLEDGED", position, 1, Map.of());
+      apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+      apply(
+        org,
+        "LOAN_STATUS_UPDATED",
+        loan,
+        2,
+        Map.of(
+          "status",
+          "CLOSED",
+          "outstandingQuantity",
+          0,
+          "buyinCloseout",
+          true,
+          "closedQuantity",
+          10,
+          "buyinPrice",
+          "100",
+          "reference",
+          "SUM-CLOSE"
+        )
+      );
+      var before = mvc
+        .perform(get("/api/v1/organizations/" + org + "/loans/" + loan))
+        .andExpect(status().isOk())
+        .andReturn();
+      assertTrue(
+        before
+          .getResponse()
+          .getContentAsString()
+          .contains("\"buyinClosurePending\":true")
+      );
+      var data = new LinkedHashMap<String, Object>();
+      data.put("loanId", loan);
+      data.put("quantity", 10);
+      data.put("purchaseValue", "1000");
+      data.put("executionCosts", "5");
+      data.put("purchaseCost", "1005");
+      data.put("cashCollateralApplied", "1005");
+      data.put("cashCollateralReturned", "995");
+      data.put("averagePrice", "100");
+      data.put("closedAt", Instant.now().toString());
+      data.put("reference", "SUM-CLOSE");
+      long id = sequence.incrementAndGet();
+      var summary = event(org, "BUY_IN_CLOSEOUT_REPORTED", id, 1, data);
+      projections.apply(summary);
+      projections.apply(summary);
+      apply(org, "BUY_IN_CLOSEOUT_REPORTED", id, 2, data);
+      mvc
+        .perform(get("/api/v1/organizations/" + org + "/loans/" + loan))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.buyinClosure.reference").value("SUM-CLOSE"))
+        .andExpect(jsonPath("$.data.buyinClosure.purchaseCost").value(1005))
+        .andExpect(
+          jsonPath("$.data.buyinClosure.cashCollateralReturned").value(995)
+        )
+        .andExpect(jsonPath("$.data.buyinClosurePending").value(false));
+      assertEquals(
+        1,
+        db
+          .rows(
+            BuyinClosureSummary.class,
+            eq("organizationId", org),
+            eq("loanId", loan)
+          )
+          .size()
+      );
+      assertEquals(
+        10,
+        db.find(Holding.class, new HoldingId(org, security)).getOwnedQuantity()
+      );
+      assertEquals(
+        0,
+        bd("8000").compareTo(db.find(TraderAccount.class, org).getAvailable())
+      );
+      long other = org();
+      mvc
+        .perform(get("/api/v1/organizations/" + other + "/loans/" + loan))
+        .andExpect(status().isNotFound());
+      data.put("purchaseCost", "2000");
+      assertThrows(ResponseStatusException.class, () ->
+        apply(org, "BUY_IN_CLOSEOUT_REPORTED", id, 3, data)
+      );
+    }
+
+    @Test
     void loanMaturityIsPersistedPublishedAndExposedInBothReadEndpoints() throws Exception {
         long org = org(), security = security("100"), agreement = agreement(org, 0);
         fund(org, "10000");
@@ -1281,6 +1510,45 @@ class BorrowerWorkflowTests {
     }
 
     @Test
+    void marginCancellationChecksUnconfirmedAndConfirmedPledgesAndFencesNewResponses() {
+        for (int response = 0; response < 3; response++) {
+            long org = org(), security = security("100");
+            fund(org, "10000");
+            long loan = loan(org, security, agreement(org, 0), 10), call = sequence.incrementAndGet();
+            apply(org, "LOAN_SETTLED", loan, 1, Map.of());
+            var fields = new HashMap<String, Object>();
+            fields.put("loanId", loan); fields.put("externalId", "call-" + call);
+            fields.put("amount", "300"); fields.put("fulfilledAmount", "0");
+            fields.put("reason", "Shortfall"); fields.put("status", "OPEN");
+            fields.put("issuedAt", Instant.now().minusSeconds(60).toString());
+            fields.put("dueAt", Instant.now().plusSeconds(86400).toString());
+            if (response > 0) apply(org, "MARGIN_CALL_UPDATED", call, 1, fields);
+            if (response > 0) {
+                long position = n(collateral.respondToMarginCall(org, call,
+                    new AllocationRequest("CASH", null, 0, bd("100"))), "id");
+                if (response == 2) apply(org, "COLLATERAL_PLEDGED", position, 1, Map.of());
+            }
+            fields.put("cancellationRequested", true); fields.put("cancellationReference", "cancel-" + call);
+            var cancellation = event(org, "MARGIN_CALL_UPDATED", call, 2, fields);
+            projections.apply(cancellation); projections.apply(cancellation);
+            assertEquals(response == 0 ? "CANCELLED" : "OPEN", db.owned(MarginCall.class, org, call).get("status"));
+            var decisions = db.rows(OutboxEvent.class, eq("organizationId", org), eq("eventType", "MARGIN_CALL_CANCELLATION_RESPONDED"));
+            assertEquals(1, decisions.size());
+            var payload = tools.jackson.databind.json.JsonMapper.builder().build().readTree(decisions.get(0).get("payload").toString());
+            assertEquals(response == 0, payload.path("data").path("accepted").asBoolean());
+            assertEquals("COUNTERPARTY", payload.path("destination").asText());
+            assertTrue(payload.hasNonNull("mslaId")); assertTrue(payload.hasNonNull("lenderExternalId"));
+            if (response == 0) {
+                assertThrows(ResponseStatusException.class, () -> collateral.respondToMarginCall(org, call,
+                    new AllocationRequest("CASH", null, 0, bd("100"))));
+                fields.remove("cancellationRequested");
+                apply(org, "MARGIN_CALL_UPDATED", call, 1, fields);
+                assertEquals("CANCELLED", db.owned(MarginCall.class, org, call).get("status"));
+            }
+        }
+    }
+
+    @Test
     void recallResponseWaitsForExternalRecallStatusUpdates() {
         long org = org(), security = security("100");
         fund(org, "10000");
@@ -1420,5 +1688,30 @@ class BorrowerWorkflowTests {
         mvc.perform(get("/api/v1/organizations/" + org + "/orders?size=201"))
                 .andExpect(status().isBadRequest());
         assertNotNull(portfolio.dashboard(org));
+    }
+
+    @Test
+    void lenderOffersPreserveCashOnlySecurityOnlyAndMixedCollateralRules() {
+        long org = org(), sec = security("100"), lender = 1000000000001L;
+        apply(org, "LENDER_REFERENCE_UPDATED", lender, 1, Map.of("name", "Registered lender", "externalId", "LENDORA_REGISTERED"));
+        var cash = new LinkedHashMap<String,Object>(); cash.put("assetType", "CASH"); cash.put("securityId", null); cash.put("haircut", "0");
+        var security = Map.<String,Object>of("assetType", "SECURITY", "securityId", sec, "haircut", "0.15");
+        for (var rules : List.of(List.of(cash), List.of(security), List.of(cash, security))) {
+            long ownerId = sequence.incrementAndGet();
+            var data = new LinkedHashMap<String,Object>();
+            data.put("lenderReferenceId", lender); data.put("lenderExternalId", "LENDORA_REGISTERED"); data.put("number", "OFFER-" + ownerId);
+            data.put("effectiveDate", LocalDate.now().toString()); data.put("expiryDate", LocalDate.now().plusYears(1).toString());
+            data.put("creditLimit", "1000000"); data.put("feeRate", "0.03"); data.put("rebateRate", "0.01"); data.put("coverageRatio", "1.05");
+            data.put("billingFrequency", "MONTHLY"); data.put("rebateSettlementFrequency", "AT_CLOSE"); data.put("dayBasis", 365);
+            data.put("recallAllowed", true); data.put("marginHours", 24); data.put("recallHours", 48); data.put("collateralRules", rules);
+            apply(org, "AGREEMENT_OFFERED", ownerId, 1, data);
+            var agreement = db.matchingRow(Msla.class, eq("organizationId", org), eq("lenderMslaId", ownerId));
+            assertEquals("OFFERED", agreement.get("status"));
+            apply(org, "AGREEMENT_OFFERED", ownerId, 1, data);
+            assertEquals(1, db.rows(Msla.class, eq("organizationId", org), eq("lenderMslaId", ownerId)).size());
+            var stored = db.rows(CollateralHaircut.class, eq("mslaId", n(agreement,"id")));
+            assertEquals(rules.size(), stored.size());
+            for (var rule : stored) assertEquals(0, bd("SECURITY".equals(rule.get("asset_type")) ? "0.15" : "0").compareTo(money(rule, "haircut")));
+        }
     }
 }

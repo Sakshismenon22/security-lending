@@ -273,6 +273,9 @@ public class PortfolioService {
         loan.put("margin_recall", loanRows(MarginCall.class, org, id));
         loan.put("recall", loanRows(Recall.class, org, id));
         loan.put("valuation", authoritativeValuation(org, id));
+        var closeouts=db.entities(BuyinClosureSummary.class,Sort.unsorted(),1,eq("organizationId",org),eq("loanId",id));
+        loan.put("buyinClosure",closeouts.isEmpty()?null:closeouts.get(0));
+        loan.put("buyinClosurePending",closeouts.isEmpty()&&!db.rows(AuditEvent.class,eq("organizationId",org),eq("type","LOAN_BUY_IN_CLOSED"),eq("reference",String.valueOf(id))).isEmpty());
         try {
             loan.put("allocationPreview", collateral.preview(org, id));
         } catch (org.springframework.web.server.ResponseStatusException e) {

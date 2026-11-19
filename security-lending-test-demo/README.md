@@ -10,7 +10,7 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5176. This port does not conflict with the Kafka portal or borrower frontend. `npm run build` creates the bundle; `npm run preview` serves it with the same development proxy on port 4176. A static-only web host needs equivalent `/bridge/*` proxy routes.
+Open http://127.0.0.1:5176. Lendora also uses port 5176, so stop its frontend before starting this console, or run this console with `npm run dev -- --port 5177`. Changing the frontend port alone does not change backend authentication mode. `npm run build` creates the bundle; `npm run preview` serves it with the same development proxy on port 4176. A static-only web host needs equivalent `/bridge/*` proxy routes.
 
 Default proxy targets:
 
@@ -23,6 +23,32 @@ Default proxy targets:
 | Lender               | 8084 |
 
 Copy `.env.example` to `.env.local` to change targets, then restart Vite. Requests use a same-origin local Vite proxy, so backend CORS changes are unnecessary. The proxy strips the browser Origin before forwarding. This is a development tool bound to loopback, not a production deployment.
+
+## Lendora authentication and test mode
+
+This console calls both borrower and lender APIs and lets you select arbitrary local
+test identities. Those selectors do **not** authenticate a Lendora account. Requests
+omit browser session cookies so the console cannot accidentally reuse a Lendora
+session and show only that account's organization.
+
+For local cross-platform testing, stop existing borrower/lender backend processes
+and start the stack with **`start-demo.cmd`**, without `-Lendora`. This explicit local
+test mode sets `lendora.auth-enabled=false` for those two backends. The launcher now
+rejects reuse of an already-running authenticated backend instead of starting a lab
+that cannot list organizations. Do not use `start-lendora.cmd` for this console.
+
+For manual startup, run this in **both** `borrower-service` and `lender-service`:
+
+```powershell
+.\mvnw.cmd spring-boot:run "-Dspring-boot.run.arguments=--lendora.auth-enabled=false"
+```
+
+Default service startup keeps Lendora authentication enabled. Use Lendora, BorrowDesk
+and LendDesk with those authenticated backends. One Lendora session grants only its
+own role and organization; it does not grant this lab cross-platform admin access.
+A 401/403 response now explains the mismatch and retains the raw server response.
+For simultaneous authenticated and anonymous testing, run separate backend instances
+on different ports and point `DEMO_BORROWER_URL` / `DEMO_LENDER_URL` at the test stack.
 
 ## What is available
 
@@ -40,7 +66,7 @@ No financial write is sent without checking its write checkbox and clicking Send
 
 ## Current backend limits
 
-**Authentication is not implemented.** There are no login/password/token endpoints or role authorization checks. The disabled Login control explains this; selecting a test identity only changes local UI context. No password is collected and no authentication result is fabricated. Only context IDs are saved in local storage. Responses/history stay in memory until exported or the page is refreshed.
+**Authentication is handled by Lendora, separately from this console.** The lab intentionally uses explicit anonymous local test mode; selecting a test identity only changes request fields and does not log in or grant permissions. It collects no passwords and omits session cookies. Only context IDs are saved in local storage. Responses/history stay in memory until exported or the page is refreshed.
 
 **The lifecycle/payment owner is absent from this workspace.** EOD ratio checks, margin-call creation, daily fee/rebate accrual, reservation/recall deadlines, defaults, buy-in execution and payment settlement cannot complete through this frontend alone. Deposit requests remain pending until their external owner confirms funding, which blocks cash pledging and trading if the account has no confirmed funds. Recall/rebate/buy-in requests are delegated to that owner. The frontend can send the implemented requests and inspect owner-fed projections, but cannot create authoritative owner reports. There is no hidden Kafka event injector or mock business state in the app.
 
@@ -52,7 +78,7 @@ The currently checked-in Spring services do **not** declare NewTopic/TopicBuilde
 
 1. Start Kafka through its portal and create lending topics.
 2. Start PostgreSQL and the market-data service using their existing configuration.
-3. Start borrower on 8081 and lender on 8084 using `.\mvnw.cmd spring-boot:run` in each service folder. Kafka is enabled at localhost:9092 and database credentials are postgres/postgres in application.properties; no environment variables are needed.
+3. Start borrower on 8081 and lender on 8084 using `.\mvnw.cmd spring-boot:run "-Dspring-boot.run.arguments=--lendora.auth-enabled=false"` in each service folder for this local test console. Kafka is enabled at localhost:9092 and database credentials are postgres/postgres in application.properties; no environment variables are needed.
 4. Run TWO adapter instances from fix-adapter-service: `.\run-lender.cmd` first, then `.\run-borrower.cmd` in another terminal. They select the proper properties profiles and separate databases. Their default HTTP ports are 8082/8083 and the FIX session uses port 9876. Verify institution IDs and borrower organization allowlists match your registered organizations.
 5. Start this frontend. Click Check connections, then use Guided workflow. Register organizations/admins, connect borrower on lender, import security references, and add inventory. After each asynchronous action, use the corresponding read action on both sides to verify its state.
 6. Connect the separate lifecycle/payment service when implemented; its workflows will then populate these existing views.

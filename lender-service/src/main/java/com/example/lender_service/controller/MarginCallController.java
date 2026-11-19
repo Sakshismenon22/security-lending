@@ -13,6 +13,12 @@ import org.springframework.web.bind.annotation.*;
 public class MarginCallController {
   private final MarginCallService marginCalls;
 
+  @PostMapping("/margin-calls/{id}/cancel")
+  public ApiResponse<?> cancel(@PathVariable long org, @PathVariable long id,
+      @Valid @RequestBody SettlementRequest request) {
+    return ApiResponse.ok(marginCalls.cancel(org, id, request));
+  }
+
   @PostMapping("/margin-calls/{id}/confirm")
   public ApiResponse<?> confirm(
       @PathVariable long org,

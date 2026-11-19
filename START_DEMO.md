@@ -1,3 +1,7 @@
+> For Lendora signup/login and authenticated workspaces, use [LENDORA_AUTH.md](LENDORA_AUTH.md).
+> On Windows use `start-lendora.cmd` for Lendora, BorrowDesk and LendDesk; create `lendora_db` first.
+> The legacy test launcher below explicitly disables Lendora authentication for its standalone test console; do not use that mode for authenticated operation.
+
 # Start the local lending demo
 
 All Java service settings live in their `src/main/resources/application*.properties` files. No environment variable setup is required. Database credentials are `postgres` / `postgres`, and Kafka is enabled at `localhost:9092`.
@@ -34,3 +38,12 @@ To test a loan that settled today, use **Record today's demo rebate accrual** wi
 Lending fees use the outstanding quantity multiplied by the most recent completed candle close as of each India calendar day's cutoff. The daily fee is that market value times the annual MSLA fee rate divided by its day-count basis. Lifecycle bills monthly or at closure according to the MSLA. Use **Lender → Billing & payments → Run due lending fees for a loan**, or **Record today's demo lending fee** to snapshot today's quantity and price. Use the lender loan ID for either action. After delivery, use **Borrower → Billing & payments → View daily lending fees for a loan** or **View lending fee bills for a loan** with the borrower loan ID.
 
 For a recall, choose **Lender → Margin & recalls → Request loan recall** with the lender's active loan ID. When it appears in **Borrower → View recalls**, use that borrower recall ID in **Respond to recall with return**. In **Lender → Loans & returns → View returns**, find the lender return ID and use **Record return settlement**. Refresh the recall views to see partial or full fulfillment. Unfulfilled recalls become overdue at the MSLA deadline and can still be settled.
+
+## PostgreSQL connection limits
+
+If startup reports “sorry, too many clients already”, stop duplicate backend runs
+and close unused database sessions before restarting the stack. Each service process
+now uses a maximum of 5 pooled connections with 1 idle connection; restart all Java
+services to apply this. The seven-process Lendora setup has a total pool limit of 35,
+plus other clients and startup connections. `DB_POOL_MAX_SIZE` and `DB_POOL_MIN_IDLE`
+override the per-process defaults. See [connection recovery and diagnostic SQL](LENDORA_AUTH.md#postgresql-sorry-too-many-clients-already).

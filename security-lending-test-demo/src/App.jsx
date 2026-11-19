@@ -6,7 +6,7 @@ import {
   requestPath,
   workflow,
 } from "./api/catalog";
-import { sendRequest, unwrap, rowsOf } from "./api/client";
+import { sendRequest, unwrap, rowsOf, requestError } from "./api/client";
 const names = {
   borrower: "Borrower",
   lender: "Lender",
@@ -195,6 +195,7 @@ export default function App() {
     try {
       const r = await sendRequest(req);
       remember(r);
+      if (!r.ok) setError(requestError(r));
       if (r.ok) {
         const data = unwrap(r.payload);
         if (operation.capture && data?.id)
@@ -262,10 +263,10 @@ export default function App() {
     setError("");
     try {
       const r = await sendRequest({ side, path: "/api/v1/organizations" });
-      if (!r.ok)
-        throw Error(
-          "Could not load organizations. Inspect the service response.",
-        );
+      if (!r.ok) {
+        remember(r);
+        throw Error(requestError(r, "Could not load organizations"));
+      }
       setDirectories((old) => ({ ...old, [side]: rowsOf(r.payload) }));
       const roleResponse = await sendRequest({
         side,
@@ -278,7 +279,10 @@ export default function App() {
           side,
           path: `/api/v1/organizations/${org}/users?size=200`,
         });
-        if (!u.ok) throw Error("Could not load users for this organization.");
+        if (!u.ok) {
+          remember(u);
+          throw Error(requestError(u, "Could not load users for this organization"));
+        }
         setUsers((old) => ({ ...old, [side]: rowsOf(u.payload) }));
       }
     } catch (ex) {
@@ -779,16 +783,17 @@ export default function App() {
           {category === "Setup" && tab === "actions" && (
             <div className="notice">
               <strong>
-                Registration is available. Password login is pending.
+                Local API test mode — separate from Lendora login.
               </strong>
               <span>
-                The backend has no login, token, password, or role-enforcement
-                endpoints. Register organizations and users below, then choose a
-                test identity above. This selection does not authenticate or
-                authorize requests.
+                Lendora provides account login, but this cross-platform test console
+                sends no session cookies. Selecting an organization or user only
+                fills request fields. Start local test backends with start-demo.cmd
+                (without -Lendora). Backends started in Lendora mode require login
+                and will reject these calls with 401/403.
               </span>
-              <button disabled title="No backend login endpoint exists">
-                Login unavailable
+              <button disabled title="Use Lendora for authenticated login; this lab is an anonymous local test tool">
+                Lendora login is separate
               </button>
             </div>
           )}

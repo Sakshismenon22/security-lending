@@ -38,6 +38,7 @@ public class BorrowerCommandService {
   private final CollateralService collateral;
   private final EventService events;
   private final RecallService recalls;
+  private final MarginCallService marginCalls;
   private final JsonService json;
   private final Clock clock;
   private final ReturnCancellationRepository returnCancellations;
@@ -102,6 +103,14 @@ public class BorrowerCommandService {
         p.setStatus("RELEASE_REQUESTED");
         events.local(
             organization.getId(), "COLLATERAL_RELEASE_REQUESTED", p.getId(), Map.of("position", p));
+      }
+      case "MARGIN_CALL_CANCELLATION_RESPONDED" -> {
+        var loan = found(loans.findByConnectionIdAndBorrowerLoanId(connection.getId(), command.referenceId()));
+        sameAgreement(loan.getMslaId(), connection, command);
+        require(command.data().path("accepted").isBoolean(), "Missing cancellation decision");
+        marginCalls.cancellationDecision(connection, command.referenceId(), command.data().path("marginCallId").asLong(),
+            command.data().path("cancellationReference").asText(), command.data().path("accepted").asBoolean(),
+            command.data().path("reason").asText("Collateral already submitted"));
       }
       case "RETURN_REQUESTED" -> loanReturn(connection, command);
       case "FEE_PAYMENT_RECEIVED" -> feePayment(organization, connection, command);

@@ -44,7 +44,7 @@ public class MarginRequestLifecycleService {
             && calls.findByLoanId(loan.getId()).stream()
                 .anyMatch(
                     x ->
-                        Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE")
+                        Set.of("PENDING", "OPEN", "PARTIALLY_FULFILLED", "OVERDUE", "CANCELLATION_PENDING")
                             .contains(x.getStatus()));
     boolean valid =
         loan != null

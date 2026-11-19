@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 public class OrganizationController {
     private final DirectoryService directory;private final OrganizationRepository organizations;private final RoleRepository roles;private final BorrowerReadService read;
     @PostMapping public ApiResponse<?> create(@Valid @RequestBody OrganizationRequest r) {return ApiResponse.ok(directory.organization(r));}
-    @GetMapping public ApiResponse<?> list() {return ApiResponse.ok(organizations.findAll());}
+    @GetMapping public ApiResponse<?> list(@RequestAttribute(name="lendora.organizationId",required=false)Long ownOrg) {return ApiResponse.ok(ownOrg==null?organizations.findAll():organizations.findAllById(java.util.List.of(ownOrg)));}
     @GetMapping("/{org}") public ApiResponse<?> detail(@PathVariable long org) {return ApiResponse.ok(organizations.findById(org).orElseThrow(()->new org.springframework.web.server.ResponseStatusException(HttpStatus.NOT_FOUND,"Organization not found")));}
     @GetMapping("/roles") public ApiResponse<?> roles() {return ApiResponse.ok(roles.findAll());}
     @GetMapping("/{org}/users") public ApiResponse<?> users(@PathVariable long org,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size) {return ApiResponse.ok(read.list(org,"users",page,size));}

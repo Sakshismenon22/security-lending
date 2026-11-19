@@ -42,6 +42,11 @@ public class LifecycleRequestController {
     return ApiResponse.ok(requests.rebatePayment(org, id, r));
   }
 
+  @PostMapping("/defaults/{id}/buy-in-executions")
+  public ApiResponse<?> reportBuyin(@PathVariable long org,@PathVariable long id,@Valid @RequestBody BuyinExecutionRequest r) {
+    return ApiResponse.ok(requests.reportBuyin(org,id,r));
+  }
+
   @PostMapping("/defaults/{id}/buy-in-requests")
   public ApiResponse<?> buyIn(
       @PathVariable long org, @PathVariable long id, @Valid @RequestBody LifecycleActionRequest r) {

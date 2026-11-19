@@ -52,6 +52,16 @@ public class MarginCall implements LifecycleProjection {
   @Column(name = "due_at", nullable = false)
   private Instant dueAt;
 
+  @com.fasterxml.jackson.annotation.JsonIgnore
+  @Column(name = "borrower_delivery_source_version")
+  private Long borrowerDeliverySourceVersion;
+
+  @Column(name = "cancellation_reference", length = 160)
+  private String cancellationReference;
+
+  @Column(name = "cancellation_failure_reason", length = 500)
+  private String cancellationFailureReason;
+
   @Column(name = "reason", nullable = false, length = 500)
   private String reason;
 }
