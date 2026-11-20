@@ -2,6 +2,8 @@ package com.example.autoscaling.proxy;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,26 +19,26 @@ import java.util.Enumeration;
 import java.util.Set;
 
 /**
- * Lightweight HTTP reverse proxy for BorrowDesk's Borrower Service API calls.
- * Browser requests to /borrower/** are forwarded to a healthy JVM selected
- * by BorrowerLoadBalancer. WebSocket upgrades are intentionally not handled here.
+ * HTTP reverse proxy for BorrowDesk. Spring Cloud LoadBalancer selects a
+ * Borrower Service instance from the Eureka registry for every request.
  */
 @RestController
 public class BorrowerProxyController {
 
+    private static final String BORROWER_SERVICE_ID = "borrower-service";
     private static final Set<String> HOP_BY_HOP_HEADERS = Set.of(
             "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
             "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length"
     );
 
-    private final BorrowerLoadBalancer loadBalancer;
+    private final LoadBalancerClient loadBalancerClient;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();
 
-    public BorrowerProxyController(BorrowerLoadBalancer loadBalancer) {
-        this.loadBalancer = loadBalancer;
+    public BorrowerProxyController(LoadBalancerClient loadBalancerClient) {
+        this.loadBalancerClient = loadBalancerClient;
     }
 
     @RequestMapping(
@@ -45,17 +47,17 @@ public class BorrowerProxyController {
                     RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE, RequestMethod.OPTIONS}
     )
     public void proxy(HttpServletRequest incoming, HttpServletResponse outgoing) throws IOException {
-        String requestUri = incoming.getRequestURI();
-        String forwardedPath = requestUri.substring("/borrower".length());
-        String query = incoming.getQueryString();
-        int targetPort = loadBalancer.nextPort();
-        if (targetPort < 0) {
+        ServiceInstance instance = loadBalancerClient.choose(BORROWER_SERVICE_ID);
+        if (instance == null) {
             outgoing.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE,
-                    "No healthy Borrower Service instance is available.");
+                    "Eureka has no available Borrower Service instances.");
             return;
         }
 
-        URI targetUri = URI.create("http://127.0.0.1:" + targetPort + forwardedPath
+        String forwardedPath = incoming.getRequestURI().substring("/borrower".length());
+        String query = incoming.getQueryString();
+        String baseUri = instance.getUri().toString().replaceAll("/+$", "");
+        URI targetUri = URI.create(baseUri + forwardedPath
                 + (query == null || query.isBlank() ? "" : "?" + query));
 
         HttpRequest.BodyPublisher body = hasRequestBody(incoming.getMethod())
@@ -107,7 +109,7 @@ public class BorrowerProxyController {
                     "Borrower Service request timed out.");
         } catch (IOException ioException) {
             outgoing.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE,
-                    "Unable to reach a Borrower Service instance.");
+                    "Unable to reach the selected Borrower Service instance.");
         } catch (IllegalArgumentException invalidRequest) {
             outgoing.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid proxied request.");
         }
