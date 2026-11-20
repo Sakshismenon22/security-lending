@@ -244,6 +244,20 @@ try {
     $topics = Invoke-PortalPost '/api/topics/lending-preset'
     Write-Host $topics.message
 
+    # The Autoscaling Manager starts additional Borrower JVMs from this executable JAR.
+    # Build it before launching the services so scale-out does not depend on a stale artifact.
+    $borrowerDirectory = Join-Path $PSScriptRoot 'borrower-service'
+    Write-Host 'Packaging Borrower Service for managed JVM scale-out...'
+    Push-Location $borrowerDirectory
+    try {
+        & .\mvnw.cmd -DskipTests package
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Borrower Service Maven package failed. Autoscaling Manager cannot start additional JVM instances.'
+        }
+    } finally {
+        Pop-Location
+    }
+
     foreach ($service in $services) { Start-Component $service }
     $null = Wait-Ready 'Borrower-to-lender FIX session' {
         $adapter = Get-LocalJson 8082 '/api/v1/adapter/status'
