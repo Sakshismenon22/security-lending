@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/organizations/{org}")
 @RequiredArgsConstructor
 public class LendingController {
+    private final LoanCollateralPreviewService loanCollateralPreview;
     private final LendingService lending;private final BorrowerReadService read;private final PortfolioService portfolio;private final LenderReferenceRepository lenders;
     @GetMapping("/lenders") public ApiResponse<?> lenders(@PathVariable long org) {return ApiResponse.ok(portfolio.lenders(org));}
     @GetMapping("/agreements") public ApiResponse<?> agreements(@PathVariable long org,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size) {return ApiResponse.ok(read.list(org,"msla",page,size));}
@@ -24,6 +25,7 @@ public class LendingController {
     @PostMapping("/locates/{id}/reserve") public ApiResponse<?> reserve(@PathVariable long org,@PathVariable long id,@Valid @RequestBody ReservationRequest r) {return ApiResponse.ok(lending.reserve(org,id,r));}
     @PostMapping("/reservations/{id}/release") public ApiResponse<?> release(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(lending.releaseReservation(org,id));}
     @GetMapping("/loans") public ApiResponse<?> loans(@PathVariable long org,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size) {return ApiResponse.ok(read.list(org,"loan",page,size));}
+    @PostMapping("/loans/collateral-preview") public ApiResponse<?> loanCollateralPreview(@PathVariable long org,@Valid @RequestBody LoanCollateralPreviewRequest r) {return ApiResponse.ok(loanCollateralPreview.preview(org,r));}
     @PostMapping("/loans") public ApiResponse<?> create(@PathVariable long org,@Valid @RequestBody LoanRequest r) {return ApiResponse.ok(lending.createLoan(org,r));}
     @GetMapping("/loans/{id}") public ApiResponse<?> detail(@PathVariable long org,@PathVariable long id) {return ApiResponse.ok(portfolio.loan(org,id));}
     @PostMapping("/loans/{id}/returns") public ApiResponse<?> requestReturn(@PathVariable long org,@PathVariable long id,@Valid @RequestBody ReturnRequest r) {return ApiResponse.ok(lending.requestReturn(org,id,r));}

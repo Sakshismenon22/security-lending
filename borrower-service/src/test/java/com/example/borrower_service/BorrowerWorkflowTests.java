@@ -39,6 +39,7 @@ class BorrowerWorkflowTests {
     @Autowired TradingService trading;
     @Autowired ReturnFailureRecoveryService returnRecovery;
     @Autowired LendingService lending;
+    @Autowired LoanCollateralPreviewService loanCollateralPreview;
     @Autowired CollateralService collateral;
     @Autowired PaymentService payments;
     @Autowired BorrowerEventProjectionService projections;
@@ -155,6 +156,64 @@ class BorrowerWorkflowTests {
                                 quantity,
                                 List.of(new AllocationRequest("CASH", null, 0, bd("2000"))))),
                 "id");
+    }
+
+    @Test
+    void multiCollateralDraftUsesCurrentHaircutsAndCreatesAllAllocations() throws Exception {
+        long org=org(), loanSecurity=security("100"), first=security("100"), second=security("200");
+        fund(org,"2000");
+        long agreement=agreement(org,first);
+        db.create(CollateralHaircut::new,r->{r.setMslaId(agreement);r.setAssetType("SECURITY");r.setSecurityId(second);r.setHaircut(bd("0.20"));});
+        db.holding(org,first);db.holding(org,second);
+        db.edit(Holding.class,new HoldingId(org,first),h->{h.setOwnedQuantity(10L);h.setPledgedQuantity(3L);h.setBlockedOwned(2L);});
+        db.edit(Holding.class,new HoldingId(org,second),h->{h.setOwnedQuantity(5L);h.setBlockedOwned(1L);});
+        long reservation=reservation(org,loanSecurity,agreement,10);
+        var allocations=List.of(new AllocationRequest("CASH",null,0,bd("300")),
+            new AllocationRequest("SECURITY",first,5,BigDecimal.ZERO),new AllocationRequest("SECURITY",second,2,BigDecimal.ZERO));
+        var preview=new LoanCollateralPreviewRequest(reservation,10,allocations);
+        var result=loanCollateralPreview.preview(org,preview);
+        assertEquals(true,result.get("eligible"));
+        assertEquals(0,bd("1200").compareTo((BigDecimal)result.get("marketValue")));
+        assertEquals(0,bd("1070").compareTo((BigDecimal)result.get("eligibleValue")));
+        assertEquals(0,bd("1050").compareTo((BigDecimal)result.get("requiredCollateral")));
+        assertEquals(0,bd("20").compareTo((BigDecimal)result.get("surplus")));
+        assertEquals(0,bd("2000").compareTo(money(account(org),"available")));
+        assertEquals(0,db.rows(Loan.class,eq("organizationId",org)).size());
+        mvc.perform(post("/api/v1/organizations/"+org+"/loans/collateral-preview")
+            .contentType("application/json").content(toJson(preview)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.rows[1].haircut").value(0.1));
+        long loan=n(lending.createLoan(org,new LoanRequest(reservation,10,allocations,Instant.now().plusSeconds(86400))),"id");
+        assertEquals(3,db.rows(CollateralPosition.class,eq("loanId",loan)).size());
+        var outgoing=db.rows(OutboxEvent.class,eq("organizationId",org),eq("eventType","LOAN_REQUESTED")).get(0);
+        assertEquals(3,tools.jackson.databind.json.JsonMapper.builder().build().readTree(outgoing.get("payload").toString()).path("data").path("collateral").size());
+        assertEquals(0,bd("1700").compareTo(money(account(org),"available")));
+        assertEquals(8,db.find(Holding.class,new HoldingId(org,first)).getPledgedQuantity());
+        assertEquals(2,db.find(Holding.class,new HoldingId(org,second)).getPledgedQuantity());
+        assertEquals(0,n(db.owned(Reservation.class,org,reservation),"remaining_quantity"));
+        mvc.perform(post("/api/v1/organizations/"+org()+"/loans/collateral-preview")
+            .contentType("application/json").content(toJson(preview))).andExpect(status().isNotFound());
+    }
+
+    private String toJson(Object value) {return tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(value);}
+
+    @Test
+    void multiCollateralDraftRejectsAggregateOverAllocationAndMissingPrices() {
+        long org=org(), loanSecurity=security("100"), pledged=security("100");
+        fund(org,"2000");long agreement=agreement(org,pledged),reservation=reservation(org,loanSecurity,agreement,10);
+        db.holding(org,pledged);db.edit(Holding.class,new HoldingId(org,pledged),h->h.setOwnedQuantity(5L));
+        var duplicates=new LoanCollateralPreviewRequest(reservation,10,List.of(new AllocationRequest("CASH",null,0,bd("600")),
+            new AllocationRequest("SECURITY",pledged,3,BigDecimal.ZERO),new AllocationRequest("SECURITY",pledged,3,BigDecimal.ZERO)));
+        var result=loanCollateralPreview.preview(org,duplicates);
+        assertEquals(false,result.get("eligible"));assertTrue(result.get("errors").toString().contains("Combined allocations"));
+        var tooMuchCash=new LoanCollateralPreviewRequest(reservation,10,List.of(new AllocationRequest("CASH",null,0,bd("1200")),new AllocationRequest("CASH",null,0,bd("1200"))));
+        assertEquals(false,loanCollateralPreview.preview(org,tooMuchCash).get("eligible"));
+        db.edit(SecurityMaster.class,pledged,s->s.setPriceAt(null));
+        var unknown=loanCollateralPreview.preview(org,duplicates);
+        assertEquals(false,unknown.get("eligible"));assertNull(unknown.get("eligibleValue"));
+        var cashOnly=new LoanCollateralPreviewRequest(reservation,10,List.of(new AllocationRequest("CASH",null,0,bd("1100"))));
+        assertEquals(true,loanCollateralPreview.preview(org,cashOnly).get("eligible"));
+        assertEquals(0,db.rows(Loan.class,eq("organizationId",org)).size());
+        assertEquals(0,bd("2000").compareTo(money(account(org),"available")));
     }
 
     @Test
