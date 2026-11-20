@@ -77,8 +77,10 @@ public class ProcessManager {
     public synchronized boolean scaleOut() {
         removeExitedProcesses();
 
-        if (1 + instances.size() >= maxInstances) {
-            log.warn("Borrower maximum instance count ({}) has been reached.", maxInstances);
+        int registeredInstances = discoveryClient.getInstances("borrower-service").size();
+        if (registeredInstances >= maxInstances) {
+            log.warn("Borrower maximum instance count ({}) has been reached. Eureka currently reports {} instance(s).",
+                    maxInstances, registeredInstances);
             return false;
         }
         if (!Files.isRegularFile(borrowerJar)) {
