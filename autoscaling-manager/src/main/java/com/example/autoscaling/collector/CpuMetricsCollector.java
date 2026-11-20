@@ -22,10 +22,10 @@ public class CpuMetricsCollector {
     private final String metricPath;
 
     public CpuMetricsCollector(
-            RestClient.Builder restClientBuilder,
             @Value("${autoscaling.targets.borrower.base-url}") String baseUrl,
             @Value("${autoscaling.targets.borrower.cpu-metric-path}") String metricPath) {
-        this.restClient = restClientBuilder.baseUrl(baseUrl).build();
+        // Build the client directly; no RestClient.Builder Spring bean is required.
+        this.restClient = RestClient.create(baseUrl);
         this.metricPath = metricPath;
     }
 
