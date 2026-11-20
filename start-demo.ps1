@@ -177,6 +177,9 @@ function Start-Component($Component) {
             }
         }
     } else {
+        if ($Component.Name -eq 'BorrowDesk') {
+            $env:VITE_API_BASE_URL = 'http://localhost:8090/borrower'
+        }
         Write-Host "Starting $($Component.Name) on port $($Component.Port)..."
         Start-Process -FilePath $env:ComSpec -WorkingDirectory $directory -WindowStyle Normal `
             -ArgumentList "/d /k title $($Component.Name) & $($Component.Command)"
