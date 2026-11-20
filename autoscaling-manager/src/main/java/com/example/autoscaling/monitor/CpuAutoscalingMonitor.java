@@ -66,8 +66,9 @@ public class CpuAutoscalingMonitor {
             }
         } else {
             consecutiveBreaches = 0;
-            log.debug("Borrower process CPU usage={}%; below scale-out threshold.",
-                    Math.round(currentUsage * 100.0));
+            log.info("Borrower process CPU usage={}%; scale-out threshold={}%; no scale-out required.",
+                    Math.round(currentUsage * 100.0),
+                    Math.round(threshold * 100.0));
         }
     }
 }
