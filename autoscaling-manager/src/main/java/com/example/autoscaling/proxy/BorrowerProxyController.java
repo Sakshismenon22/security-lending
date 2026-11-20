@@ -49,6 +49,11 @@ public class BorrowerProxyController {
         String forwardedPath = requestUri.substring("/borrower".length());
         String query = incoming.getQueryString();
         int targetPort = loadBalancer.nextPort();
+        if (targetPort < 0) {
+            outgoing.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                    "No healthy Borrower Service instance is available.");
+            return;
+        }
 
         URI targetUri = URI.create("http://127.0.0.1:" + targetPort + forwardedPath
                 + (query == null || query.isBlank() ? "" : "?" + query));
@@ -78,7 +83,8 @@ public class BorrowerProxyController {
                     requestBuilder.build(), HttpResponse.BodyHandlers.ofByteArray());
 
             backend.headers().map().forEach((name, values) -> {
-                if (HOP_BY_HOP_HEADERS.contains(name.toLowerCase())) {
+                if (HOP_BY_HOP_HEADERS.contains(name.toLowerCase())
+                        || name.toLowerCase().startsWith("access-control-")) {
                     return;
                 }
                 for (String value : values) {
