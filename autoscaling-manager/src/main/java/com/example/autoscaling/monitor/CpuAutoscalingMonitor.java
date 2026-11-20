@@ -88,11 +88,12 @@ public class CpuAutoscalingMonitor {
 
         log.warn("Borrower Service CPU threshold reached. Requesting one additional JVM instance.");
         boolean started = processManager.scaleOut();
+        // Apply cooldown after an attempt as well, so a failed launch is not retried every evaluation cycle.
+        lastScaleOutAt = Instant.now();
         if (started) {
-            lastScaleOutAt = Instant.now();
             log.info("Borrower Service scale-out completed successfully.");
         } else {
-            log.warn("Borrower Service scale-out was not completed. Check Process Manager logs.");
+            log.warn("Borrower Service scale-out was not completed. Check Process Manager logs before the next attempt.");
         }
     }
 }
