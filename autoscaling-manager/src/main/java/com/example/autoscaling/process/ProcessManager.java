@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -36,6 +37,7 @@ public class ProcessManager {
     private final int lastPort;
     private final int maxInstances;
     private final Duration startupTimeout;
+    private final DiscoveryClient discoveryClient;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(2))
             .build();
@@ -48,7 +50,8 @@ public class ProcessManager {
             @Value("${autoscaling.borrower.first-port:8181}") int firstPort,
             @Value("${autoscaling.borrower.last-port:8190}") int lastPort,
             @Value("${autoscaling.borrower.max-instances:2}") int maxInstances,
-            @Value("${autoscaling.borrower.startup-timeout-seconds:60}") long startupTimeoutSeconds) {
+            @Value("${autoscaling.borrower.startup-timeout-seconds:60}") long startupTimeoutSeconds,
+            DiscoveryClient discoveryClient) {
 
         Path managerDirectory = Path.of("").toAbsolutePath().normalize();
         this.borrowerDirectory = managerDirectory.resolve(workingDirectory).normalize();
@@ -58,6 +61,7 @@ public class ProcessManager {
         this.lastPort = lastPort;
         this.maxInstances = maxInstances;
         this.startupTimeout = Duration.ofSeconds(startupTimeoutSeconds);
+        this.discoveryClient = discoveryClient;
 
         if (firstPort < 1024 || lastPort < firstPort || lastPort > 65535) {
             throw new IllegalArgumentException("Invalid autoscaling.borrower port range.");
@@ -100,7 +104,8 @@ public class ProcessManager {
                     "--server.port=" + port,
                     "--borrower.jobs-enabled=false",
                     "--recovery.enabled=false",
-                    "--spring.application.name=borrower-service"
+                    "--spring.application.name=borrower-service",
+                    "--eureka.instance.instance-id=borrower-service:" + port
             );
             builder.directory(borrowerDirectory.toFile());
             builder.redirectErrorStream(true);
@@ -121,7 +126,16 @@ public class ProcessManager {
                 return false;
             }
 
-            log.info("Additional Borrower instance is healthy. pid={}, port={}", process.pid(), port);
+            if (!waitUntilRegistered(port, process)) {
+                instances.remove(managed);
+                process.destroy();
+                log.error("Borrower JVM pid={} on port {} became healthy but did not register with Eureka. See {}",
+                        process.pid(), port, outputFile);
+                return false;
+            }
+
+            log.info("Additional Borrower instance is healthy and registered with Eureka. pid={}, port={}",
+                    process.pid(), port);
             return true;
         } catch (IOException exception) {
             log.error("Failed to start additional Borrower JVM on port {}: {}", port, exception.getMessage(), exception);
@@ -178,6 +192,24 @@ public class ProcessManager {
 
             try {
                 Thread.sleep(1500);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private boolean waitUntilRegistered(int port, Process process) {
+        Instant deadline = Instant.now().plus(startupTimeout);
+        while (Instant.now().isBefore(deadline) && process.isAlive()) {
+            boolean registered = discoveryClient.getInstances("borrower-service").stream()
+                    .anyMatch(instance -> instance.getPort() == port);
+            if (registered) {
+                return true;
+            }
+            try {
+                Thread.sleep(1000);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 return false;
