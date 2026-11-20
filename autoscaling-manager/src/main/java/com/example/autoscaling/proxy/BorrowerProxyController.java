@@ -97,8 +97,8 @@ public class BorrowerProxyController {
             outgoing.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                     "Borrower Service request was interrupted.");
         } catch (java.net.http.HttpTimeoutException timeout) {
-            outgoing.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE,
-                    "No Borrower Service instance is currently reachable.");
+            outgoing.sendError(HttpServletResponse.SC_GATEWAY_TIMEOUT,
+                    "Borrower Service request timed out.");
         } catch (IOException ioException) {
             outgoing.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                     "Unable to reach a Borrower Service instance.");
