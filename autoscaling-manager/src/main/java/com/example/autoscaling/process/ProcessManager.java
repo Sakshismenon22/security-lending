@@ -142,7 +142,8 @@ public class ProcessManager {
 
     private OptionalInt findAvailablePort() {
         for (int port = firstPort; port <= lastPort; port++) {
-            boolean alreadyTracked = instances.stream().anyMatch(instance -> instance.port == port);
+            int candidatePort = port;
+            boolean alreadyTracked = instances.stream().anyMatch(instance -> instance.port == candidatePort);
             if (alreadyTracked) {
                 continue;
             }
