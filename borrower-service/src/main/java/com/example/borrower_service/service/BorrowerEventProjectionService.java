@@ -416,6 +416,7 @@ public class BorrowerEventProjectionService {
         costs = decimal(d, "executionCosts"),
         total = decimal(d, "purchaseCost"),
         applied = decimal(d, "cashCollateralApplied"),
+        lenderFunds = d.containsKey("lenderFundsApplied") ? decimal(d, "lenderFundsApplied") : BigDecimal.ZERO,
         returned = decimal(d, "cashCollateralReturned"),
         price = decimal(d, "averagePrice");
       String reference = text(d, "reference");
@@ -425,7 +426,9 @@ public class BorrowerEventProjectionService {
           value.signum() > 0 &&
           costs.signum() >= 0 &&
           total.compareTo(value.add(costs)) == 0 &&
-          applied.compareTo(total) == 0 &&
+          applied.signum() >= 0 &&
+          lenderFunds.signum() >= 0 &&
+          applied.add(lenderFunds).compareTo(total) == 0 &&
           returned.signum() >= 0 &&
           price.signum() > 0 &&
           reference.length() <= 120,
@@ -465,7 +468,7 @@ public class BorrowerEventProjectionService {
         e.setClosedAt(instantValue(d, "closedAt"));
       });
       if (costs.signum() > 0) {
-        // The fee is already included in collateral applied to the buy-in. Record its
+        // The fee is already included in the buy-in settlement. Record its
         // allocation without debiting available cash or duplicating the purchase cost.
         var account = db.matchingRow(TraderAccount.class, eq("organizationId", org));
         db.create(TraderAccountTransaction::new, e -> {

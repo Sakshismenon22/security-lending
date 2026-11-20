@@ -12,6 +12,9 @@ import lombok.*;
 @NoArgsConstructor
 public class BuyinOrder {
 
+  @Column(name = "lender_funds_reserved", nullable = false, precision = 24, scale = 6)
+  private BigDecimal lenderFundsReserved = BigDecimal.ZERO;
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;

@@ -79,8 +79,9 @@ public class LedgerScreenService {
         switch (account) {
           case "rebate" -> " and upper(e.type) like '%REBATE%'";
           case "fee" -> " and upper(e.type) like '%FEE%' and upper(e.type) not like '%REBATE%'";
-          case "buyin" -> " and (upper(e.type) like '%BUY_IN%' or upper(e.type) like '%BUYIN%' or upper(e.type) like '%DEFAULT%') and upper(e.type) not like '%REBATE%' and upper(e.type) not like '%FEE%'";
-          case "clearing" -> " and upper(e.type) not like '%REBATE%' and upper(e.type) not like '%FEE%' and upper(e.type) not like '%BUY_IN%' and upper(e.type) not like '%BUYIN%' and upper(e.type) not like '%DEFAULT%'";
+          case "funding" -> " and e.type in ('LENDER_FUNDING_DEPOSIT', 'LENDER_FUNDING_BUY_IN')";
+          case "buyin" -> " and (upper(e.type) like '%BUY_IN%' or upper(e.type) like '%BUYIN%' or upper(e.type) like '%DEFAULT%') and upper(e.type) not like '%REBATE%' and upper(e.type) not like '%FEE%' and e.type <> 'LENDER_FUNDING_BUY_IN'";
+          case "clearing" -> " and upper(e.type) not like '%REBATE%' and upper(e.type) not like '%FEE%' and upper(e.type) not like '%BUY_IN%' and upper(e.type) not like '%BUYIN%' and upper(e.type) not like '%DEFAULT%' and e.type <> 'LENDER_FUNDING_DEPOSIT'";
           default -> throw new IllegalArgumentException(
             "Unknown ledger account"
           );

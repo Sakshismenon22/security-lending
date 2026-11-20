@@ -31,6 +31,7 @@ public class BuyinLoanCloseoutService {
   private final MarginCallRepository margins;
   private final InventoryService inventory;
   private final CollateralService collateral;
+  private final LenderFundingService funding;
   private final TenantService tenants;
   private final EventService events;
   private final Clock clock;
@@ -90,6 +91,7 @@ public class BuyinLoanCloseoutService {
       )
       .map(CollateralPosition::getCashAmount)
       .reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal lenderContribution = cost.subtract(cash).max(BigDecimal.ZERO);
     var blockers = new ArrayList<String>();
     if (
       !Set.of("ACTIVE", "DEFAULTED").contains(loan.getStatus()) ||
@@ -98,8 +100,12 @@ public class BuyinLoanCloseoutService {
     if (available < loan.getOutstandingQuantity()) blockers.add(
       "Received buy-in quantity must cover the full outstanding loan"
     );
-    if (cash.compareTo(cost) < 0) blockers.add(
-      "Insufficient cash collateral to settle buy-in costs; securities liquidation is required separately"
+    if (lenderContribution.signum() > 0 && lots.stream().anyMatch(p ->
+        "SECURITY".equals(p.getAssetType()) && Set.of("POSTED", "RELEASE_REQUESTED").contains(p.getStatus())))
+      blockers.add("Sell securities collateral before funding the buy-in shortfall");
+    if (lenderContribution.signum() > 0 &&
+        funding.availableFor(org, loan.getId()).compareTo(lenderContribution) < 0) blockers.add(
+      "Insufficient cash collateral and available lender funds to settle the buy-in"
     );
     if (
       lots.stream().anyMatch(p -> "PLEDGE_PENDING".equals(p.getStatus()))
@@ -141,6 +147,7 @@ public class BuyinLoanCloseoutService {
     result.put("receivedQuantity", available);
     result.put("purchaseCost", cost);
     result.put("cashCollateralHeld", cash);
+    result.put("lenderFundsRequired", lenderContribution);
     result.put(
       "cashCollateralToReturn",
       cash.subtract(cost).max(BigDecimal.ZERO)
@@ -150,6 +157,7 @@ public class BuyinLoanCloseoutService {
     result.put("closeout", existing.orElse(null));
     if (existing.isPresent()) {
       result.put("purchaseCost", existing.get().getPurchaseCost());
+      result.put("lenderFundsRequired", existing.get().getLenderFundsApplied());
       result.put("receivedQuantity", available + existing.get().getQuantity());
       result.put(
         "cashCollateralToReturn",
@@ -213,6 +221,7 @@ public class BuyinLoanCloseoutService {
           remaining = remaining.subtract(applied);
         }
       }
+    funding.applyToBuyin(org, loan.getId(), remaining, reference);
     loan.setOutstandingQuantity(0L);
     loan.setStatus("CLOSED");
     loan.setClosedAt(clock.instant());
@@ -236,7 +245,8 @@ public class BuyinLoanCloseoutService {
     closeout.setDefaultId(defaultId);
     closeout.setQuantity(quantity);
     closeout.setPurchaseCost(cost);
-    closeout.setCashCollateralApplied(cost);
+    closeout.setCashCollateralApplied(cost.subtract(remaining));
+    closeout.setLenderFundsApplied(remaining);
     closeout.setCashCollateralReturned(
       (BigDecimal) check.get("cashCollateralToReturn")
     );
@@ -323,6 +333,7 @@ public class BuyinLoanCloseoutService {
     data.put("executionCosts", executionCosts);
     data.put("purchaseCost", closeout.getPurchaseCost());
     data.put("cashCollateralApplied", closeout.getCashCollateralApplied());
+    data.put("lenderFundsApplied", closeout.getLenderFundsApplied());
     data.put("cashCollateralReturned", closeout.getCashCollateralReturned());
     data.put(
       "averagePrice",

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
+import LenderFunding from "../components/LenderFunding";
 import ReferenceTable from "../components/reference/ReferenceTable";
 import ReferenceRegister from "../components/reference/ReferenceRegister";
 import {
@@ -65,6 +66,7 @@ const sortable = new Set([
 ]);
 
 function accountFor(type) {
+  if (/lender[ _]funding/i.test(type)) return "Lender funding account";
   if (/rebate/i.test(type)) return "Cash collateral / rebate payable";
   if (/fee/i.test(type)) return "Lender receivables / cash account";
   if (/buy.?in|default/i.test(type)) return "Securities buy-in clearing";
@@ -181,6 +183,7 @@ function JournalDetails({ row }) {
 export default function LiveLedgerPage() {
   const { searchTerm = "" } = useOutletContext();
   const { organizationId, refreshKey } = useDataSource();
+  const [fundingRevision, setFundingRevision] = useState(0);
   const [params, setParams] = useSearchParams();
   const reference = params.get("reference") ?? "";
   const [expanded, setExpanded] = useState({ scope: "", id: null });
@@ -208,7 +211,7 @@ export default function LiveLedgerPage() {
     }).filter(([, value]) => value !== ""),
   );
   const queryText = query.toString(),
-    scope = `${organizationId}:${refreshKey}:${queryText}`;
+    scope = `${organizationId}:${refreshKey}:${fundingRevision}:${queryText}`;
   const [state, setState] = useState({ scope: "", data: null, error: "" });
   useEffect(() => {
     const controller = new AbortController();
@@ -339,9 +342,11 @@ export default function LiveLedgerPage() {
   return (
     <section className="ref-page finance-page ledger-reference">
       <header className="ref-heading">
-        <h1>Settlement Ledger </h1>
+        <h1>Settlement Ledger</h1>
         <span className="ledger-heading-divider" />
       </header>
+      <LenderFunding key={organizationId} organizationId={organizationId}
+        refreshKey={refreshKey} onApproved={() => setFundingRevision((revision) => revision + 1)} />
       <ReferenceMetrics
         metrics={[
           ["▱", "Total Debits", data ? money(total) : "—"],
@@ -361,6 +366,7 @@ export default function LiveLedgerPage() {
           ["rebate", accountFor("rebate")],
           ["fee", accountFor("fee")],
           ["buyin", accountFor("buyin")],
+          ["funding", accountFor("lender funding")],
           ["clearing", accountFor("pledge")],
         ])}
         {filterField(

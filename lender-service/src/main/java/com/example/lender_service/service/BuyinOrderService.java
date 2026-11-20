@@ -122,9 +122,11 @@ public class BuyinOrderService {
         ),
       "This default already has an execution"
     );
-    require(liquidation.securityLots(loan.getId()).isEmpty(), "Sell securities collateral before placing the buy-in order");
+    require(liquidation.securityLots(loan.getId()).isEmpty(),
+        "Sell securities collateral before placing the buy-in order");
     var availableQuote = market.price(loan.getSecurityId());
-    liquidation.requireCashFunding(loan.getId(),r.quantity(),"LIMIT".equals(r.type())?r.limitPrice():availableQuote.value(),r.costs());
+    liquidation.requireCashFunding(org, loan.getId(), r.quantity(),
+        "LIMIT".equals(r.type()) ? r.limitPrice() : availableQuote.value(), r.costs());
     var order = new BuyinOrder();
     order.setOrganizationId(org);
     order.setDefaultId(defaultId);
@@ -225,8 +227,13 @@ public class BuyinOrderService {
       reject(order, "REJECTED", "Purchase value is too large");
       return order;
     }
-    try {liquidation.requireCashFunding(loan.getId(),order.getQuantity(),quote.value(),order.getCosts());}
-    catch(org.springframework.web.server.ResponseStatusException e) {order.setFailureReason(e.getReason());return order;}
+    BigDecimal reserved;
+    try {
+      reserved = liquidation.requireCashFunding(org, loan.getId(), order.getQuantity(), quote.value(), order.getCosts());
+    } catch (org.springframework.web.server.ResponseStatusException e) {
+      order.setFailureReason(e.getReason());
+      return order;
+    }
     order.setExecutionPrice(quote.value());
     order.setQuoteAt(quote.at());
     var execution = lifecycle.reportBuyin(
@@ -242,6 +249,7 @@ public class BuyinOrderService {
       )
     );
     order.setExecutionRequestId(execution.getId());
+    order.setLenderFundsReserved(reserved);
     order.setStatus("EXECUTION_PENDING");
     events.local(
       org,
