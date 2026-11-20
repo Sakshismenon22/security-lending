@@ -41,7 +41,7 @@ $services = @(
         Folder = 'eureka-server'
         Port = 8761
         ReadyPath = '/actuator/health'
-        Command = 'call mvnw.cmd spring-boot:run'
+        Command = 'call ..\borrower-service\mvnw.cmd spring-boot:run'
     },
     @{
         Name = 'Borrower service'
