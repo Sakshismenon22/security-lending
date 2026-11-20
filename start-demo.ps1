@@ -37,6 +37,13 @@ $services = @(
         Command = 'call run-borrower.cmd'
     },
     @{
+        Name = 'Eureka Server'
+        Folder = 'eureka-server'
+        Port = 8761
+        ReadyPath = '/actuator/health'
+        Command = 'call mvnw.cmd spring-boot:run'
+    },
+    @{
         Name = 'Borrower service'
         Folder = 'borrower-service'
         Port = 8081
@@ -224,7 +231,7 @@ try {
     }
 
     if ($Lendora) {
-        foreach ($port in @(8081, 8082, 8083, 8084, 8086)) {
+        foreach ($port in @(8081, 8082, 8083, 8084, 8086, 8761)) {
             if (Test-Port $port) {
                 throw "Port $port already has a backend running. Stop the borrower, lender, Lendora and both FIX adapter windows first, then rerun to load the shared provisioning key and routing mode consistently."
             }
