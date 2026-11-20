@@ -2,9 +2,8 @@ package com.example.autoscaling.proxy;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.stereotype.RestController;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 
@@ -97,12 +96,12 @@ public class BorrowerProxyController {
             Thread.currentThread().interrupt();
             outgoing.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                     "Borrower Service request was interrupted.");
-        } catch (java.net.ConnectException | java.net.http.HttpConnectTimeoutException unavailable) {
+        } catch (java.net.http.HttpTimeoutException timeout) {
             outgoing.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                     "No Borrower Service instance is currently reachable.");
-        } catch (java.net.http.HttpTimeoutException timeout) {
-            outgoing.sendError(HttpServletResponse.SC_GATEWAY_TIMEOUT,
-                    "Borrower Service request timed out.");
+        } catch (IOException ioException) {
+            outgoing.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                    "Unable to reach a Borrower Service instance.");
         } catch (IllegalArgumentException invalidRequest) {
             outgoing.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid proxied request.");
         }
