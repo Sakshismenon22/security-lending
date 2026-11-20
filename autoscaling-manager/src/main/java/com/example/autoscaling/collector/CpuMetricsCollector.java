@@ -1,12 +1,13 @@
 package com.example.autoscaling.collector;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.util.List;
+import java.util.Map;
 import java.util.OptionalDouble;
 
 /**
@@ -30,23 +31,23 @@ public class CpuMetricsCollector {
 
     public OptionalDouble readBorrowerProcessCpuUsage() {
         try {
-            JsonNode response = restClient.get()
+            Map response = restClient.get()
                     .uri(metricPath)
                     .retrieve()
-                    .body(JsonNode.class);
+                    .body(Map.class);
 
-            if (response == null || !response.has("measurements")) {
+            if (response == null || !(response.get("measurements") instanceof List<?> measurements)) {
                 log.warn("Borrower CPU metric response did not contain measurements.");
                 return OptionalDouble.empty();
             }
 
-            JsonNode measurements = response.path("measurements");
-            for (JsonNode measurement : measurements) {
-                if ("VALUE".equalsIgnoreCase(measurement.path("statistic").asText())
-                        && measurement.path("value").isNumber()) {
-                    double value = measurement.path("value").asDouble();
-                    if (Double.isFinite(value) && value >= 0.0) {
-                        return OptionalDouble.of(value);
+            for (Object item : measurements) {
+                if (item instanceof Map<?, ?> measurement
+                        && "VALUE".equalsIgnoreCase(String.valueOf(measurement.get("statistic")))
+                        && measurement.get("value") instanceof Number value) {
+                    double usage = value.doubleValue();
+                    if (Double.isFinite(usage) && usage >= 0.0) {
+                        return OptionalDouble.of(usage);
                     }
                 }
             }
