@@ -261,14 +261,14 @@ try {
     $borrowerDirectory = Join-Path $PSScriptRoot 'borrower-service'
     $borrowerJar = Join-Path $borrowerDirectory 'target\borrower-service-0.0.1-SNAPSHOT.jar'
     $borrowerJarFullPath = [IO.Path]::GetFullPath($borrowerJar)
-    $escapedJarPath = [regex]::Escape($borrowerJarFullPath)
+    $jarCommandPattern = '(?i)-jar\s+"?' + [regex]::Escape($borrowerJarFullPath) + '"?(?:\s|$)'
     Write-Host 'Stopping previously managed secondary Borrower JVMs before packaging...'
 
     try {
         $managedBorrowerProcesses = Get-CimInstance Win32_Process -Filter "Name = 'java.exe'" |
             Where-Object {
                 $_.CommandLine -and
-                $_.CommandLine -match '(?i)-jar\s+"?' + $escapedJarPath + '"?(?:\s|$)' -and
+                $_.CommandLine -match $jarCommandPattern -and
                 $_.CommandLine -match '(?i)--server\.port=(81(?:8[1-9]|90))'
             }
 
