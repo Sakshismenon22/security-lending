@@ -269,6 +269,13 @@ try {
     }
 
     foreach ($service in $services) { Start-Component $service }
+
+    # Do not continue to frontend startup until the two-instance Borrower baseline is visible in Eureka.
+    $null = Wait-Ready 'Two Borrower baseline instances registered in Eureka' {
+        $instances = Get-LocalJson 8090 '/api/autoscaling/borrower/instances'
+        @($instances).Count -ge 2
+    }
+
     $null = Wait-Ready 'Borrower-to-lender FIX session' {
         $adapter = Get-LocalJson 8082 '/api/v1/adapter/status'
         @($adapter.data.sessions | Where-Object { $_.loggedOn }).Count -gt 0
