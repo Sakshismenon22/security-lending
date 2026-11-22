@@ -26,7 +26,8 @@ import java.util.regex.Pattern;
 
 /**
  * Starts and tracks additional local Borrower Service JVM processes.
- * This first version supports scale-out only; it never terminates processes.
+ * Owns secondary Borrower JVMs and safely scales them out or in without stopping
+ * the primary Borrower process or reducing capacity below the configured baseline.
  */
 @Component
 public class ProcessManager {
@@ -198,6 +199,58 @@ public class ProcessManager {
             log.error("Failed to start additional Borrower JVM on port {}: {}", port, exception.getMessage(), exception);
             return false;
         }
+    }
+
+    /**
+     * Stops the newest manager-owned secondary JVM, never the primary Borrower process.
+     * The configured baseline is preserved; returns false when no safe scale-in is possible.
+     */
+    public synchronized boolean scaleIn() {
+        removeExitedProcesses();
+
+        int registeredInstances = discoveryClient.getInstances("borrower-service").size();
+        if (registeredInstances <= baselineInstances || instances.isEmpty()) {
+            log.info("Scale-in skipped: registered instances={}, baseline={}, managed secondary JVMs={}.",
+                    registeredInstances, baselineInstances, instances.size());
+            return false;
+        }
+
+        ManagedProcess candidate = instances.stream()
+                .filter(instance -> instance.process.isAlive())
+                .max(java.util.Comparator.comparing(ManagedProcess::startedAt))
+                .orElse(null);
+
+        if (candidate == null) {
+            log.warn("Scale-in skipped: no live manager-owned secondary Borrower JVM is available.");
+            return false;
+        }
+
+        log.info("Scaling in Borrower Service by stopping managed JVM pid={} on port {}.",
+                candidate.process.pid(), candidate.port);
+        candidate.process.destroy();
+
+        try {
+            if (!candidate.process.waitFor(15, java.util.concurrent.TimeUnit.SECONDS)) {
+                log.warn("Borrower JVM pid={} on port {} did not stop gracefully; forcing termination.",
+                        candidate.process.pid(), candidate.port);
+                candidate.process.destroyForcibly();
+                if (!candidate.process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                    log.error("Unable to terminate Borrower JVM pid={} on port {}.",
+                            candidate.process.pid(), candidate.port);
+                    return false;
+                }
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            log.error("Interrupted while stopping Borrower JVM pid={} on port {}.",
+                    candidate.process.pid(), candidate.port);
+            return false;
+        }
+
+        instances.remove(candidate);
+        log.info("Scale-in completed. Stopped Borrower JVM pid={} on port {}. Registered instances before deregistration settles={}.",
+                candidate.process.pid(), candidate.port, registeredInstances);
+        return true;
     }
 
     public synchronized List<ManagedInstance> getInstances() {
