@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -36,6 +38,7 @@ public class ProcessManager {
     private final int firstPort;
     private final int lastPort;
     private final int maxInstances;
+    private final int baselineInstances;
     private final Duration startupTimeout;
     private final DiscoveryClient discoveryClient;
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -49,7 +52,8 @@ public class ProcessManager {
             @Value("${autoscaling.borrower.log-directory:../runtime/autoscaling}") String logDirectory,
             @Value("${autoscaling.borrower.first-port:8181}") int firstPort,
             @Value("${autoscaling.borrower.last-port:8190}") int lastPort,
-            @Value("${autoscaling.borrower.max-instances:2}") int maxInstances,
+            @Value("${autoscaling.borrower.max-instances:5}") int maxInstances,
+            @Value("${autoscaling.borrower.baseline-instances:2}") int baselineInstances,
             @Value("${autoscaling.borrower.startup-timeout-seconds:60}") long startupTimeoutSeconds,
             DiscoveryClient discoveryClient) {
 
@@ -60,15 +64,58 @@ public class ProcessManager {
         this.firstPort = firstPort;
         this.lastPort = lastPort;
         this.maxInstances = maxInstances;
+        this.baselineInstances = baselineInstances;
         this.startupTimeout = Duration.ofSeconds(startupTimeoutSeconds);
         this.discoveryClient = discoveryClient;
 
         if (firstPort < 1024 || lastPort < firstPort || lastPort > 65535) {
             throw new IllegalArgumentException("Invalid autoscaling.borrower port range.");
         }
-        if (maxInstances < 1 || startupTimeoutSeconds < 1) {
+        if (maxInstances < 1 || baselineInstances < 1 || baselineInstances > maxInstances || startupTimeoutSeconds < 1) {
             throw new IllegalArgumentException("Borrower max instances and startup timeout must be positive.");
         }
+    }
+
+
+    /**
+     * Establishes the configured baseline after the manager has started.
+     * The primary Borrower JVM is launched by start-demo.ps1; this manager
+     * creates the remaining baseline JVM(s) and waits for Eureka registration.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void ensureBaselineInstances() {
+        Instant deadline = Instant.now().plus(startupTimeout);
+        while (Instant.now().isBefore(deadline)) {
+            boolean primaryRegistered = discoveryClient.getInstances("borrower-service").stream()
+                    .anyMatch(instance -> instance.getPort() == 8081);
+            if (primaryRegistered) {
+                break;
+            }
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                log.error("Interrupted while waiting for the primary Borrower instance to register.");
+                return;
+            }
+        }
+
+        int registered = discoveryClient.getInstances("borrower-service").size();
+        if (registered == 0) {
+            log.error("Primary Borrower instance did not register with Eureka; baseline startup is incomplete.");
+            return;
+        }
+
+        while (registered < baselineInstances) {
+            log.info("Starting baseline Borrower capacity: {}/{} instance(s) registered.",
+                    registered, baselineInstances);
+            if (!scaleOut()) {
+                log.error("Unable to establish the configured Borrower baseline of {} instances.", baselineInstances);
+                return;
+            }
+            registered = discoveryClient.getInstances("borrower-service").size();
+        }
+        log.info("Borrower baseline established: {} instance(s) registered with Eureka.", registered);
     }
 
     /**
