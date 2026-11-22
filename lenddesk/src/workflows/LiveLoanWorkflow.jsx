@@ -4,15 +4,22 @@ import { useDataSource } from '../hooks/useDataSource'
 import { lenderGet, lenderPost, lenderPut } from '../api/lendDeskApi'
 import { LoanCard } from '../components/loans/LoanCards'
 import { date, display, loanId, money, num } from '../utils/loanFormat'
+import ManageLoanScreen from './ManageLoanScreen'
 import { Card, Summary } from './WorkflowControls'
 import './WorkflowPage.css'
 import '../pages/LoansPage.css'
 const istInput = (value) => new Date(new Date(value).getTime() + 330 * 60000).toISOString().slice(0, 16)
 export default function LiveLoanWorkflow({ kind, id, onDismiss, onComplete, onBusyChange }) {
-  const { organizationId, refreshKey } = useDataSource(),
+  const { organizationId, refreshKey, refresh } = useDataSource(),
     localId = Number(String(id).replace(/^LOAN-/, '')),
     scope = `${organizationId}:${refreshKey}:${kind}:${localId}`
   const [state, setState] = useState({ scope: '', data: null, error: '' })
+  const [notice, setNotice] = useState('')
+  const inline = kind === 'loan' && !onDismiss
+  function completeInline(message) {
+    setNotice(message)
+    refresh()
+  }
   useEffect(() => {
     const abort = new AbortController()
     Promise.all([
@@ -62,18 +69,21 @@ export default function LiveLoanWorkflow({ kind, id, onDismiss, onComplete, onBu
       data={state.data}
       organizationId={organizationId}
       onDismiss={onDismiss}
-      onComplete={onComplete}
+      onComplete={inline ? completeInline : onComplete}
+      inline={inline}
+      notice={notice}
       onBusyChange={onBusyChange}
     />
   )
 }
-function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyChange }) {
+function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyChange, inline, notice }) {
   const l = data.loan,
     isMargin = kind === 'margin',
     isRecall = kind === 'recall',
     dialog = useRef(null),
     mounted = useRef(true),
     retry = useRef(null),
+    submitting = useRef(false),
     settlementReferences = useRef(new Map())
   const [quantity, setQuantity] = useState(
       Math.min(l.recallAvailableQuantity, 30000),
@@ -83,7 +93,7 @@ function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyC
       istInput(Date.now() + (l.marginHours || 24) * 3600000),
     ),
     [reason, setReason] = useState(''),
-    [action, setAction] = useState(''),
+    [action, setAction] = useState(inline && l.status === 'PENDING_REVIEW' ? 'approve' : ''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [success, setSuccess] = useState('')
@@ -142,7 +152,8 @@ function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyC
     return settlementReferences.current.get(key)
   }
   async function submit() {
-    if (busy) return
+    if (submitting.current) return
+    submitting.current = true
     setBusy(true)
     onBusyChange?.(true)
     setError('')
@@ -189,8 +200,8 @@ function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyC
       if (mounted.current) {
         const requestStatus = isMargin || isRecall
           ? `Request ${result.id} recorded: ${display(result.status)}.`
-          : 'Loan operation completed.'
-        dialog.current.close()
+          : action === 'approve' ? 'Loan approved.' : 'Loan operation completed.'
+        dialog.current?.close()
         if (onComplete) {
           onComplete(requestStatus)
         } else {
@@ -207,9 +218,19 @@ function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyC
           `${e.message}. Refresh to check the current state before retrying; an uncertain network outcome may already have been recorded.`,
         )
     } finally {
+      submitting.current = false
       if (mounted.current) setBusy(false)
       onBusyChange?.(false)
     }
+  }
+  if (inline) {
+    return <ManageLoanScreen data={data} notice={notice} action={action} reason={reason} busy={busy} error={error}
+      onAction={(next) => {
+        setAction(next)
+        setReason('')
+        setError('')
+      }}
+      onReason={setReason} onSubmit={submit} />
   }
   return (
     <section className={`wf-page wf-live wf-${kind}`}>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
 import LoanWorkflowDialog from '../workflows/LoanWorkflowDialog'
 import { lenderGet } from '../api/lendDeskApi'
 import { useDataSource } from '../hooks/useDataSource'
@@ -18,13 +18,11 @@ import {
 const empty = { connectionId: '', mslaId: '', coverage: '', q: '' }
 export default function LiveLoansPage() {
   const { searchTerm = '' } = useOutletContext(),
-    { organizationId, refreshKey, refresh } = useDataSource()
+    { organizationId, refreshKey } = useDataSource()
   const [draft, setDraft] = useState(empty),
     [filters, setFilters] = useState(empty),
     [tab, setTab] = useState('ACTIVE'),
     [selected, setSelected] = useState(null),
-    [managedLoan, setManagedLoan] = useState(null),
-    [operationNotice, setOperationNotice] = useState(''),
     [newLoanInfo, setNewLoanInfo] = useState(false),
     [state, setState] = useState({ scope: '', data: null, error: '' })
   const query = new URLSearchParams(
@@ -76,16 +74,6 @@ export default function LiveLoansPage() {
     data ?? (state.scope.startsWith(`${organizationId}:`) ? state.data : null)
   return (
     <section className="active-loans ref-page">
-      {operationNotice && <p className="wf-notice" role="status">{operationNotice}</p>}
-      {managedLoan != null && (
-        <LoanWorkflowDialog kind="loan" id={managedLoan}
-          onDismiss={() => setManagedLoan(null)}
-          onComplete={(message) => {
-            setOperationNotice(message)
-            refresh()
-          }}
-        />
-      )}
       <header className="al-heading">
         <div>
           <h1>
@@ -321,10 +309,7 @@ export default function LiveLoansPage() {
                       <LoanBadge>{display(l.status)}</LoanBadge>
                     </td>
                     <td>
-                      <button type="button" onClick={() => {
-                        setOperationNotice('')
-                        setManagedLoan(l.id)
-                      }}>Manage</button>
+                      <Link to={`/loans/${loanId(l.id)}/manage`}>Manage</Link>
                     </td>
                   </tr>
                 ))}
@@ -381,7 +366,7 @@ export function LiveLoanDetails({ id, embedded = false }) {
     <>
       {notice && <p className="loan-workspace-notice" role="status">{notice}</p>}
       {workflow && (
-        <LoanWorkflowDialog kind={workflow} id={id} loan={loan}
+        <LoanWorkflowDialog kind={workflow} id={id}
           onDismiss={() => setWorkflow(null)}
           onComplete={(message) => {
             setNotice(message)

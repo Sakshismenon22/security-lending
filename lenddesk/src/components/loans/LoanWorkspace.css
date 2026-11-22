@@ -24,7 +24,7 @@
 }
 .loan-workspace-identity h1 { margin: 0; font-size: clamp(23px, 3vw, 34px); letter-spacing: -.025em; }
 .loan-workspace-heading p { margin: 5px 0 0; font-size: 14px; color: var(--loan-muted); }
-.loan-workspace-view button, .loan-workspace-menu summary {
+.loan-workspace-view button, .loan-workspace-view .loan-workspace-primary {
   border: 1px solid var(--loan-rule);
   border-radius: 7px;
   background: #fff;
@@ -36,24 +36,12 @@
   cursor: pointer;
 }
 .loan-workspace-view button:disabled { opacity: .55; cursor: not-allowed; }
-.loan-workspace-menu { position: relative; }
-.loan-workspace-menu summary { list-style: none; }
-.loan-workspace-menu summary::-webkit-details-marker { display: none; }
-.loan-workspace-menu .loan-workspace-primary { background: var(--loan-accent); border-color: var(--loan-accent); color: white; }
-.loan-workspace-menu > div {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  width: max-content;
-  z-index: 2;
-  border: 1px solid var(--loan-rule);
-  border-radius: 8px;
-  padding: 4px;
-  background: white;
-  box-shadow: 0 8px 20px #2b14531c;
+.loan-workspace-view .loan-workspace-primary {
+  background: var(--loan-accent);
+  border-color: var(--loan-accent);
+  color: white;
+  text-decoration: none;
 }
-.loan-workspace-menu button { display: block; width: 100%; text-align: left; border: 0; }
-.loan-workspace-menu button:hover { background: #f3ecff; }
 .loan-workspace-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

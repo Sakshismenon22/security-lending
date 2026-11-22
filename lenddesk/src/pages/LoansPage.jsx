@@ -270,7 +270,7 @@ function DemoLoanDetail({ loan: l }) {
           ⌄ {l.id} / {l.symbol} <LoanBadge>{l.status}</LoanBadge>
         </h2>
         <div>
-          <button type="button" className="ref-primary" onClick={() => open('loan')}>Manage loan</button>
+          <Link className="ref-primary" to={`/loans/${l.id}/manage`}>Manage loan</Link>
           <button type="button" onClick={() => open('margin')}>Issue margin call</button>
           <button type="button" onClick={() => open('recall')}>Create recall</button>
           <Link to={`/agreements/${l.msla}`}>View MSLA</Link>

@@ -96,12 +96,6 @@ export default function LoanWorkspace({ data, children, onOpen, embedded = false
     ['coverage', 'Collateral coverage', percent(loan.coverage)],
     ['fee', 'Annual lending fee', rate(loan.feeBps)],
   ]
-  function menuAction(event, kind) {
-    const menu = event.currentTarget.closest('details')
-    menu.open = false
-    menu.querySelector('summary').focus()
-    onOpen(kind)
-  }
   function navigateTabs(event, index) {
     let next
     if (event.key === 'ArrowRight') next = (index + 1) % views.length
@@ -125,13 +119,7 @@ export default function LoanWorkspace({ data, children, onOpen, embedded = false
         <p>{[loan.symbol, loan.borrower].filter(Boolean).join(' · ')}</p>
       </div>
       <div className="loan-workspace-actions">
-        <details className="loan-workspace-menu">
-          <summary className="loan-workspace-primary">Manage loan <span aria-hidden="true">⌄</span></summary>
-          <div>
-            {pending && <button type="button" onClick={(event) => menuAction(event, 'approval')}>Approve loan</button>}
-            <button type="button" onClick={(event) => menuAction(event, 'loan')}>Loan operations</button>
-          </div>
-        </details>
+        <Link className="loan-workspace-primary" to={`/loans/${loanId(loan.id)}/manage`}>Manage loan</Link>
         <button type="button" disabled={!canIssueMargin} onClick={() => onOpen('margin')}>Issue margin call</button>
         <button type="button" disabled={!loan.canRecall} onClick={() => onOpen('recall')}>Create recall</button>
         {children}
@@ -161,7 +149,7 @@ export default function LoanWorkspace({ data, children, onOpen, embedded = false
             {recalls.map((entry) => <tr key={`c${entry.id}`}><td>Recall {entry.id}</td><td>{num(entry.quantity - entry.fulfilledQuantity)}</td><td>{display(entry.status)}</td></tr>)}
           </tbody>
         </table></div> : <p className="loan-workspace-empty">No recorded returns or recalls.</p>}
-        <p className="loan-workspace-empty"><button type="button" onClick={() => onOpen('loan')}>Receive securities / manage requests</button></p>
+        <p className="loan-workspace-empty"><Link to={`/loans/${loanId(loan.id)}/manage`}>Receive securities / manage requests</Link></p>
       </article>}
       {view === 'activity' && <Activity events={activity} />}
     </div>
