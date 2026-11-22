@@ -30,7 +30,7 @@ import java.util.concurrent.Semaphore;
 @ConditionalOnProperty(name = "autoscaling.test.cpu-load.enabled", havingValue = "true")
 public class CpuLoadTestController {
 
-    private static final int MAX_DURATION_SECONDS = 30;
+    private static final int MAX_DURATION_SECONDS = 90;
     private static final int MAX_WORKERS = 4;
 
     private final int serverPort;
