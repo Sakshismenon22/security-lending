@@ -45,6 +45,7 @@ public class ProcessManager {
             .connectTimeout(Duration.ofSeconds(2))
             .build();
     private final List<ManagedProcess> instances = new ArrayList<>();
+    private volatile boolean baselineReady;
 
     public ProcessManager(
             @Value("${autoscaling.borrower.working-directory:../borrower-service}") String workingDirectory,
@@ -115,7 +116,12 @@ public class ProcessManager {
             }
             registered = discoveryClient.getInstances("borrower-service").size();
         }
+        baselineReady = true;
         log.info("Borrower baseline established: {} instance(s) registered with Eureka.", registered);
+    }
+
+    public boolean isBaselineReady() {
+        return baselineReady;
     }
 
     /**
