@@ -255,8 +255,46 @@ try {
     Write-Host $topics.message
 
     # The Autoscaling Manager starts additional Borrower JVMs from this executable JAR.
-    # Build it before launching the services so scale-out does not depend on a stale artifact.
+    # Stop only previously managed secondary JVMs before packaging: Windows locks a JAR
+    # while a java -jar process is using it, preventing Spring Boot's repackage goal
+    # from renaming the existing artifact to .jar.original.
     $borrowerDirectory = Join-Path $PSScriptRoot 'borrower-service'
+    $borrowerJar = Join-Path $borrowerDirectory 'target\borrower-service-0.0.1-SNAPSHOT.jar'
+    $borrowerJarFullPath = [IO.Path]::GetFullPath($borrowerJar)
+    $escapedJarPath = [regex]::Escape($borrowerJarFullPath)
+    Write-Host 'Stopping previously managed secondary Borrower JVMs before packaging...'
+
+    try {
+        $managedBorrowerProcesses = Get-CimInstance Win32_Process -Filter "Name = 'java.exe'" |
+            Where-Object {
+                $_.CommandLine -and
+                $_.CommandLine -match '(?i)-jar\s+"?' + $escapedJarPath + '"?(?:\s|$)' -and
+                $_.CommandLine -match '(?i)--server\.port=(81(?:8[1-9]|90))'
+            }
+
+        foreach ($managedProcess in $managedBorrowerProcesses) {
+            Write-Host "Stopping previous managed Borrower JVM (PID $($managedProcess.ProcessId))..."
+            Stop-Process -Id $managedProcess.ProcessId -Force -ErrorAction Stop
+        }
+
+        if ($managedBorrowerProcesses) {
+            Start-Sleep -Seconds 2
+        }
+    } catch {
+        throw "Could not stop a previously managed Borrower JVM. Close the old autoscaled Borrower windows/processes and retry. Details: $($_.Exception.Message)"
+    }
+
+    # A failed earlier repackage can leave this backup behind. Remove it only after
+    # the managed JAR processes have been stopped.
+    $originalJar = "$borrowerJar.original"
+    if (Test-Path -LiteralPath $originalJar) {
+        try {
+            Remove-Item -LiteralPath $originalJar -Force
+        } catch {
+            throw "Cannot remove stale backup '$originalJar'. Ensure no Java process is using it, then retry. Details: $($_.Exception.Message)"
+        }
+    }
+
     Write-Host 'Packaging Borrower Service for managed JVM scale-out...'
     Push-Location $borrowerDirectory
     try {
