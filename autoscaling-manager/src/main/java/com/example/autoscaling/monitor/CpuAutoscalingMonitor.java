@@ -54,6 +54,11 @@ public class CpuAutoscalingMonitor {
 
     @Scheduled(fixedDelayString = "${autoscaling.cpu.evaluation-interval-ms:15000}")
     public synchronized void evaluateBorrowerCpuUsage() {
+        if (!processManager.isBaselineReady()) {
+            log.info("Waiting for the configured Borrower baseline to register with Eureka before CPU autoscaling.");
+            return;
+        }
+
         OptionalDouble cpuUsage = metricsCollector.readBorrowerProcessCpuUsage();
         if (cpuUsage.isEmpty()) {
             consecutiveBreaches = 0;
@@ -63,9 +68,9 @@ public class CpuAutoscalingMonitor {
         double currentUsage = cpuUsage.getAsDouble();
         if (!decisionEngine.shouldScaleOut(currentUsage, threshold)) {
             consecutiveBreaches = 0;
-            log.info("Borrower process CPU usage={}%; scale-out threshold={}%; no scale-out required.",
-                    Math.round(currentUsage * 100.0),
-                    Math.round(threshold * 100.0));
+            log.info("Highest Borrower process CPU usage={}%; scale-out threshold={}%; no scale-out required.",
+                    String.format("%.3f", currentUsage * 100.0),
+                    String.format("%.2f", threshold * 100.0));
             return;
         }
 
