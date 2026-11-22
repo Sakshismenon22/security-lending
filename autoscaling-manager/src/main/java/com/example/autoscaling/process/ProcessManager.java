@@ -32,7 +32,7 @@ import java.util.regex.Pattern;
 public class ProcessManager {
 
     private static final Logger log = LoggerFactory.getLogger(ProcessManager.class);
-    private static final Pattern UP_HEALTH_STATUS = Pattern.compile("\\"status\\"\\s*:\\s*\\"UP\\"");
+    private static final Pattern UP_HEALTH_STATUS = Pattern.compile("\"status\"\\s*:\\s*\"UP\"");
 
     private final Path borrowerDirectory;
     private final Path borrowerJar;
