@@ -350,8 +350,9 @@ class BorrowerWorkflowTests {
       assertEquals(0, bd("-60").compareTo(holding.getRealizedPnl()));
     }
 
-    @Test
-    void buyinSummaryPersistsAcrossApiReadsAndReplayWithoutTouchingHoldingsOrCash() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void buyinSummaryPersistsAcrossApiReadsAndReplayWithoutTouchingHoldingsOrCash(boolean lenderFunded) throws Exception {
       long org = org(),
         security = security("100");
       fund(org, "10000");
@@ -398,8 +399,9 @@ class BorrowerWorkflowTests {
       data.put("purchaseValue", "1000");
       data.put("executionCosts", "5");
       data.put("purchaseCost", "1005");
-      data.put("cashCollateralApplied", "1005");
-      data.put("cashCollateralReturned", "995");
+      data.put("cashCollateralApplied", lenderFunded ? "805" : "1005");
+      data.put("cashCollateralReturned", lenderFunded ? "0" : "995");
+      if (lenderFunded) data.put("lenderFundsApplied", "200");
       data.put("averagePrice", "100");
       data.put("closedAt", Instant.now().toString());
       data.put("reference", "SUM-CLOSE");
@@ -413,8 +415,9 @@ class BorrowerWorkflowTests {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.buyinClosure.reference").value("SUM-CLOSE"))
         .andExpect(jsonPath("$.data.buyinClosure.purchaseCost").value(1005))
+        .andExpect(jsonPath("$.data.buyinClosure.lenderFundsApplied").value(lenderFunded ? 200 : 0))
         .andExpect(
-          jsonPath("$.data.buyinClosure.cashCollateralReturned").value(995)
+          jsonPath("$.data.buyinClosure.cashCollateralReturned").value(lenderFunded ? 0 : 995)
         )
         .andExpect(jsonPath("$.data.buyinClosurePending").value(false));
       assertEquals(

@@ -192,11 +192,11 @@ On the same **Defaults & Buy-ins** page, a case with received securities exposes
 
 Closure covers the **entire remaining loan quantity**. The server rechecks tenant
 ownership, all received buy-ins for that loan, pending returns/orders/obligation
-requests, pending collateral pledges, and enough confirmed **cash collateral** to
-pay the allocated purchase price plus costs. Security-only collateral or a cash
-shortfall blocks closure; securities liquidation and external deficit payments
-are not fabricated. Resolve those conditions before closing. Partial buy-ins may
-be accumulated across cases, but a partial loan close-out is not offered here.
+requests, pending collateral pledges, and enough confirmed cash collateral and
+available lender funds to pay the allocated purchase price plus costs. Sell any
+remaining securities collateral before using lender funds for a shortfall.
+Partial buy-ins may be accumulated across cases, but closure requires the full
+remaining quantity.
 
 A successful close commits the following together under the organization lock:
 
@@ -208,9 +208,9 @@ A successful close commits the following together under the organization lock:
    again**: it was credited when the purchased securities arrived. For example,
    after receipt, total 1,100 / loaned 100 / available 1,000 becomes total 1,000 /
    loaned 0 / available 1,000 on closure.
-3. Apply cash collateral to the allocated buy-in cost, record the collateral
-   movement and payable settlement, and release the remaining cash and eligible
-   security collateral through the existing release-confirmation workflow.
+3. Apply cash collateral to the allocated buy-in cost, debit lender funds for any
+   shortfall, and record those movements and the payable settlement. Release the
+   remaining cash and eligible securities through the existing confirmation flow.
 4. Set outstanding quantity to zero and persist CLOSED/closed-at, the closeout
    quantity, costs, applied/returned cash and reference. Resolve loan default cases
    and cancel remaining recall/margin obligations rather than treating the buy-in
@@ -244,7 +244,8 @@ will prevent the collateral-application confirmation from reaching BorrowDesk.
 
 BorrowDesk's loan workspace shows a dedicated **Buy-in loan closure** card after a
 buy-in closeout. It displays the closed quantity, average execution price, purchase
-value, execution costs, total cost, applied cash collateral, returned cash surplus,
+value, execution costs, total cost, applied cash collateral, any lender funding,
+returned cash surplus,
 closure timestamp in IST and closure reference. The surplus is labelled separately
 from rebates. Normal return closures do not show this card.
 
@@ -323,8 +324,21 @@ The main internal-order flow is **Place buy-in order → wait for confirmed
 execution/receipt → Record execution & close loan → Confirm loan closure**. This
 last action confirms settlement of the existing saved fill and calls the existing
 validated closure endpoint. It does not create another order, report another trade,
-or credit inventory again. Partial coverage, pending operations or insufficient
-cash collateral still block closure and are shown in the confirmation dialog.
+or credit inventory again. Partial share coverage, pending operations, and
+insufficient combined funding block closure and appear in the confirmation
+dialog.
+
+LendDesk’s **Settlement Ledger → Add funds** submits a deposit request. A workspace
+administrator records receipt under **Deposit requests → Review → Accept deposit**.
+Approval credits the lender funding account and writes one ledger entry. The
+demo records confirmed deposits in its ledger. It does not move money through a bank.
+
+After securities collateral is sold, the demo uses cash collateral first.
+Matching an internal order reserves any shortfall against available lender
+funds. Closing the loan applies the actual shortfall and records a funding debit
+against that loan. The borrower’s closure summary shows the funding split.
+The demo neither bills the borrower for the shortfall nor automates recovery.
+Ultimate liability and recovery depend on the agreement.
 
 The initial **Record external execution** action is an alternative for a trade executed
 outside this system. It is aligned with Place buy-in order and is not a required

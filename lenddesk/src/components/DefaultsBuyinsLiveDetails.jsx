@@ -147,6 +147,9 @@ export function LiveBuyinRecovery({ record }) {
               "Cash collateral applied",
               closeout?.cashCollateralApplied ?? report?.collateralApplied,
             ],
+            ...(Number(closeout?.lenderFundsApplied) > 0
+              ? [["Lender funds applied", closeout.lenderFundsApplied]]
+              : []),
             ["Cash collateral returned", closeout?.cashCollateralReturned],
           ].map(([label, value]) => (
             <tr key={label}>

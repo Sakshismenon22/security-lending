@@ -82,7 +82,7 @@ export default function BuyinLoanCloseout({
               ? "Record executed buy-in & close loan"
               : "Loan closure after buy-in"
           }
-          description="Close the remaining securities loan using received buy-in stock, apply cash collateral to purchase costs, and release the surplus."
+          description="Close the remaining securities loan using received buy-in stock, apply cash collateral and any required lender funds, and release the surplus."
           onClose={busy ? null : () => setOpen(false)}
         >
           <form onSubmit={submit}>
@@ -111,6 +111,9 @@ export default function BuyinLoanCloseout({
                       number(preview.receivedQuantity),
                     ],
                     ["Purchase cost", rupees(preview.purchaseCost)],
+                    ...(Number(preview.lenderFundsRequired) > 0
+                      ? [["Lender funds used for shortfall", rupees(preview.lenderFundsRequired)]]
+                      : []),
                     [
                       "Cash collateral held",
                       rupees(preview.cashCollateralHeld),
