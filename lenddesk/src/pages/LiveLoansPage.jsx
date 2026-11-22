@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Link, useOutletContext } from 'react-router-dom'
+import { useOutletContext } from 'react-router-dom'
 import LoanWorkflowDialog from '../workflows/LoanWorkflowDialog'
 import { lenderGet } from '../api/lendDeskApi'
 import { useDataSource } from '../hooks/useDataSource'
 import RunValuationButton from '../components/loans/RunValuationButton'
 import { useReferenceSort } from '../hooks/useReferenceSort'
-import { LoanBadge, LoanCard } from '../components/loans/LoanCards'
+import { LoanBadge } from '../components/loans/LoanCards'
+import LoanWorkspace from '../components/loans/LoanWorkspace'
 import {
   num,
   money,
@@ -338,12 +339,12 @@ export default function LiveLoansPage() {
         </>
       )}
       {selected != null && (
-        <LiveLoanDetails key={`${organizationId}:${selected}`} id={selected} />
+        <LiveLoanDetails key={`${organizationId}:${selected}`} id={selected} embedded />
       )}
     </section>
   )
 }
-export function LiveLoanDetails({ id }) {
+export function LiveLoanDetails({ id, embedded = false }) {
   const { organizationId, refreshKey, refresh } = useDataSource(),
     [state, setState] = useState({ scope: '', data: null, error: '' }),
     [workflow, setWorkflow] = useState(null),
@@ -374,13 +375,13 @@ export function LiveLoanDetails({ id }) {
         {state.error}
       </p>
     )
-  const d = state.data,
-    l = d.loan
+  const data = state.data
+  const loan = data.loan
   return (
-    <section className="al-detail">
-      {notice && <p className="wf-notice" role="status">{notice}</p>}
+    <>
+      {notice && <p className="loan-workspace-notice" role="status">{notice}</p>}
       {workflow && (
-        <LoanWorkflowDialog kind={workflow} id={id}
+        <LoanWorkflowDialog kind={workflow} id={id} loan={loan}
           onDismiss={() => setWorkflow(null)}
           onComplete={(message) => {
             setNotice(message)
@@ -388,150 +389,17 @@ export function LiveLoanDetails({ id }) {
           }}
         />
       )}
-      <header>
-        <h2>
-          {loanId(id)} / {l.symbol} <LoanBadge>{display(l.status)}</LoanBadge>
-        </h2>
-        <div>
-          {l.canRunValuation && (
-            <RunValuationButton
-              key={`${organizationId}:${id}:${l.pendingValuationRunId ?? 0}`}
-              loanIds={[id]}
-              pendingRunId={l.pendingValuationRunId}
-              lastFailure={l.valuationFailureReason}
-              onFinished={refresh}
-            />
-          )}
-          <button type="button" className="ref-primary" onClick={() => open('loan')}>
-            Manage loan
-          </button>
-          {l.status === 'ACTIVE' &&
-            !l.openMarginCount &&
-            !l.pendingMarginRequest && (
-              <button type="button" onClick={() => open('margin')}>Issue margin call</button>
-            )}
-          {l.canRecall && (
-            <button type="button" onClick={() => open('recall')}>Create recall</button>
-          )}
-          <Link to={`/agreements/${l.mslaId}`}>View MSLA</Link>
-        </div>
-      </header>
-      <div className="al-detail-grid">
-        <LoanCard
-          title="Loan terms"
-          rows={[
-            ['MSLA', l.agreementNumber],
-            ['Reservation', l.reservationId],
-            ['Original qty', num(l.quantity)],
-            ['Returned qty', num(l.returnedQuantity)],
-            ['Outstanding qty', num(l.outstandingQuantity)],
-            ['Cached price', money(l.price, l.currency)],
-            ['MSLA fee', `${num(l.feeBps)} bps`],
-            ['MSLA rebate', `${num(l.rebateBps)} bps`],
-            ['Day count', `Actual/${l.dayBasis}`],
-            ['Start date IST', date(l.settledAt)],
-            ['Maturity IST', date(l.maturityAt ?? l.maturity)],
-          ]}
-        />
-        <article className="al-card">
-          <h3>Collateral coverage</h3>
-          <LoanCard
-            title="Recorded valuation"
-            rows={[
-              ['Valued IST', date(l.valuationAt)],
-              ['Eligible collateral', money(l.eligibleCollateral, l.currency)],
-              ['Required collateral', money(l.requiredCollateral, l.currency)],
-              ['Shortfall', money(l.shortfall, l.currency)],
-              [
-                'Coverage',
-                l.coverage == null ? 'Not valued' : `${num(l.coverage)}%`,
-              ],
-            ]}
+      <LoanWorkspace data={data} embedded={embedded} onOpen={open}>
+        {loan.canRunValuation && (
+          <RunValuationButton
+            key={`${organizationId}:${id}:${loan.pendingValuationRunId ?? 0}`}
+            loanIds={[id]}
+            pendingRunId={loan.pendingValuationRunId}
+            lastFailure={loan.valuationFailureReason}
+            onFinished={refresh}
           />
-          <table>
-            <thead>
-              <tr>
-                <th>Position</th>
-                <th>Asset</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.collateral.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.id}</td>
-                  <td>
-                    {c.assetType === 'CASH'
-                      ? money(c.cashAmount, l.currency)
-                      : `${num(c.quantity)} securities`}
-                  </td>
-                  <td>{display(c.status)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!d.collateral.length && <p>No collateral positions.</p>}
-        </article>
-        <article className="al-card">
-          <h3>Returns & recalls</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Type / ID</th>
-                <th>Quantity</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.returns.map((x) => (
-                <tr key={`r${x.id}`}>
-                  <td>Return {x.id}</td>
-                  <td>{num(x.quantity)}</td>
-                  <td>{display(x.status)}</td>
-                </tr>
-              ))}
-              {d.recalls.map((x) => (
-                <tr key={`c${x.id}`}>
-                  <td>Recall {x.id}</td>
-                  <td>{num(x.quantity - x.fulfilledQuantity)}</td>
-                  <td>{display(x.status)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!d.returns.length && !d.recalls.length && (
-            <p>No recorded returns or recalls.</p>
-          )}
-          <p>
-            Only settled returns reduce outstanding. Full loan closure follows
-            the existing collateral release workflow.
-          </p>
-          <button type="button" className="al-button" onClick={() => open('loan')}>
-            Receive securities / manage requests
-          </button>
-        </article>
-        <article className="al-card">
-          <h3>Activity & settlement timeline</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Time (IST)</th>
-                <th>Event</th>
-                <th>Reference</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.activity.map((x, i) => (
-                <tr key={i}>
-                  <td>{date(x.at)}</td>
-                  <td>{display(x.event)}</td>
-                  <td>{x.reference}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </article>
-      </div>
-    </section>
+        )}
+      </LoanWorkspace>
+    </>
   )
 }
