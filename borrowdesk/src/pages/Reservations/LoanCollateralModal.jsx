@@ -392,7 +392,7 @@ export default function LoanCollateralModal({
         <footer>
           <button
             type="button"
-            className="res-btn"
+            className="res-btn light"
             disabled={busy}
             onClick={close}
           >
