@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.regex.Pattern;
 
 /**
  * Starts and tracks additional local Borrower Service JVM processes.
@@ -31,6 +32,7 @@ import java.util.OptionalInt;
 public class ProcessManager {
 
     private static final Logger log = LoggerFactory.getLogger(ProcessManager.class);
+    private static final Pattern UP_HEALTH_STATUS = Pattern.compile("\\"status\\"\\s*:\\s*\\"UP\\"");
 
     private final Path borrowerDirectory;
     private final Path borrowerJar;
@@ -230,29 +232,52 @@ public class ProcessManager {
     private boolean waitUntilHealthy(int port, Process process) {
         Instant deadline = Instant.now().plus(startupTimeout);
         URI healthUri = URI.create("http://127.0.0.1:" + port + "/actuator/health");
+        int lastStatusCode = -1;
+        String lastResponseBody = "No HTTP response received yet.";
+        String lastError = null;
 
         while (Instant.now().isBefore(deadline) && process.isAlive()) {
             try {
                 HttpRequest request = HttpRequest.newBuilder(healthUri)
-                        .timeout(Duration.ofSeconds(3))
+                        .timeout(Duration.ofSeconds(5))
                         .GET()
                         .build();
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() == 200 && response.body().contains("\"status\":\"UP\"")) {
+                lastStatusCode = response.statusCode();
+                lastResponseBody = response.body() == null ? "" : response.body();
+                if (lastStatusCode == 200 && UP_HEALTH_STATUS.matcher(lastResponseBody).find()) {
+                    log.info("Borrower instance on port {} passed its Actuator health check.", port);
                     return true;
                 }
-            } catch (Exception ignored) {
-                // The application may still be starting; retry until timeout.
+            } catch (Exception exception) {
+                lastError = exception.getClass().getSimpleName() + ": " + exception.getMessage();
             }
 
             try {
                 Thread.sleep(1500);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
+                log.warn("Interrupted while waiting for Borrower health on port {}.", port);
                 return false;
             }
         }
+
+        if (!process.isAlive()) {
+            log.error("Borrower process on port {} exited before becoming healthy. exitCode={}",
+                    port, process.exitValue());
+        } else {
+            log.error("Borrower health check timed out on port {} after {} seconds. Last HTTP status={}, body={}, last error={}",
+                    port, startupTimeout.toSeconds(), lastStatusCode,
+                    abbreviate(lastResponseBody, 500), lastError);
+        }
         return false;
+    }
+
+    private String abbreviate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength) + "...";
     }
 
     private boolean waitUntilRegistered(int port, Process process) {
