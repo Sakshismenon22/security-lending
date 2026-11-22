@@ -1,0 +1,52 @@
+.loan-workflow-dialog {
+  width: min(1080px, calc(100vw - 28px));
+  max-height: calc(100dvh - 36px);
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 0 0 12px;
+  background: var(--surface, #fff);
+  color: var(--ink, #15132d);
+  border: 1px solid #c6b6e4;
+  border-radius: 10px;
+  box-shadow: 0 18px 60px #20132e50;
+}
+
+.loan-workflow-dialog::backdrop {
+  background: #20132e70;
+}
+
+.loan-workflow-dialog-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #ded7ef;
+  background: var(--surface, #fff);
+}
+
+.loan-workflow-dialog-bar h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.loan-workflow-dialog-bar button {
+  border: 1px solid #c9bce7;
+  border-radius: 4px;
+  background: #fcfaff;
+  color: #32238b;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+
+.loan-workflow-dialog-bar button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.loan-workflow-dialog > p {
+  padding: 12px 14px;
+}

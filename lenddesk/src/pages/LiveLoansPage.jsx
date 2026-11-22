@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
+import LoanWorkflowDialog from '../workflows/LoanWorkflowDialog'
 import { lenderGet } from '../api/lendDeskApi'
 import { useDataSource } from '../hooks/useDataSource'
 import RunValuationButton from '../components/loans/RunValuationButton'
@@ -16,11 +17,13 @@ import {
 const empty = { connectionId: '', mslaId: '', coverage: '', q: '' }
 export default function LiveLoansPage() {
   const { searchTerm = '' } = useOutletContext(),
-    { organizationId, refreshKey } = useDataSource()
+    { organizationId, refreshKey, refresh } = useDataSource()
   const [draft, setDraft] = useState(empty),
     [filters, setFilters] = useState(empty),
     [tab, setTab] = useState('ACTIVE'),
     [selected, setSelected] = useState(null),
+    [managedLoan, setManagedLoan] = useState(null),
+    [operationNotice, setOperationNotice] = useState(''),
     [newLoanInfo, setNewLoanInfo] = useState(false),
     [state, setState] = useState({ scope: '', data: null, error: '' })
   const query = new URLSearchParams(
@@ -72,6 +75,16 @@ export default function LiveLoansPage() {
     data ?? (state.scope.startsWith(`${organizationId}:`) ? state.data : null)
   return (
     <section className="active-loans ref-page">
+      {operationNotice && <p className="wf-notice" role="status">{operationNotice}</p>}
+      {managedLoan != null && (
+        <LoanWorkflowDialog kind="loan" id={managedLoan}
+          onDismiss={() => setManagedLoan(null)}
+          onComplete={(message) => {
+            setOperationNotice(message)
+            refresh()
+          }}
+        />
+      )}
       <header className="al-heading">
         <div>
           <h1>
@@ -307,7 +320,10 @@ export default function LiveLoansPage() {
                       <LoanBadge>{display(l.status)}</LoanBadge>
                     </td>
                     <td>
-                      <Link to={`/loans/${loanId(l.id)}/manage`}>Manage</Link>
+                      <button type="button" onClick={() => {
+                        setOperationNotice('')
+                        setManagedLoan(l.id)
+                      }}>Manage</button>
                     </td>
                   </tr>
                 ))}
@@ -319,13 +335,10 @@ export default function LiveLoansPage() {
               </tbody>
             </table>
           </div>
-          {selected != null && data.rows.some((l) => l.id === selected) && (
-            <LiveLoanDetails
-              key={`${organizationId}:${refreshKey}:${selected}`}
-              id={selected}
-            />
-          )}
         </>
+      )}
+      {selected != null && (
+        <LiveLoanDetails key={`${organizationId}:${selected}`} id={selected} />
       )}
     </section>
   )
@@ -333,6 +346,8 @@ export default function LiveLoansPage() {
 export function LiveLoanDetails({ id }) {
   const { organizationId, refreshKey, refresh } = useDataSource(),
     [state, setState] = useState({ scope: '', data: null, error: '' }),
+    [workflow, setWorkflow] = useState(null),
+    [notice, setNotice] = useState(''),
     scope = `${organizationId}:${refreshKey}:${id}`
   useEffect(() => {
     const a = new AbortController()
@@ -348,6 +363,10 @@ export function LiveLoanDetails({ id }) {
       })
     return () => a.abort()
   }, [organizationId, refreshKey, id, scope])
+  function open(kind) {
+    setNotice('')
+    setWorkflow(kind)
+  }
   if (state.scope !== scope) return <p role="status">Loading loan details…</p>
   if (state.error)
     return (
@@ -359,6 +378,16 @@ export function LiveLoanDetails({ id }) {
     l = d.loan
   return (
     <section className="al-detail">
+      {notice && <p className="wf-notice" role="status">{notice}</p>}
+      {workflow && (
+        <LoanWorkflowDialog kind={workflow} id={id}
+          onDismiss={() => setWorkflow(null)}
+          onComplete={(message) => {
+            setNotice(message)
+            refresh()
+          }}
+        />
+      )}
       <header>
         <h2>
           {loanId(id)} / {l.symbol} <LoanBadge>{display(l.status)}</LoanBadge>
@@ -373,18 +402,16 @@ export function LiveLoanDetails({ id }) {
               onFinished={refresh}
             />
           )}
-          <Link className="ref-primary" to={`/loans/${loanId(id)}/manage`}>
+          <button type="button" className="ref-primary" onClick={() => open('loan')}>
             Manage loan
-          </Link>
+          </button>
           {l.status === 'ACTIVE' &&
             !l.openMarginCount &&
             !l.pendingMarginRequest && (
-              <Link to={`/margin-calls/${loanId(id)}/issue`}>
-                Issue margin call
-              </Link>
+              <button type="button" onClick={() => open('margin')}>Issue margin call</button>
             )}
           {l.canRecall && (
-            <Link to={`/recalls/${loanId(id)}/new`}>Create recall</Link>
+            <button type="button" onClick={() => open('recall')}>Create recall</button>
           )}
           <Link to={`/agreements/${l.mslaId}`}>View MSLA</Link>
         </div>
@@ -479,9 +506,9 @@ export function LiveLoanDetails({ id }) {
             Only settled returns reduce outstanding. Full loan closure follows
             the existing collateral release workflow.
           </p>
-          <Link to={`/loans/${loanId(id)}/manage`}>
+          <button type="button" className="al-button" onClick={() => open('loan')}>
             Receive securities / manage requests
-          </Link>
+          </button>
         </article>
         <article className="al-card">
           <h3>Activity & settlement timeline</h3>

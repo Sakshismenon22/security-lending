@@ -8,7 +8,7 @@ import { Card, Summary } from './WorkflowControls'
 import './WorkflowPage.css'
 import '../pages/LoansPage.css'
 const istInput = (value) => new Date(new Date(value).getTime() + 330 * 60000).toISOString().slice(0, 16)
-export default function LiveLoanWorkflow({ kind, id }) {
+export default function LiveLoanWorkflow({ kind, id, onDismiss, onComplete, onBusyChange }) {
   const { organizationId, refreshKey } = useDataSource(),
     localId = Number(String(id).replace(/^LOAN-/, '')),
     scope = `${organizationId}:${refreshKey}:${kind}:${localId}`
@@ -61,10 +61,13 @@ export default function LiveLoanWorkflow({ kind, id }) {
       kind={kind}
       data={state.data}
       organizationId={organizationId}
+      onDismiss={onDismiss}
+      onComplete={onComplete}
+      onBusyChange={onBusyChange}
     />
   )
 }
-function LiveEditor({ kind, data, organizationId }) {
+function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyChange }) {
   const l = data.loan,
     isMargin = kind === 'margin',
     isRecall = kind === 'recall',
@@ -113,6 +116,7 @@ function LiveEditor({ kind, data, organizationId }) {
   }
   async function toggleMarginGuardrail() {
     setBusy(true)
+    onBusyChange?.(true)
     setError('')
     try {
       const result = await lenderPut(
@@ -124,6 +128,7 @@ function LiveEditor({ kind, data, organizationId }) {
       setError(e.message)
     } finally {
       setBusy(false)
+      onBusyChange?.(false)
     }
   }
   function automaticSettlementReference() {
@@ -139,6 +144,7 @@ function LiveEditor({ kind, data, organizationId }) {
   async function submit() {
     if (busy) return
     setBusy(true)
+    onBusyChange?.(true)
     setError('')
     let path, body
     if (isMargin || isRecall) {
@@ -181,12 +187,19 @@ function LiveEditor({ kind, data, organizationId }) {
         body,
       )
       if (mounted.current) {
-        setSuccess(
-          isMargin || isRecall
-            ? `Request ${result.id} recorded: ${display(result.status)}. The lifecycle service processes it asynchronously; refresh the loan register to see the confirmed obligation.`
-            : 'Operation completed. Refresh the loan register to see the updated position.',
-        )
+        const requestStatus = isMargin || isRecall
+          ? `Request ${result.id} recorded: ${display(result.status)}.`
+          : 'Loan operation completed.'
         dialog.current.close()
+        if (onComplete) {
+          onComplete(requestStatus)
+        } else {
+          setSuccess(
+            isMargin || isRecall
+              ? `${requestStatus} The lifecycle service processes it asynchronously; refresh the loan register to see the confirmed obligation.`
+              : 'Operation completed. Refresh the loan register to see the updated position.',
+          )
+        }
       }
     } catch (e) {
       if (mounted.current)
@@ -195,17 +208,18 @@ function LiveEditor({ kind, data, organizationId }) {
         )
     } finally {
       if (mounted.current) setBusy(false)
+      onBusyChange?.(false)
     }
   }
   return (
     <section className={`wf-page wf-live wf-${kind}`}>
-      <div className="wf-breadcrumb">
+      {!onDismiss && <div className="wf-breadcrumb">
         <Link to="/loans">Loans</Link>
         <span>›</span>
         <span>{loanId(l.id)}</span>
         <span>›</span>
         {title}
-      </div>
+      </div>}
       <header className="wf-heading">
         <h1>
           {title} · {loanId(l.id)}
@@ -387,7 +401,7 @@ function LiveEditor({ kind, data, organizationId }) {
                         {data.collateral.filter(c => c.status === 'RELEASE_REQUESTED').map(c => <p key={c.id}>Lot {c.id}: requested {c.assetType === 'CASH' ? money(c.requestedReleaseCash ?? c.cashAmount) : `${num(c.requestedReleaseQuantity ?? c.quantity)} units`}, held {c.assetType === 'CASH' ? money(c.cashAmount) : `${num(c.quantity)} units`}.</p>)}
                         <p>Accepting checks current prices and required coverage in the backend. If the excess has fallen, acceptance is blocked and the request can be rejected.</p>
                       </div>}
-                      <div className="al-live-actions">
+                      {!onDismiss && <div className="al-live-actions">
                         {l.status === 'ACTIVE' && (
                           <Link to={`/margin-calls/${loanId(l.id)}/issue`}>
                             Issue margin call
@@ -399,7 +413,7 @@ function LiveEditor({ kind, data, organizationId }) {
                           </Link>
                         )}
                         <Link to={`/agreements/${l.mslaId}`}>View MSLA</Link>
-                      </div>
+                      </div>}
                     </>
                   )}
                   {(isMargin ||
@@ -526,7 +540,9 @@ function LiveEditor({ kind, data, organizationId }) {
                 </small>
               </p>
               <div>
-                <Link to="/loans">Cancel</Link>
+                {onDismiss
+                  ? <button type="button" onClick={onDismiss}>Cancel</button>
+                  : <Link to="/loans">Cancel</Link>}
                 <button
                   className="wf-primary"
                   disabled={!allowed || (!isMargin && !isRecall && !action)}

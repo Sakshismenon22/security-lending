@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import LoanWorkflowDialog from '../workflows/LoanWorkflowDialog'
 import { Link, useOutletContext } from 'react-router-dom'
 import { useDataSource } from '../hooks/useDataSource'
 import { activeLoans } from '../data/activeLoanData'
@@ -247,23 +248,31 @@ function DemoLoans() {
           </tbody>
         </table>
       </div>
-      {loan && <DemoLoanDetail loan={loan} />}
+      {loan && <DemoLoanDetail key={loan.id} loan={loan} />}
     </section>
   )
 }
 function DemoLoanDetail({ loan: l }) {
+  const [workflow, setWorkflow] = useState(null)
+  const [notice, setNotice] = useState('')
+  function open(kind) {
+    setNotice('')
+    setWorkflow(kind)
+  }
   return (
     <section className="al-detail">
+      {notice && <p className="wf-notice" role="status">{notice}</p>}
+      {workflow && <LoanWorkflowDialog kind={workflow}
+        id={workflow === 'return' ? 'RET-001782' : l.id}
+        onDismiss={() => setWorkflow(null)} onComplete={setNotice} />}
       <header>
         <h2>
           ⌄ {l.id} / {l.symbol} <LoanBadge>{l.status}</LoanBadge>
         </h2>
         <div>
-          <Link className="ref-primary" to={`/loans/${l.id}/manage`}>
-            Manage loan
-          </Link>
-          <Link to={`/margin-calls/${l.id}/issue`}>Issue margin call</Link>
-          <Link to={`/recalls/${l.id}/new`}>Create recall</Link>
+          <button type="button" className="ref-primary" onClick={() => open('loan')}>Manage loan</button>
+          <button type="button" onClick={() => open('margin')}>Issue margin call</button>
+          <button type="button" onClick={() => open('recall')}>Create recall</button>
           <Link to={`/agreements/${l.msla}`}>View MSLA</Link>
         </div>
       </header>
@@ -317,7 +326,7 @@ function DemoLoanDetail({ loan: l }) {
                 <tr>
                   <td>Return</td>
                   <td>
-                    <Link to="/returns/RET-001782/manage">RET-001782</Link>
+                    <button type="button" onClick={() => open('return')}>RET-001782</button>
                   </td>
                   <td>20,000</td>
                   <td>
@@ -338,14 +347,9 @@ function DemoLoanDetail({ loan: l }) {
               <dd>{l.recall}</dd>
             </div>
           </dl>
-          <Link
-            className="al-button"
-            to={
-              l.id === 'LOAN-000006' ? '/returns/RET-001782/manage' : '/returns'
-            }
-          >
-            ♧ Receive securities
-          </Link>
+          {l.id === 'LOAN-000006'
+            ? <button type="button" className="al-button" onClick={() => open('return')}>♧ Receive securities</button>
+            : <Link className="al-button" to="/returns">♧ Receive securities</Link>}
           <p>
             ⓘ Release collateral after confirmed receipt of returned securities.
           </p>
