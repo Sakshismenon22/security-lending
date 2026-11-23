@@ -111,6 +111,29 @@ export default function LoanWorkspace(){
 }
 
 function CollateralTable({positions,securities,full=false}){
+ const fmt = (position, field) => {
+  const securityId = val(position, 'securityId', 'security_id');
+  const security = securities.find(item => key(val(item, 'id', 'securityId', 'security_id')) === key(securityId));
+  const quantity = val(position, 'quantity');
+  const price = val(security, 'price');
+  const isCash = state(val(position, 'assetType', 'asset_type')) === 'CASH';
+  const cash = isCash ? val(position, 'cashAmount', 'cash_amount') : null;
+  const market = val(position, 'marketValue', 'market_value') ??
+   (quantity != null && price != null ? Number(quantity) * Number(price) : cash);
+  const haircut = val(position, 'haircut');
+  const base = cash ?? market;
+  const eligible = val(position, 'eligibleValue', 'eligible_value') ??
+   (base == null ? null : Number(base) * (haircut == null ? 1 : 1 - Number(haircut)));
+  switch (field) {
+   case 'security': return val(security, 'isin', 'symbol') ?? val(position, 'isin', 'securityName', 'security_name') ?? (isCash ? 'Cash collateral' : '—');
+   case 'qty': return isCash ? '—' : n(quantity);
+   case 'haircut': return pct(haircut == null ? null : Number(haircut) <= 1 ? Number(haircut) * 100 : haircut);
+   case 'eligible': return money(eligible);
+   case 'rawEligible': return eligible;
+   case 'rawMarket': return market;
+   default: return money(market);
+  }
+ };
  const [page,setPage]=useState(1),[pageSize,setPageSize]=useState(25),pages=Math.max(1,Math.ceil(positions.length/pageSize)),visible=positions.slice((page-1)*pageSize,page*pageSize);
  useEffect(()=>setPage(1),[positions,pageSize]);useEffect(()=>{if(page>pages)setPage(pages)},[page,pages]);
  return <><div className="lw-table-wrap"><table className="lw-table"><thead><tr><th>ISIN / Security</th><th className="right">Qty</th><th className="right">Haircut</th><th className="right">Eligible value</th><th className="right">Market value</th>{full&&<th>Status</th>}</tr></thead><tbody>{visible.map((p,i)=><tr key={val(p,'id')||i}><td><b>{fmt(p,'security')}</b></td><td className="right">{fmt(p,'qty')}</td><td className="right">{fmt(p,'haircut')}</td><td className="right">{fmt(p,'eligible')}</td><td className="right">{fmt(p,'market')}</td>{full&&<td><Badge value={val(p,'status')||'POSTED'}/></td>}</tr>)}{!positions.length&&<tr><td colSpan={full?6:5} className="lw-empty">No collateral lots recorded.</td></tr>}</tbody>{positions.length>0&&<tfoot><tr><td colSpan={3}>Total collateral value</td><td className="right">{money(positions.reduce((sum,p)=>sum+Number(fmt(p,'rawEligible')||0),0))}</td><td className="right">{money(positions.reduce((sum,p)=>sum+Number(fmt(p,'rawMarket')||0),0))}</td>{full&&<td/>}</tr></tfoot>}</table></div><TablePagination page={page} pageSize={pageSize} total={positions.length} onPageChange={setPage} onPageSizeChange={setPageSize}/></>
