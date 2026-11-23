@@ -17,7 +17,7 @@ button { cursor: pointer; }
 .app-shell { display: flex; min-height: 100vh; background: var(--bg); color: var(--ink); }
 .sidebar { width: 236px; flex: 0 0 236px; display: flex; flex-direction: column; background: #fbfaff; border-right: 1px solid var(--border); transition: width .2s ease, flex-basis .2s ease; }
 .brand { height: 63px; display: flex; align-items: center; gap: 10px; padding: 0 16px 0 23px; border-bottom: 1px solid var(--border); font-size: 25px; font-weight: 800; letter-spacing: -1px; white-space: nowrap; }
-.brand-name { overflow: hidden; }
+.brand-name { overflow: hidden; font-size: 17px; font-weight: 750; letter-spacing: normal; }
 .brand-mark { display: grid; place-items: center; width: 28px; height: 28px; color: white; background: linear-gradient(135deg, #8c7cff, #5644d9); clip-path: polygon(50% 0, 100% 100%, 72% 100%, 50% 53%, 28% 100%, 0 100%); }
 .sidebar-toggle { display: grid; place-items: center; width: 26px; height: 26px; margin-left: auto; border: 1px solid var(--border); border-radius: 5px; background: white; color: #5140d2; font-size: 21px; line-height: 1; }
 .sidebar-toggle:hover { background: var(--selection); }
@@ -28,6 +28,9 @@ nav a.active { background: var(--selection); color: #5140d2; }
 .sidebar .sidebar-nav-icon { flex: 0 0 16px; color: var(--muted); }
 .sidebar nav a.active .sidebar-nav-icon { color: currentColor; }
 nav a span { width: 18px; text-align: center; font-size: 20px; }
+.sidebar nav a { gap: 10px; min-height: 34px; font-size: 12px; font-weight: 400; }
+.sidebar nav a.active { font-weight: 700; }
+.sidebar .nav-label { width: auto; text-align: left; font-size: inherit; }
 .sidebar-footer { display: flex; align-items: center; gap: 6px; margin-top: auto; padding: 16px 13px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; white-space: nowrap; }
 .sidebar-footer i { width: 7px; height: 7px; border-radius: 50%; background: #35a96a; }
 .sidebar-footer b { margin-left: auto; font-weight: 600; }
