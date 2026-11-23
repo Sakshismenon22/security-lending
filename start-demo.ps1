@@ -62,14 +62,14 @@ $services = @(
         Folder = 'lender-service'
         Port = 8084
         ReadyPath = '/actuator/health'
-        Command = 'call mvnw.cmd spring-boot:run -Dspring-boot.run.arguments=--lendora.auth-enabled=false'
+        Command = 'call mvnw.cmd spring-boot:run "-Dspring-boot.run.jvmArguments=-Xms128m -Xmx512m -XX:MaxMetaspaceSize=192m" "-Dspring-boot.run.arguments=--lendora.auth-enabled=false"'
     },
     @{
         Name = 'Lifecycle service'
         Folder = 'lifecycle-service'
         Port = 8085
         ReadyPath = '/actuator/health'
-        Command = 'call mvnw.cmd spring-boot:run'
+        Command = 'call mvnw.cmd spring-boot:run "-Dspring-boot.run.jvmArguments=-Xms96m -Xmx384m -XX:MaxMetaspaceSize=160m"'
     }
 )
 $frontend = @{
