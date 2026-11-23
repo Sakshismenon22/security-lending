@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import LoanWorkflowDialog from '../workflows/LoanWorkflowDialog'
 import { Link, useOutletContext } from 'react-router-dom'
 import { useDataSource } from '../hooks/useDataSource'
 import { activeLoans } from '../data/activeLoanData'
@@ -7,7 +6,7 @@ import LiveLoansPage from './LiveLoansPage'
 import { useReferenceSort } from '../hooks/useReferenceSort'
 import './ReferencePages.css'
 import './LoansPage.css'
-import { LoanBadge, LoanCard } from '../components/loans/LoanCards'
+import { LoanBadge } from '../components/loans/LoanCards'
 import { num, money, downloadLoans } from '../utils/loanFormat'
 export default function LoansPage() {
   const { mode } = useDataSource()
@@ -23,8 +22,7 @@ function DemoLoans() {
       coverage: '',
       maturity: '',
     }),
-    [filters, setFilters] = useState(draft),
-    [selected, setSelected] = useState(activeLoans[0].id)
+    [filters, setFilters] = useState(draft)
   const filtered = activeLoans.filter(
     (l) =>
       !['Closed', 'Pending settlement'].includes(tab) &&
@@ -40,8 +38,7 @@ function DemoLoans() {
         .toLowerCase()
         .includes(searchTerm.toLowerCase()),
   )
-  const { sorted: sortedRows, sortHeading } = useReferenceSort(filtered),
-    loan = filtered.find((l) => l.id === selected)
+  const { sorted: sortedRows, sortHeading } = useReferenceSort(filtered)
   function exportRows() {
     const keys = [
       'id',
@@ -202,14 +199,8 @@ function DemoLoans() {
           </thead>
           <tbody>
             {sortedRows.map((l) => (
-              <tr key={l.id} className={selected === l.id ? 'selected' : ''}>
-                <td>
-                  <button
-                    onClick={() => setSelected(selected === l.id ? null : l.id)}
-                  >
-                    {l.id}
-                  </button>
-                </td>
+              <tr key={l.id}>
+                <td><Link to={`/loans/${l.id}/manage`}>{l.id}</Link></td>
                 <td>{l.borrower}</td>
                 <td>{l.symbol}</td>
                 <td>{num(l.outstanding)}</td>
@@ -247,143 +238,6 @@ function DemoLoans() {
             )}
           </tbody>
         </table>
-      </div>
-      {loan && <DemoLoanDetail key={loan.id} loan={loan} />}
-    </section>
-  )
-}
-function DemoLoanDetail({ loan: l }) {
-  const [workflow, setWorkflow] = useState(null)
-  const [notice, setNotice] = useState('')
-  function open(kind) {
-    setNotice('')
-    setWorkflow(kind)
-  }
-  return (
-    <section className="al-detail">
-      {notice && <p className="wf-notice" role="status">{notice}</p>}
-      {workflow && <LoanWorkflowDialog kind={workflow}
-        id={workflow === 'return' ? 'RET-001782' : l.id}
-        onDismiss={() => setWorkflow(null)} onComplete={setNotice} />}
-      <header>
-        <h2>
-          ⌄ {l.id} / {l.symbol} <LoanBadge>{l.status}</LoanBadge>
-        </h2>
-        <div>
-          <Link className="ref-primary" to={`/loans/${l.id}/manage`}>Manage loan</Link>
-          <button type="button" onClick={() => open('margin')}>Issue margin call</button>
-          <button type="button" onClick={() => open('recall')}>Create recall</button>
-          <Link to={`/agreements/${l.msla}`}>View MSLA</Link>
-        </div>
-      </header>
-      <div className="al-detail-grid">
-        <LoanCard
-          title="Loan terms"
-          rows={[
-            ['MSLA', l.msla],
-            ['Reservation', l.reservation],
-            ['Original qty', num(l.quantity)],
-            ['Returned qty', num(l.returned)],
-            ['Outstanding qty', num(l.outstanding)],
-            ['Price', money(l.price)],
-            ['Fee', `${l.fee} bps (${l.fee / 100}% p.a.)`],
-            ['Rebate', `${l.rebate} bps`],
-            ['Day count', 'Actual/360'],
-            ['Start date', l.start],
-            ['Maturity date', l.maturity],
-          ]}
-        />
-        <LoanCard
-          title="Collateral coverage"
-          rows={[
-            ['Collateral lot', 'Amount'],
-            ['Cash', money(l.id === 'LOAN-000006' ? 6000000 : l.collateral)],
-            [
-              'US Treasury (eligible)',
-              l.id === 'LOAN-000006' ? money(4752000) : '—',
-            ],
-            ['Total eligible collateral', money(l.collateral)],
-            ['Required (105%)', money(l.collateral)],
-            ['Excess', money(0)],
-            ['Coverage', '105.00%'],
-            ['Coverage status', <LoanBadge>Sufficient</LoanBadge>],
-          ]}
-        />
-        <article className="al-card">
-          <h3>Returns & recalls</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>ID</th>
-                <th>Qty</th>
-                <th>Status</th>
-                <th>Due date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {l.id === 'LOAN-000006' && (
-                <tr>
-                  <td>Return</td>
-                  <td>
-                    <button type="button" onClick={() => open('return')}>RET-001782</button>
-                  </td>
-                  <td>20,000</td>
-                  <td>
-                    <LoanBadge>Pending review</LoanBadge>
-                  </td>
-                  <td>13 Nov 2026</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          <dl>
-            <div>
-              <dt>Already deducted from outstanding</dt>
-              <dd>No</dd>
-            </div>
-            <div>
-              <dt>Open recall</dt>
-              <dd>{l.recall}</dd>
-            </div>
-          </dl>
-          {l.id === 'LOAN-000006'
-            ? <button type="button" className="al-button" onClick={() => open('return')}>♧ Receive securities</button>
-            : <Link className="al-button" to="/returns">♧ Receive securities</Link>}
-          <p>
-            ⓘ Release collateral after confirmed receipt of returned securities.
-          </p>
-        </article>
-        <article className="al-card">
-          <h3>Activity & settlement timeline</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Time (IST)</th>
-                <th>Event</th>
-                <th>Reference</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                ['10 Nov 2026 14:02:11', 'Loan confirmed', l.id],
-                ['10 Nov 2026 14:03:26', 'Collateral received', 'COL-009781'],
-                [
-                  '12 Nov 2026 13:41:05',
-                  'Partial return settled (20,000)',
-                  'RET-001782',
-                ],
-                ['12 Nov 2026 14:10:37', 'Valuation updated', 'VAL-004563'],
-              ].map((r) => (
-                <tr key={r[1]}>
-                  {r.map((v, i) => (
-                    <td key={i}>{v}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </article>
       </div>
     </section>
   )

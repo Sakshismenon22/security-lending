@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import LoanWorkflowDialog from '../workflows/LoanWorkflowDialog'
 import { lenderGet } from '../api/lendDeskApi'
 import { useDataSource } from '../hooks/useDataSource'
-import RunValuationButton from '../components/loans/RunValuationButton'
 import { useReferenceSort } from '../hooks/useReferenceSort'
 import { LoanBadge } from '../components/loans/LoanCards'
-import LoanWorkspace from '../components/loans/LoanWorkspace'
 import {
   num,
   money,
@@ -22,7 +19,6 @@ export default function LiveLoansPage() {
   const [draft, setDraft] = useState(empty),
     [filters, setFilters] = useState(empty),
     [tab, setTab] = useState('ACTIVE'),
-    [selected, setSelected] = useState(null),
     [newLoanInfo, setNewLoanInfo] = useState(false),
     [state, setState] = useState({ scope: '', data: null, error: '' })
   const query = new URLSearchParams(
@@ -258,19 +254,8 @@ export default function LiveLoansPage() {
               </thead>
               <tbody>
                 {sorted.map((l) => (
-                  <tr
-                    key={l.id}
-                    className={selected === l.id ? 'selected' : ''}
-                  >
-                    <td>
-                      <button
-                        onClick={() =>
-                          setSelected(selected === l.id ? null : l.id)
-                        }
-                      >
-                        {loanId(l.id)}
-                      </button>
-                    </td>
+                  <tr key={l.id}>
+                    <td><Link to={`/loans/${loanId(l.id)}/manage`}>{loanId(l.id)}</Link></td>
                     <td>{l.borrower}</td>
                     <td>{l.symbol}</td>
                     <td>{num(l.outstandingQuantity)}</td>
@@ -323,68 +308,6 @@ export default function LiveLoansPage() {
           </div>
         </>
       )}
-      {selected != null && (
-        <LiveLoanDetails key={`${organizationId}:${selected}`} id={selected} embedded />
-      )}
     </section>
-  )
-}
-export function LiveLoanDetails({ id, embedded = false }) {
-  const { organizationId, refreshKey, refresh } = useDataSource(),
-    [state, setState] = useState({ scope: '', data: null, error: '' }),
-    [workflow, setWorkflow] = useState(null),
-    [notice, setNotice] = useState(''),
-    scope = `${organizationId}:${refreshKey}:${id}`
-  useEffect(() => {
-    const a = new AbortController()
-    lenderGet(
-      `/api/v1/organizations/${organizationId}/lenddesk/loans/${id}/screen`,
-      a.signal,
-    )
-      .then((data) => {
-        if (!a.signal.aborted) setState({ scope, data, error: '' })
-      })
-      .catch((e) => {
-        if (!a.signal.aborted) setState({ scope, data: null, error: e.message })
-      })
-    return () => a.abort()
-  }, [organizationId, refreshKey, id, scope])
-  function open(kind) {
-    setNotice('')
-    setWorkflow(kind)
-  }
-  if (state.scope !== scope) return <p role="status">Loading loan details…</p>
-  if (state.error)
-    return (
-      <p className="al-error" role="alert">
-        {state.error}
-      </p>
-    )
-  const data = state.data
-  const loan = data.loan
-  return (
-    <>
-      {notice && <p className="loan-workspace-notice" role="status">{notice}</p>}
-      {workflow && (
-        <LoanWorkflowDialog kind={workflow} id={id}
-          onDismiss={() => setWorkflow(null)}
-          onComplete={(message) => {
-            setNotice(message)
-            refresh()
-          }}
-        />
-      )}
-      <LoanWorkspace data={data} embedded={embedded} onOpen={open}>
-        {loan.canRunValuation && (
-          <RunValuationButton
-            key={`${organizationId}:${id}:${loan.pendingValuationRunId ?? 0}`}
-            loanIds={[id]}
-            pendingRunId={loan.pendingValuationRunId}
-            lastFailure={loan.valuationFailureReason}
-            onFinished={refresh}
-          />
-        )}
-      </LoanWorkspace>
-    </>
   )
 }

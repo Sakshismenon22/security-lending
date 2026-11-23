@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LoanBadge } from '../components/loans/LoanCards'
+import RunValuationButton from '../components/loans/RunValuationButton'
+import { useDataSource } from '../hooks/useDataSource'
 import { date, display, loanId, money, num } from '../utils/loanFormat'
 import LoanWorkflowDialog from './LoanWorkflowDialog'
 import './ManageLoanScreen.css'
@@ -16,11 +18,11 @@ function Facts({ rows, compact = false }) {
 }
 
 export default function ManageLoanScreen({ data, action, reason, onAction, onReason, onSubmit, onComplete, notice, error, busy }) {
-  const { loan, collateral, returns, activity } = data
+  const { loan, collateral, returns, recalls, activity } = data
+  const { refresh } = useDataSource()
   const [filter, setFilter] = useState('all')
   const [workflow, setWorkflow] = useState(null)
   const id = loanId(loan.id)
-  const workspace = `/loans/${id}`
   const pending = loan.status === 'PENDING_REVIEW'
   const amount = (entry, release = false) => entry.assetType === 'CASH'
     ? money((release ? entry.requestedReleaseCash : null) ?? entry.cashAmount, loan.currency)
@@ -96,14 +98,14 @@ export default function ManageLoanScreen({ data, action, reason, onAction, onRea
   return (
     <section className="wf-page manage-loan">
       <nav className="wf-breadcrumb" aria-label="Breadcrumb">
-        <Link to="/loans">Loans</Link><span>/</span><Link to={workspace}>{id}</Link><span>/</span><span aria-current="page">Manage loan</span>
+        <Link to="/loans">Loans</Link><span>/</span><span>{id}</span><span>/</span><span aria-current="page">Manage loan</span>
       </nav>
       <header className="manage-loan-header">
         <div>
           <h1>Manage loan</h1>
           <p>{id} · {loan.symbol} · {loan.borrower} <LoanBadge>{display(loan.status)}</LoanBadge></p>
         </div>
-        <Link className="manage-loan-link" to={workspace}>← Back to loan workspace</Link>
+        <Link className="manage-loan-link" to="/loans">← Back to loans</Link>
       </header>
       {notice && <p className="wf-notice" role="status">{notice}</p>}
       <dl className="manage-loan-metrics">
@@ -130,6 +132,20 @@ export default function ManageLoanScreen({ data, action, reason, onAction, onRea
               <tfoot><tr className="wf-total"><th scope="row" colSpan={3}>Eligible total</th><td colSpan={2}>{money(loan.eligibleCollateral, loan.currency)}</td></tr></tfoot>
             </table></div>
           </section>
+          {(returns.length > 0 || recalls?.length > 0) && <section className="manage-loan-card">
+            <h2>Returns &amp; recalls</h2>
+            <div className="manage-loan-table-scroll"><table className="wf-table">
+              <thead><tr><th>Reference</th><th>Quantity</th><th>Status</th></tr></thead>
+              <tbody>
+                {returns.map((entry) => <tr key={`return:${entry.id}`}>
+                  <td>Return #{entry.id}</td><td>{shares(entry.quantity)}</td><td>{display(entry.status)}</td>
+                </tr>)}
+                {recalls?.map((entry) => <tr key={`recall:${entry.id}`}>
+                  <td>Recall #{entry.id}</td><td>{shares(entry.quantity - entry.fulfilledQuantity)} remaining</td><td>{display(entry.status)}</td>
+                </tr>)}
+              </tbody>
+            </table></div>
+          </section>}
           <section className="manage-loan-card">
             <h2>Activity &amp; settlement</h2>
             <div className="manage-loan-table-scroll"><table className="wf-table">
@@ -152,6 +168,8 @@ export default function ManageLoanScreen({ data, action, reason, onAction, onRea
                 <button type="button" disabled={busy || !loan.canRecall} onClick={() => setWorkflow('recall')}>Create recall</button>
               </>}
               {agreement && <Link className="manage-loan-link" to={`/agreements/${loan.mslaId}`}>View MSLA</Link>}
+              {loan.canRunValuation && <RunValuationButton loanIds={[loan.id]} pendingRunId={loan.pendingValuationRunId}
+                lastFailure={loan.valuationFailureReason} onFinished={refresh} />}
               {!operations.length && loan.status !== 'ACTIVE' && <p>No loan operations available.</p>}
             </div>
             {operation && review}
