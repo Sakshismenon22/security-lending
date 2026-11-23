@@ -1,5 +1,5 @@
 import { lendoraUrl } from './sessionApi'
-const API_BASE_URL = import.meta.env.VITE_LENDER_API_URL ?? 'http://localhost:8084'
+const API_BASE_URL = import.meta.env.VITE_LENDER_API_URL ?? 'http://localhost:8090/lender'
 
 function unwrap(payload) {
   if (!payload?.success) throw new Error(payload?.message ?? 'Lender API request failed')
