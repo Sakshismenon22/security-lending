@@ -1,0 +1,12 @@
+com\example\autoscaling\process\ProcessManager.class
+com\example\autoscaling\config\ProxyCorsConfig.class
+com\example\autoscaling\process\InstanceRegistry.class
+com\example\autoscaling\AutoscalingManagerApplication.class
+com\example\autoscaling\proxy\BorrowerProxyController.class
+com\example\autoscaling\monitor\CpuAutoscalingMonitor.class
+com\example\autoscaling\controller\AutoscalingController.class
+com\example\autoscaling\process\ManagedInstance.class
+com\example\autoscaling\collector\CpuMetricsCollector.class
+com\example\autoscaling\decision\CpuScalingDecisionEngine.class
+com\example\autoscaling\process\RegisteredInstance.class
+com\example\autoscaling\process\ProcessManager$ManagedProcess.class

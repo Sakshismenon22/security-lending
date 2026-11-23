@@ -1,0 +1,11 @@
+C:\Projects\security-lending\autoscaling-manager\src\main\java\com\example\autoscaling\AutoscalingManagerApplication.java
+C:\Projects\security-lending\autoscaling-manager\src\main\java\com\example\autoscaling\collector\CpuMetricsCollector.java
+C:\Projects\security-lending\autoscaling-manager\src\main\java\com\example\autoscaling\config\ProxyCorsConfig.java
+C:\Projects\security-lending\autoscaling-manager\src\main\java\com\example\autoscaling\controller\AutoscalingController.java
+C:\Projects\security-lending\autoscaling-manager\src\main\java\com\example\autoscaling\decision\CpuScalingDecisionEngine.java
+C:\Projects\security-lending\autoscaling-manager\src\main\java\com\example\autoscaling\monitor\CpuAutoscalingMonitor.java
+C:\Projects\security-lending\autoscaling-manager\src\main\java\com\example\autoscaling\process\InstanceRegistry.java
+C:\Projects\security-lending\autoscaling-manager\src\main\java\com\example\autoscaling\process\ManagedInstance.java
+C:\Projects\security-lending\autoscaling-manager\src\main\java\com\example\autoscaling\process\ProcessManager.java
+C:\Projects\security-lending\autoscaling-manager\src\main\java\com\example\autoscaling\process\RegisteredInstance.java
+C:\Projects\security-lending\autoscaling-manager\src\main\java\com\example\autoscaling\proxy\BorrowerProxyController.java
