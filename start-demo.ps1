@@ -81,6 +81,13 @@ if ($Lendora) {
         ReadyPath = '/api/v1/auth/me'
         Command = 'call mvnw.cmd spring-boot:run'
     }
+    $services += @{
+        Name = 'API Gateway'
+        Folder = 'api-gateway'
+        Port = 8090
+        ReadyPath = '/actuator/health'
+        Command = 'mvn spring-boot:run'
+    }
     $frontends = @(
         @{ Name = 'BorrowDesk'; Folder = 'borrowdesk'; Port = 5173; ReadyPath = '/'; ExpectedTitle = 'BorrowDesk' },
         @{ Name = 'LendDesk'; Folder = 'lenddesk'; Port = 5175; ReadyPath = '/'; ExpectedTitle = 'lenddesk' },
@@ -246,6 +253,7 @@ try {
 
     Write-Host ''
     if ($Lendora) {
+        Write-Host 'API Gateway: http://localhost:8090'
         Write-Host 'Lendora:    http://localhost:5176'
         Write-Host 'BorrowDesk: http://localhost:5173'
         Write-Host 'LendDesk:   http://localhost:5175'
