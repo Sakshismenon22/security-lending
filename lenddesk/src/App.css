@@ -18,7 +18,7 @@ button { cursor: pointer; }
 .sidebar { width: 236px; flex: 0 0 236px; display: flex; flex-direction: column; background: #fbfaff; border-right: 1px solid var(--border); transition: width .2s ease, flex-basis .2s ease; }
 .brand { height: 63px; display: flex; align-items: center; gap: 10px; padding: 0 16px 0 23px; border-bottom: 1px solid var(--border); font-size: 25px; font-weight: 800; letter-spacing: -1px; white-space: nowrap; }
 .brand-name { overflow: hidden; font-size: 17px; font-weight: 750; letter-spacing: normal; }
-.brand-mark { display: grid; place-items: center; width: 28px; height: 28px; color: white; background: linear-gradient(135deg, #8c7cff, #5644d9); clip-path: polygon(50% 0, 100% 100%, 72% 100%, 50% 53%, 28% 100%, 0 100%); }
+.brand-mark { display: grid; place-items: center; width: 28px; height: 28px; color: white; background: linear-gradient(135deg, #8c7cff, #5644d9); border-radius: 6px; flex-shrink: 0; font-size: 18px; font-weight: 800; line-height: 1; }
 .sidebar-toggle { display: grid; place-items: center; width: 26px; height: 26px; margin-left: auto; border: 1px solid var(--border); border-radius: 5px; background: white; color: #5140d2; font-size: 21px; line-height: 1; }
 .sidebar-toggle:hover { background: var(--selection); }
 nav { display: grid; gap: 3px; padding: 17px 8px; }
@@ -434,7 +434,7 @@ ol small { display: block; color: var(--muted); font-size: 11px; }
 .live-resource-page { padding: 15px 12px 22px; }.live-resource-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; padding: 0 5px 14px; }.live-resource-heading small { color: #6d5ce7; font-size: 10px; font-weight: 800; letter-spacing: .5px; }.live-resource-heading h1 { margin: 4px 0; font-size: 24px; letter-spacing: -.7px; }.live-resource-heading p { margin: 0; color: var(--muted); font-size: 12px; }.live-resource-heading > span { padding: 7px 9px; border-radius: 5px; background: #ece9fe; color: #5140d2; font-size: 11px; font-weight: 800; }.live-error, .live-empty { padding: 15px; border: 1px solid #f2c8cc; border-radius: 7px; background: #fff5f6; color: #9f2f38; font-size: 12px; }.live-error span { display: block; margin-top: 5px; color: #80646a; }.live-empty { border-color: var(--border); background: white; color: var(--muted); }
 
 @media (max-width: 1100px) {
-  .sidebar { width: 64px; flex-basis: 64px; }.brand { justify-content: center; padding: 0; font-size: 0; }.brand-name, .nav-label, .sidebar-footer span, .sidebar-footer b { display: none; }.brand-mark { font-size: 22px; }
+  .sidebar { width: 64px; flex-basis: 64px; }.brand { justify-content: center; padding: 0; font-size: 0; }.brand-name, .nav-label, .sidebar-footer span, .sidebar-footer b { display: none; }
   .sidebar-toggle { position: absolute; left: 51px; top: 18px; z-index: 3; } nav a { justify-content: center; padding: 0; font-size: 0; } nav a span { font-size: 20px; }.workspace { width: calc(100% - 64px); }
   .top-grid, .bottom-grid { grid-template-columns: 1fr; }.topbar { padding: 0 13px; }.org { min-width: 170px; }.heading span { padding: 0 9px; }
   .agreement-workspace { grid-template-columns: 1fr; }.agreement-inspector { min-height: 420px; }

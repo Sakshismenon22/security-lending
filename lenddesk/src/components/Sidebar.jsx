@@ -5,7 +5,7 @@ import { navigation } from '../data/navigation'
 export default function Sidebar({ compact, onToggleCompact }) {
   return <aside className={`sidebar ${compact ? 'is-compact' : ''}`}>
     <div className="brand">
-      <span className="brand-mark">⌁</span>
+      <span className="brand-mark" aria-hidden="true">L</span>
       <span className="brand-name">LendDesk</span>
       <button
         className="sidebar-toggle"
