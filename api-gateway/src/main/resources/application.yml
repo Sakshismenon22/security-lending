@@ -16,6 +16,10 @@ spring:
           httpclient:
             connect-timeout: 3000
             response-timeout: 30s
+          # Some downstream services may also emit CORS headers. Keep one
+          # unambiguous set of CORS response headers at the gateway boundary.
+          default-filters:
+            - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
           routes:
             # Borrower APIs retain their original paths after /borrower is removed.
             - id: borrower-service
@@ -86,13 +90,17 @@ spring:
               filters:
                 - StripPrefix=2
 
-          # Browser clients use the gateway as their API origin. Downstream services
-          # must continue enforcing their own authentication and organization checks.
+          # Handle browser preflight requests even when no route predicate
+          # matches the OPTIONS request independently.
           globalcors:
+            add-to-simple-url-handler-mapping: true
             cors-configurations:
               '[/**]':
-                allowed-origin-patterns:
-                  - ${GATEWAY_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176}
+                allowed-origins:
+                  - ${GATEWAY_FRONTEND_ORIGIN_1:http://localhost:5173}
+                  - ${GATEWAY_FRONTEND_ORIGIN_2:http://localhost:5174}
+                  - ${GATEWAY_FRONTEND_ORIGIN_3:http://localhost:5175}
+                  - ${GATEWAY_FRONTEND_ORIGIN_4:http://localhost:5176}
                 allowed-methods:
                   - GET
                   - POST
