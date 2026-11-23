@@ -7,6 +7,7 @@ import com.example.borrower_service.model.*;
 import com.example.borrower_service.repository.BorrowerRepository;
 
 import org.springframework.beans.factory.annotation.Value;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
@@ -85,6 +86,7 @@ public class MarketService {
         return new MarketPrice(money(s, "price"), at);
     }
 
+    @CircuitBreaker(name = "marketDataService")
     public List<Map<String, Object>> history(long id) {
         var s = db.row(SecurityMaster.class, id);
         List<Map<String, Object>> result =
@@ -133,6 +135,7 @@ public class MarketService {
 
     @Transactional
     @SuppressWarnings("unchecked")
+    @CircuitBreaker(name = "marketDataService")
     public int importSecurities() {
         var response =
                 client.get()
