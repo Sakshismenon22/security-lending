@@ -1,7 +1,6 @@
 import {
   ArrowLeftRight,
   ArrowUpLeft,
-  Bell,
   BriefcaseBusiness,
   CalendarClock,
   ChartNoAxesCombined,
@@ -10,7 +9,6 @@ import {
   FileCheck2,
   Flag,
   Layers3,
-  Radio,
   Scale,
   Search,
   Settings,
@@ -35,7 +33,5 @@ export const navigation = [
   [Coins, 'Fees & Rebates', '/fees-rebates'],
   [Flag, 'Defaults & Buy-ins', '/defaults-buyins'],
   [Scale, 'Ledger', '/ledger'],
-  [Radio, 'FIX Monitor', '/fix-monitor'],
-  [Bell, 'Audit & Notifications', '/audit-notifications'],
   [Settings, 'Administration', '/administration'],
 ]
