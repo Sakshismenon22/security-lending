@@ -25,11 +25,18 @@ spring:
               filters:
                 - StripPrefix=1
 
-            # Backward-compatible route for the BorrowDesk API client.
+            # Lendora organization registration shares the organizations path prefix
+            # with BorrowDesk APIs, so route this exact endpoint before the borrower catch-all.
+            - id: lendora-organization-registration
+              uri: ${services.lendora.url:http://localhost:8086}
+              predicates:
+                - Path=/api/v1/organizations/register
+
+            # Backward-compatible routes for the BorrowDesk API client.
             - id: borrower-service-default
               uri: ${services.borrower.url:http://localhost:8081}
               predicates:
-                - Path=/api/v1/organizations/**,/api/v1/market/**,/api/v1/trading/**,/api/v1/billing/**,/api/v1/collateral/**,/api/v1/funding/**,/api/v1/obligations/**,/api/v1/portfolio/**
+                - Path=/api/v1/organizations/**,/api/v1/securities/**,/api/v1/market/**,/api/v1/trading/**,/api/v1/billing/**,/api/v1/collateral/**,/api/v1/funding/**,/api/v1/obligations/**,/api/v1/portfolio/**
 
             - id: lender-service
               uri: ${services.lender.url:http://localhost:8084}
