@@ -20,7 +20,7 @@ $services = @(
         Folder = 'market-data-service'
         Port = 8080
         ReadyPath = '/actuator/health'
-        Command = 'call mvnw.cmd spring-boot:run -Dspring-boot.run.arguments=--spring.jpa.hibernate.ddl-auto=update'
+        Command = 'call mvnw.cmd spring-boot:run "-Dspring-boot.run.jvmArguments=-Xms96m -Xmx384m -XX:MaxMetaspaceSize=160m" "-Dspring-boot.run.arguments=--spring.jpa.hibernate.ddl-auto=update"'
     },
     @{
         Name = 'Lender FIX adapter'
@@ -41,21 +41,21 @@ $services = @(
         Folder = 'eureka-server'
         Port = 8761
         ReadyPath = '/actuator/health'
-        Command = 'call ..\borrower-service\mvnw.cmd spring-boot:run'
+        Command = 'call ..\borrower-service\mvnw.cmd spring-boot:run "-Dspring-boot.run.jvmArguments=-Xms64m -Xmx256m -XX:MaxMetaspaceSize=128m"'
     },
     @{
         Name = 'Borrower service'
         Folder = 'borrower-service'
         Port = 8081
         ReadyPath = '/actuator/health'
-        Command = 'call mvnw.cmd spring-boot:run -Dspring-boot.run.arguments=--lendora.auth-enabled=false'
+        Command = 'call mvnw.cmd spring-boot:run "-Dspring-boot.run.jvmArguments=-Xms128m -Xmx512m -XX:MaxMetaspaceSize=192m" "-Dspring-boot.run.arguments=--lendora.auth-enabled=false"'
     },
     @{
         Name = 'Autoscaling Manager'
         Folder = 'autoscaling-manager'
         Port = 8090
         ReadyPath = '/actuator/health'
-        Command = 'call mvnw.cmd spring-boot:run'
+        Command = 'call mvnw.cmd spring-boot:run "-Dspring-boot.run.jvmArguments=-Xms64m -Xmx256m -XX:MaxMetaspaceSize=128m"'
     },
     @{
         Name = 'Lender service'
@@ -85,7 +85,7 @@ $frontends = @($frontend)
 if ($Lendora) {
     foreach ($service in $services) {
         if ($service.Port -in @(8081, 8084)) {
-            $service.Command = 'call mvnw.cmd spring-boot:run -Dspring-boot.run.arguments=--lendora.auth-enabled=true'
+            $service.Command = 'call mvnw.cmd spring-boot:run "-Dspring-boot.run.jvmArguments=-Xms128m -Xmx512m -XX:MaxMetaspaceSize=192m" "-Dspring-boot.run.arguments=--lendora.auth-enabled=true"'
         }
     }
     $services += @{
@@ -93,7 +93,7 @@ if ($Lendora) {
         Folder = 'lendora-service'
         Port = 8086
         ReadyPath = '/api/v1/auth/me'
-        Command = 'call mvnw.cmd spring-boot:run'
+        Command = 'call mvnw.cmd spring-boot:run "-Dspring-boot.run.jvmArguments=-Xms96m -Xmx384m -XX:MaxMetaspaceSize=160m"'
     }
     $frontends = @(
         @{ Name = 'BorrowDesk'; Folder = 'borrowdesk'; Port = 5173; ReadyPath = '/'; ExpectedTitle = 'BorrowDesk' },
