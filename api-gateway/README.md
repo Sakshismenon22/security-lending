@@ -30,6 +30,16 @@ The gateway listens on **http://localhost:8090** by default.
 
 The borrower and lender services expose overlapping URL patterns under `/api/v1/organizations/**`. To avoid ambiguous routing, lender requests use the explicit `/lender/**` prefix. The existing borrower API paths remain available for gradual frontend migration.
 
+## Frontend integration
+
+The three Vite applications are configured to use the gateway by default:
+
+- BorrowDesk (`borrowdesk`): `http://localhost:8090` for borrower APIs and `http://localhost:8090/market-data` for market-data requests.
+- LendDesk (`lenddesk`): `http://localhost:8090/lender` for lender APIs.
+- Lendora (`lendora`): `http://localhost:8090/api/v1` for authentication and organization registration.
+
+The borrower and lender workspace session clients also use the gateway for `/api/v1/auth/**`. The gateway has a dedicated registration route for `/api/v1/organizations/register` before the borrower organization route, so registration reaches Lendora rather than Borrower service. Copy the updated `.env.example` values into any existing local `.env` files; explicit Vite environment values override the code defaults. Restart all Vite dev servers after changing environment variables.
+
 ## Run locally
 
 Start PostgreSQL, Kafka, and the backend services using the existing project startup process. Then run:
