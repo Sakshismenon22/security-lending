@@ -37,7 +37,7 @@ public class AutoscalingLoadTestController {
     @PostMapping("/cpu")
     public Map<String, Object> generateCpuLoad(
             @RequestParam(defaultValue = "30") int durationSeconds,
-            @RequestParam(defaultValue = "2") int workers,
+            @RequestParam(defaultValue = "4") int workers,
             jakarta.servlet.http.HttpServletRequest request) {
 
         requireLoopback(request.getRemoteAddr());
