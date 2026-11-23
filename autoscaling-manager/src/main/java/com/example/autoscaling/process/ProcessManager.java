@@ -157,6 +157,9 @@ public class ProcessManager {
             Files.createDirectories(logDirectory);
             ProcessBuilder builder = new ProcessBuilder(
                     javaExecutable(),
+                    "-Xms128m",
+                    "-Xmx512m",
+                    "-XX:MaxMetaspaceSize=192m",
                     "-jar",
                     borrowerJar.toString(),
                     "--server.port=" + port,
