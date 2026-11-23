@@ -1,7 +1,7 @@
 import { get, post, put, del, orgUrl, unwrapRows } from "./apiClient";
 const base = orgUrl("");
 const marketBase = (
-  import.meta.env.VITE_MARKET_DATA_API || "http://localhost:8080"
+  import.meta.env.VITE_MARKET_DATA_API || "http://localhost:8090/market-data"
 ).replace(/\/$/, "");
 async function marketGet(path) {
   const response = await fetch(marketBase + path);
