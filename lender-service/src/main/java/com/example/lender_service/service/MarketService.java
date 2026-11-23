@@ -10,6 +10,7 @@ import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
@@ -46,6 +47,7 @@ public class MarketService {
   }
 
   @Transactional
+  @CircuitBreaker(name = "marketDataService")
   public int importSecurities() {
     JsonNode response =
         client
@@ -73,6 +75,7 @@ public class MarketService {
     return count;
   }
 
+  @CircuitBreaker(name = "marketDataService")
   public JsonNode history(long id) {
     var s = found(securities.findById(id));
     return client
