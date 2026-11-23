@@ -26,6 +26,7 @@ public class CollateralLiquidationService {
   private final SecurityMasterRepository securities;
   private final AssetRepository assets;
   private final LenderAccountRepository accounts;
+  private final LenderFundingService funding;
   private final BorrowerConnectionRepository connections;
   private final CollateralService collateral;
   private final MarketService market;
@@ -97,7 +98,9 @@ public class CollateralLiquidationService {
     return quote.value();
   }
 
-  public void requireCashFunding(
+  @Transactional(noRollbackFor = org.springframework.web.server.ResponseStatusException.class)
+  public BigDecimal requireCashFunding(
+    long org,
     long loan,
     long quantity,
     BigDecimal unitPrice,
@@ -107,12 +110,11 @@ public class CollateralLiquidationService {
       securityLots(loan).isEmpty(),
       "Sell securities collateral before placing the buy-in order"
     );
-    require(
-      cash(loan).compareTo(
-        unitPrice.multiply(BigDecimal.valueOf(quantity)).add(fees)
-      ) >= 0,
-      "Insufficient cash collateral for this buy-in order; sell collateral or provide additional cash"
-    );
+    BigDecimal shortfall = amount(unitPrice.multiply(BigDecimal.valueOf(quantity)).add(fees))
+        .subtract(cash(loan)).max(BigDecimal.ZERO);
+    require(shortfall.signum() == 0 || funding.availableFor(org, null).compareTo(shortfall) >= 0,
+        "Insufficient cash collateral and available lender funds for this buy-in order");
+    return shortfall;
   }
 
   public Map<String, Object> preview(long org, long defaultId) {
@@ -156,6 +158,7 @@ public class CollateralLiquidationService {
     result.put("securityLots", lots);
     result.put("needsSale", !lots.isEmpty());
     result.put("cashHeld", cash(loan.getId()));
+    result.put("lenderFundsAvailable", funding.availableFor(org, null));
     result.put("estimatedProceeds", blockers.isEmpty() ? proceeds : null);
     result.put("estimatedPurchaseCost", purchase);
     result.put(

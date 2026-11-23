@@ -79,6 +79,9 @@ export default function BuyinClosureSummary({
       "Cash collateral applied",
       money(value(summary, "cashCollateralApplied", "cash_collateral_applied")),
     ],
+    ...(Number(value(summary, "lenderFundsApplied")) > 0
+      ? [["Lender funds applied", money(value(summary, "lenderFundsApplied"))]]
+      : []),
     [
       "Cash collateral returned",
       money(

@@ -2431,7 +2431,7 @@ class LenderWorkflowTests {
     assertEquals(sale.getId(),liquidation.sell(org.getId(),def.getId(),"sell-once",saleScope).getId());
     assertEquals("CASH",lot.getAssetType());assertNull(lot.getSecurityId());assertEquals(0,lot.getQuantity());
     assertEquals(0,bd("12000").compareTo(accounts.findByOrganizationId(org.getId()).orElseThrow().getCashCollateralHeld()));
-    assertThrows(ResponseStatusException.class,()->liquidation.requireCashFunding(loan.getId(),100,bd("200"),bd("5")));
+    assertThrows(ResponseStatusException.class,()->liquidation.requireCashFunding(org.getId(),loan.getId(),100,bd("200"),bd("5")));
     var order=buyinOrders.place(org.getId(),def.getId(),request);
     assertEquals("EXECUTION_PENDING",order.getStatus());
     lifecycle(org,"BUY_IN_REPORTED",ids.incrementAndGet(),1,orderFill(order,def));
@@ -2873,6 +2873,93 @@ class LenderWorkflowTests {
       .orElseThrow();
     buyinReceipts.receive(org.getId(), report.getId(), "receipt-" + owner);
     return report;
+  }
+
+  @Test
+  void approvedDepositFundsOnlyTheBuyinShortfallAndIsAppliedOnce() throws Exception {
+    var org = organization();
+    var other = organization();
+    directory.member(org.getId(), new MemberRequest("Funding admin", "funding-admin@example.com", "ADMIN"));
+    directory.member(org.getId(), new MemberRequest("Desk", "funding-desk@example.com", "LENDING_DESK"));
+    directory.member(other.getId(), new MemberRequest("Other admin", "other-admin@example.com", "ADMIN"));
+    String funding = "/api/v1/organizations/" + org.getId() + "/lenddesk/funding";
+    String body = "{\"amount\":1500,\"clientRequestId\":\"test-lender-deposit\"}";
+    var requested = mvc.perform(post(funding + "/deposits")
+        .contentType("application/json").content(body))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("PENDING"))
+        .andReturn();
+    long deposit = json.tree(requested.getResponse().getContentAsString()).path("data").path("id").asLong();
+    mvc.perform(post(funding + "/deposits").contentType("application/json").content(body))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(deposit));
+    mvc.perform(get(funding)).andExpect(jsonPath("$.data.available").value(0));
+
+    String approve = "/deposits/" + deposit + "/approve";
+    mvc.perform(post(funding + approve).requestAttr("lendora.userEmail", "funding-desk@example.com"))
+        .andExpect(status().isForbidden());
+    mvc.perform(post("/api/v1/organizations/" + other.getId() + "/lenddesk/funding" + approve)
+        .requestAttr("lendora.userEmail", "other-admin@example.com")).andExpect(status().isNotFound());
+    mvc.perform(get(funding + "/deposits").requestAttr("lendora.userEmail", "funding-admin@example.com"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.content[0].id").value(deposit));
+    for (int retry = 0; retry < 2; retry++) {
+      mvc.perform(post(funding + approve).requestAttr("lendora.userEmail", "funding-admin@example.com"))
+          .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("CONFIRMED"));
+    }
+    mvc.perform(get(funding)).andExpect(jsonPath("$.data.available").value(1500));
+
+    long security = security("100");
+    var loan = activeLoan(org, connection(org), security, true);
+    var quote = securityMasterForScreenTest.findById(security).orElseThrow();
+    quote.setPrice(bd("120"));
+    var def = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    var parent = lifecycleRequests.buyIn(org.getId(), def.getId(), new LifecycleActionRequest("funded-buyin"));
+    lifecycle(org, "LIFECYCLE_REQUEST_ACCEPTED", parent.getId(), 1, Map.of("loanId", loan.getId()));
+    var order = buyinOrders.place(org.getId(), def.getId(),
+        new BuyinOrderRequest("funded-order", parent.getId(), "MARKET", 100, null, bd("5")));
+    assertEquals("EXECUTION_PENDING", order.getStatus());
+    assertEquals(0, bd("1005").compareTo(order.getLenderFundsReserved()));
+    mvc.perform(get(funding))
+        .andExpect(jsonPath("$.data.reserved").value(1005))
+        .andExpect(jsonPath("$.data.available").value(495));
+    lifecycle(org, "BUY_IN_REPORTED", ids.incrementAndGet(), 1, orderFill(order, def));
+
+    for (int retry = 0; retry < 2; retry++) {
+      var closure = buyinCloseouts.close(org.getId(), def.getId(), "FUNDED-CLOSE");
+      assertEquals(0, bd("11000").compareTo(closure.getCashCollateralApplied()));
+      assertEquals(0, bd("1005").compareTo(closure.getLenderFundsApplied()));
+    }
+    mvc.perform(get(funding))
+        .andExpect(jsonPath("$.data.reserved").value(0))
+        .andExpect(jsonPath("$.data.available").value(495));
+    mvc.perform(get("/api/v1/organizations/" + org.getId() + "/lenddesk/ledger/overview")
+        .param("account", "funding"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.totalElements").value(2))
+        .andExpect(jsonPath("$.data.content[0].amount").value(-1005))
+        .andExpect(jsonPath("$.data.content[1].amount").value(1500));
+  }
+
+  @Test
+  void buyinLoanCloseoutCanApplyAnEntireCashCollateralLot() throws Exception {
+    var org = organization();
+    var conn = connection(org);
+    var loan = activeLoan(org, conn, security("100"), true);
+    var lot = positions.findByConnectionIdAndBorrowerPositionId(conn.getId(), 400L)
+        .orElseThrow();
+    var def = reportDefaultForBuyinTest(org, loan, ids.incrementAndGet(), ids.incrementAndGet());
+    receivedBuyinForCloseout(org, loan, def, 100, "109.95");
+
+    String path = "/api/v1/organizations/" + org.getId()
+        + "/defaults/" + def.getId() + "/close-loan";
+    mvc.perform(post(path)
+        .contentType("application/json")
+        .content("{\"reference\":\"FULL-CASH-CLOSE\"}"))
+        .andExpect(status().isOk());
+
+    assertEquals("CLOSED", loan.getStatus());
+    assertEquals("APPLIED", lot.getStatus());
+    assertEquals(0, lot.getCashAmount().signum());
+    assertEquals(0, accounts.findByOrganizationId(org.getId()).orElseThrow()
+        .getCashCollateralHeld().signum());
   }
 
   @Test

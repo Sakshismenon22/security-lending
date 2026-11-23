@@ -13,6 +13,9 @@ import lombok.*;
 public class BuyinLoanCloseout {
   @Column(name="borrower_summary_queued",nullable=false) private boolean borrowerSummaryQueued;
 
+  @Column(name = "lender_funds_applied", nullable = false, precision = 24, scale = 6)
+  private BigDecimal lenderFundsApplied = BigDecimal.ZERO;
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;

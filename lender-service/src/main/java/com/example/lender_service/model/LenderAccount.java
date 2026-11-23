@@ -12,6 +12,9 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class LenderAccount {
+  @Column(name = "funding_balance", nullable = false, precision = 24, scale = 6)
+  private BigDecimal fundingBalance = BigDecimal.ZERO;
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   @Column(name = "id", nullable = false)

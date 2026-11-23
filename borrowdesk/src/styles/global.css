@@ -37,3 +37,7 @@ button:disabled { cursor: not-allowed; }
 .workspace-session-bar { padding-right: 90px; }
 .workspace-session-bar > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-session-bar > button { flex-shrink: 0; }
+
+.sidebar .profile > span { min-width:0; overflow:hidden; }
+.sidebar .profile .profile-name { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sidebar .profile small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

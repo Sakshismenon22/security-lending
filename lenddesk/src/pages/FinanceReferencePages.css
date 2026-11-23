@@ -83,3 +83,43 @@
 @media(max-width:760px) { .finance-tabs { padding: 0; border: 0; width: 100%; } .finance-tabs button { font-size: 11px; padding: 7px 12px; flex: 1; } .finance-metrics { grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 10px; } .finance-metrics > div { padding: 8px; gap: 8px; } .finance-metrics > div > span { font-size: 24px; } .finance-metrics small { font-size: 10px; } .finance-metrics strong { font-size: 14px; } .finance-filters select { width: 60%; } .ledger-reference .finance-filters { align-items: stretch; } .ledger-reference .finance-filters label { display: flex; } .ledger-reference .finance-filters select, .ledger-reference .finance-filters label:first-child select, .ledger-reference .finance-filters label:nth-child(5) select { width: 62%; } .borrower-reference-filters select, .borrower-reference-filters label:nth-child(4) select, .borrower-reference-filters label:nth-child(5) select { width: 62%; } .borrower-reference .ref-heading h1 { font-size: 22px; } .borrower-reference .ref-active-count { font-size: 13px; } }
 
 .ledger-reference > .table-pagination { flex-wrap: wrap; }
+
+.lender-funding {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e5deed);
+  border-radius: 6px;
+}
+
+.lender-funding h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.lender-funding p {
+  margin: 5px 0 0;
+}
+
+.lender-funding-actions,
+.lender-deposit-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lender-deposit-list {
+  list-style: none;
+  padding: 0;
+}
+
+.lender-deposit-list li {
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border, #e5deed);
+}

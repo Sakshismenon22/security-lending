@@ -1,0 +1,206 @@
+.loan-collateral-modal {
+  width: min(1120px, calc(100vw - 28px));
+  max-height: calc(100dvh - 40px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, #fff);
+  color: var(--ink, #242039);
+  border: 1px solid var(--border, #ded6ef);
+  border-radius: 9px;
+  box-shadow: 0 20px 70px #20113d30;
+  font-size: 12px;
+  overflow: hidden;
+}
+.loan-collateral-modal > header,
+.loan-collateral-modal > footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--border, #ded6ef);
+}
+.loan-collateral-modal > header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.loan-collateral-modal > header p {
+  margin: 5px 0 0;
+  color: var(--muted, #766c87);
+}
+.loan-collateral-modal button {
+  cursor: pointer;
+}
+.loan-collateral-modal button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.loan-collateral-modal > header > button,
+.loan-collateral-modal td button {
+  border: 0;
+  background: transparent;
+  color: #7051a0;
+  padding: 5px;
+  display: inline-flex;
+}
+.loan-collateral-body {
+  padding: 16px 18px;
+  overflow: auto;
+  min-height: 0;
+  min-width: 0;
+}
+.loan-collateral-terms {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr 1.25fr;
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+.loan-collateral-terms label,
+.loan-collateral-terms > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.loan-collateral-terms small {
+  color: var(--muted, #766c87);
+}
+.loan-collateral-terms strong {
+  font-size: 16px;
+}
+.loan-collateral-modal input,
+.loan-collateral-modal select {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  height: 34px;
+  border: 1px solid var(--border, #ded6ef);
+  border-radius: 4px;
+  padding: 6px;
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
+}
+.loan-collateral-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.loan-collateral-heading h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.loan-collateral-help {
+  color: var(--muted, #766c87);
+  line-height: 1.5;
+  margin: 10px 0;
+}
+.loan-collateral-table-scroll {
+  overflow: auto;
+  max-width: 100%;
+  border: 1px solid var(--border, #ded6ef);
+  border-radius: 5px;
+}
+.loan-collateral-modal table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 850px;
+  font-size: 12px;
+}
+.loan-collateral-modal th,
+.loan-collateral-modal td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border, #e7dff0);
+  text-align: right;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.loan-collateral-modal th:first-child,
+.loan-collateral-modal td:first-child {
+  text-align: left;
+  min-width: 160px;
+  white-space: normal;
+}
+.loan-collateral-modal td:nth-child(2) {
+  width: 115px;
+}
+.loan-collateral-modal thead,
+.loan-collateral-modal tfoot {
+  background: var(--canvas, #f8f5fc);
+}
+.loan-collateral-modal tfoot th {
+  white-space: normal;
+}
+.loan-collateral-row-error {
+  display: block;
+  max-width: 210px;
+  color: #b13a53;
+  line-height: 1.4;
+  margin-top: 5px;
+}
+.loan-collateral-empty {
+  text-align: center !important;
+  padding: 22px !important;
+  color: var(--muted, #766c87);
+}
+.loan-collateral-totals {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 16px 0;
+}
+.loan-collateral-totals > div {
+  display: grid;
+  gap: 5px;
+}
+.loan-collateral-totals small {
+  color: var(--muted, #766c87);
+}
+.loan-collateral-totals .sufficient {
+  color: #267444;
+}
+.loan-collateral-totals .shortfall,
+.loan-collateral-error {
+  color: #ac3653;
+}
+.loan-collateral-error {
+  line-height: 1.5;
+}
+.loan-collateral-modal > footer {
+  justify-content: flex-end;
+  border-bottom: 0;
+  border-top: 1px solid var(--border, #ded6ef);
+}
+.loan-collateral-modal .res-btn.primary {
+  background: #7343d7;
+  color: #fff;
+  border: 1px solid #7343d7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+.loan-collateral-modal :focus-visible {
+  outline: 2px solid #8756df;
+  outline-offset: 2px;
+}
+@media (max-width: 700px) {
+  .loan-collateral-terms {
+    grid-template-columns: 1fr 1fr;
+  }
+  .loan-collateral-modal > header,
+  .loan-collateral-body,
+  .loan-collateral-modal > footer {
+    padding: 12px;
+  }
+  .loan-collateral-modal > header h2 {
+    font-size: 16px;
+  }
+}

@@ -58,4 +58,8 @@ public class BuyinClosureSummary {
 
   @Column(name = "closed_at", nullable = false)
   private Instant closedAt;
+
+  public BigDecimal getLenderFundsApplied() {
+    return purchaseCost.subtract(cashCollateralApplied);
+  }
 }

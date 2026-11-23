@@ -73,6 +73,10 @@ export default function BuyinOrderPanel({
     estimatedValue != null && Number.isFinite(fees) && fees >= 0
       ? estimatedValue + fees
       : null;
+  const cashCollateral = Number(record.collateralFunding?.cashHeld ?? 0);
+  const lenderFunds = Number(record.collateralFunding?.lenderFundsAvailable ?? 0);
+  const shortfall = estimatedTotal == null ? 0 : Math.max(0, estimatedTotal - cashCollateral);
+  const insufficientFunding = record.collateralFunding?.cashHeld != null && shortfall > lenderFunds;
   const internalFill = (record.buyinOrders || []).some(
     (order) => order.status === "FILLED",
   );
@@ -338,11 +342,12 @@ export default function BuyinOrderPanel({
             {record.collateralFunding && (
               <p className="db-form-note">
                 Available cash collateral:{" "}
-                {rupees(record.collateralFunding.cashHeld)}.{" "}
-                {estimatedTotal != null &&
-                estimatedTotal > Number(record.collateralFunding.cashHeld)
-                  ? "Additional cash collateral is required for this order."
-                  : "The purchase and execution fees will be settled from this collateral."}
+                {rupees(cashCollateral)}. Available lender funds: {rupees(lenderFunds)}.{" "}
+                {insufficientFunding
+                  ? "Add funds from the Settlement Ledger and have an administrator approve the deposit."
+                  : shortfall > 0
+                    ? `Estimated lender contribution: ${rupees(shortfall)}.`
+                    : null}
               </p>
             )}
             <p className="db-form-note">
@@ -355,7 +360,7 @@ export default function BuyinOrderPanel({
               A confirmed demo fill includes simulated securities receipt and
               credits purchased inventory once. The purchase amount is recorded
               as payable. After execution, confirm Record execution & close loan
-              to settle costs from collateral and close the eligible loan.
+              to settle costs from collateral and any required lender funds.
             </p>
             {error && (
               <p className="db-form-error" role="alert">
@@ -376,9 +381,7 @@ export default function BuyinOrderPanel({
                 disabled={
                   busy ||
                   record.collateralFunding?.needsSale ||
-                  (estimatedTotal != null &&
-                    record.collateralFunding?.cashHeld != null &&
-                    estimatedTotal > Number(record.collateralFunding.cashHeld))
+                  insufficientFunding
                 }
               >
                 {busy ? "Submitting…" : "Place order"}
