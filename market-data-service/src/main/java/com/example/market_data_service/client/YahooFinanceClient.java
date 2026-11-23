@@ -1,6 +1,7 @@
 package com.example.market_data_service.client;
 
 import com.example.market_data_service.dto.YahooChartResponse;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -13,6 +14,7 @@ public class YahooFinanceClient {
 
     private final RestClient yahooRestClient;
 
+    @CircuitBreaker(name = "yahooFinance")
     public YahooChartResponse fetchChartData(
             String yahooSymbol,
             Instant period1,
@@ -30,14 +32,8 @@ public class YahooFinanceClient {
                         .queryParam("period2", period2Seconds)
                         .queryParam("interval", interval)
                         .queryParam("includePrePost", false)
-                        .queryParam(
-                                "events",
-                                "div|split|earn"
-                        )
-                        .queryParam(
-                                "usePreMarketChartPreviousClose",
-                                true
-                        )
+                        .queryParam("events", "div|split|earn")
+                        .queryParam("usePreMarketChartPreviousClose", true)
                         .queryParam("lang", "en-US")
                         .queryParam("region", "US")
                         .queryParam("source", "cosaic")
