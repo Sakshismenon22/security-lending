@@ -1,4 +1,4 @@
-const base = (import.meta.env.VITE_AUTH_API_URL || "/api/v1").replace(
+const base = (import.meta.env.VITE_AUTH_API_URL || "http://localhost:8090/api/v1").replace(
   /\/$/,
   "",
 );

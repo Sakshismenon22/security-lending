@@ -1,5 +1,5 @@
 const base = (
-  import.meta.env.VITE_LENDORA_API_URL || "http://localhost:8086/api/v1"
+  import.meta.env.VITE_LENDORA_API_URL || "http://localhost:8090/api/v1"
 ).replace(/\/$/, "");
 export const lendoraUrl = (
   import.meta.env.VITE_LENDORA_URL || "http://localhost:5176"

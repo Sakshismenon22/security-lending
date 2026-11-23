@@ -1,0 +1,149 @@
+server:
+  port: ${SERVER_PORT:8090}
+  shutdown: graceful
+
+spring:
+  application:
+    name: api-gateway
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  cloud:
+    gateway:
+      server:
+        webflux:
+          metrics:
+            enabled: true
+          httpclient:
+            connect-timeout: 3000
+            response-timeout: 30s
+          # Some downstream services may also emit CORS headers. Keep one
+          # unambiguous set of CORS response headers at the gateway boundary.
+          default-filters:
+            - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+          routes:
+            # Borrower APIs retain their original paths after /borrower is removed.
+            - id: borrower-service
+              uri: ${services.borrower.url:http://localhost:8081}
+              predicates:
+                - Path=/borrower/**
+              filters:
+                - StripPrefix=1
+
+            # Lendora organization registration shares the organizations path prefix
+            # with BorrowDesk APIs, so route this exact endpoint before the borrower catch-all.
+            - id: lendora-organization-registration
+              uri: ${services.lendora.url:http://localhost:8086}
+              predicates:
+                - Path=/api/v1/organizations/register
+
+            # Backward-compatible routes for the BorrowDesk API client.
+            - id: borrower-service-default
+              uri: ${services.borrower.url:http://localhost:8081}
+              predicates:
+                - Path=/api/v1/organizations/**,/api/v1/securities/**,/api/v1/market/**,/api/v1/trading/**,/api/v1/billing/**,/api/v1/collateral/**,/api/v1/funding/**,/api/v1/obligations/**,/api/v1/portfolio/**
+
+            - id: lender-service
+              uri: ${services.lender.url:http://localhost:8084}
+              predicates:
+                - Path=/lender/**
+              filters:
+                - StripPrefix=1
+
+            - id: lifecycle-service
+              uri: ${services.lifecycle.url:http://localhost:8085}
+              predicates:
+                - Path=/lifecycle/**
+              filters:
+                - StripPrefix=1
+
+            - id: market-data-service
+              uri: ${services.market-data.url:http://localhost:8080}
+              predicates:
+                - Path=/market-data/**
+              filters:
+                - StripPrefix=1
+
+            - id: lendora-service
+              uri: ${services.lendora.url:http://localhost:8086}
+              predicates:
+                - Path=/lendora/**
+              filters:
+                - StripPrefix=1
+
+            # Keep Lendora login/session endpoints reachable through the gateway.
+            - id: lendora-auth
+              uri: ${services.lendora.url:http://localhost:8086}
+              predicates:
+                - Path=/api/v1/auth/**
+
+            - id: borrower-fix-adapter
+              uri: ${services.fix-borrower.url:http://localhost:8082}
+              predicates:
+                - Path=/fix/borrower/**
+              filters:
+                - StripPrefix=2
+
+            - id: lender-fix-adapter
+              uri: ${services.fix-lender.url:http://localhost:8083}
+              predicates:
+                - Path=/fix/lender/**
+              filters:
+                - StripPrefix=2
+
+          # Handle browser preflight requests even when no route predicate
+          # matches the OPTIONS request independently.
+          globalcors:
+            add-to-simple-url-handler-mapping: true
+            cors-configurations:
+              '[/**]':
+                allowed-origins:
+                  - ${GATEWAY_FRONTEND_ORIGIN_1:http://localhost:5173}
+                  - ${GATEWAY_FRONTEND_ORIGIN_2:http://localhost:5174}
+                  - ${GATEWAY_FRONTEND_ORIGIN_3:http://localhost:5175}
+                  - ${GATEWAY_FRONTEND_ORIGIN_4:http://localhost:5176}
+                allowed-methods:
+                  - GET
+                  - POST
+                  - PUT
+                  - PATCH
+                  - DELETE
+                  - OPTIONS
+                allowed-headers:
+                  - "*"
+                exposed-headers:
+                  - X-Correlation-ID
+                allow-credentials: true
+                max-age: 3600
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: false
+
+services:
+  borrower:
+    url: ${BORROWER_SERVICE_URL:http://localhost:8081}
+  lender:
+    url: ${LENDER_SERVICE_URL:http://localhost:8084}
+  lifecycle:
+    url: ${LIFECYCLE_SERVICE_URL:http://localhost:8085}
+  market-data:
+    url: ${MARKET_DATA_SERVICE_URL:http://localhost:8080}
+  lendora:
+    url: ${LENDORA_SERVICE_URL:http://localhost:8086}
+  fix-borrower:
+    url: ${BORROWER_FIX_ADAPTER_URL:http://localhost:8082}
+  fix-lender:
+    url: ${LENDER_FIX_ADAPTER_URL:http://localhost:8083}
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
