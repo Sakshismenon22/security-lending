@@ -26,7 +26,8 @@
 .active-loans select,
 .active-loans input,
 .al-button,
-.al-detail header a {
+.al-detail header a,
+.al-detail > header button {
   border: 1px solid #d9d0ff;
   border-radius: 5px;
   background: #faf9ff;
