@@ -86,7 +86,7 @@ if ($Lendora) {
         Folder = 'api-gateway'
         Port = 8090
         ReadyPath = '/actuator/health'
-        Command = 'mvn spring-boot:run'
+        Command = 'call ..\borrower-service\mvnw.cmd -f pom.xml spring-boot:run'
     }
     $frontends = @(
         @{ Name = 'BorrowDesk'; Folder = 'borrowdesk'; Port = 5173; ReadyPath = '/'; ExpectedTitle = 'BorrowDesk' },
