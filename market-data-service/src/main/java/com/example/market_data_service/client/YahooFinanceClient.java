@@ -1,9 +1,12 @@
 package com.example.market_data_service.client;
 
 import com.example.market_data_service.dto.YahooChartResponse;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 
@@ -13,6 +16,7 @@ public class YahooFinanceClient {
 
     private final RestClient yahooRestClient;
 
+    @CircuitBreaker(name = "yahooFinance", fallbackMethod = "fetchChartDataFallback")
     public YahooChartResponse fetchChartData(
             String yahooSymbol,
             Instant period1,
@@ -30,14 +34,8 @@ public class YahooFinanceClient {
                         .queryParam("period2", period2Seconds)
                         .queryParam("interval", interval)
                         .queryParam("includePrePost", false)
-                        .queryParam(
-                                "events",
-                                "div|split|earn"
-                        )
-                        .queryParam(
-                                "usePreMarketChartPreviousClose",
-                                true
-                        )
+                        .queryParam("events", "div|split|earn")
+                        .queryParam("usePreMarketChartPreviousClose", true)
                         .queryParam("lang", "en-US")
                         .queryParam("region", "US")
                         .queryParam("source", "cosaic")
@@ -45,4 +43,18 @@ public class YahooFinanceClient {
                 .retrieve()
                 .body(YahooChartResponse.class);
     }
+    private YahooChartResponse fetchChartDataFallback(
+            String yahooSymbol,
+            Instant period1,
+            Instant period2,
+            String interval,
+            Throwable cause
+    ) {
+        throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Yahoo Finance is temporarily unavailable; market data could not be retrieved",
+                cause
+        );
+    }
+
 }
