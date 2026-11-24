@@ -73,6 +73,7 @@ function normalise(item, live) {
   return {
     ...item,
     id: String(item.id), total, lent, reserved, price,
+    assetClass: item.assetClass === 'US Equity' ? 'Equity' : item.assetClass,
     available: numeric(item.availableQuantity ?? item.available) ?? Math.max(0, total - lent - reserved),
     marketValue: live ? numeric(item.marketValue) : price === null ? null : price * total,
     utilisation: numeric(item.utilisation) ?? (total ? lent / total * 100 : 0),
