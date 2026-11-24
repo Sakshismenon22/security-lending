@@ -11,6 +11,8 @@ import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.*;
@@ -86,7 +88,7 @@ public class MarketService {
         return new MarketPrice(money(s, "price"), at);
     }
 
-    @CircuitBreaker(name = "marketDataService")
+    @CircuitBreaker(name = "marketDataService", fallbackMethod = "historyFallback")
     public List<Map<String, Object>> history(long id) {
         var s = db.row(SecurityMaster.class, id);
         List<Map<String, Object>> result =
@@ -135,7 +137,7 @@ public class MarketService {
 
     @Transactional
     @SuppressWarnings("unchecked")
-    @CircuitBreaker(name = "marketDataService")
+    @CircuitBreaker(name = "marketDataService", fallbackMethod = "importSecuritiesFallback")
     public int importSecurities() {
         var response =
                 client.get()
@@ -160,4 +162,18 @@ public class MarketService {
         }
         return rows.size();
     }
+    private List<Map<String, Object>> historyFallback(long id, Throwable cause) {
+        throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Market Data Service is temporarily unavailable; historical prices could not be retrieved",
+                cause);
+    }
+
+    private int importSecuritiesFallback(Throwable cause) {
+        throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Market Data Service is temporarily unavailable; securities could not be imported",
+                cause);
+    }
+
 }
