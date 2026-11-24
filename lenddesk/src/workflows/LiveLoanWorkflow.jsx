@@ -230,7 +230,7 @@ function LiveEditor({ kind, data, organizationId, onDismiss, onComplete, onBusyC
         setReason('')
         setError('')
       }}
-      onReason={setReason} onSubmit={submit} />
+      onReason={setReason} onSubmit={submit} onComplete={onComplete} />
   }
   return (
     <section className={`wf-page wf-live wf-${kind}`}>

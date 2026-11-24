@@ -10,9 +10,12 @@ import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.JsonNode;
 
 @Service
@@ -46,6 +49,7 @@ public class MarketService {
   }
 
   @Transactional
+  @CircuitBreaker(name = "marketDataService", fallbackMethod = "importSecuritiesFallback")
   public int importSecurities() {
     JsonNode response =
         client
@@ -73,6 +77,7 @@ public class MarketService {
     return count;
   }
 
+  @CircuitBreaker(name = "marketDataService", fallbackMethod = "historyFallback")
   public JsonNode history(long id) {
     var s = found(securities.findById(id));
     return client
@@ -125,4 +130,18 @@ public class MarketService {
     //     "Stale price for security " + id);
     return new MarketPrice(s.getPrice(), s.getPriceAt());
   }
+  private int importSecuritiesFallback(Throwable cause) {
+    throw new ResponseStatusException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "Market Data Service is temporarily unavailable; securities could not be imported",
+        cause);
+  }
+
+  private JsonNode historyFallback(long id, Throwable cause) {
+    throw new ResponseStatusException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "Market Data Service is temporarily unavailable; historical prices could not be retrieved",
+        cause);
+  }
+
 }
