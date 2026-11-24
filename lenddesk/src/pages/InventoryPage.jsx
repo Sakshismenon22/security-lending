@@ -168,7 +168,7 @@ function ExpandedInventory({ security, live, org, data, errors }) {
           {live && !detail ? <p className="ldi-empty">Loading price history…</p> : detail?.error ? (
             <div className="ldi-empty" role="alert">
               <p>{detail.error}</p>
-              <button type="button" onClick={() => { setDetail(null); setHistoryRetry(value => value + 1) }}>Retry price history</button>
+              <button type="button" className="ldi-retry-button" onClick={() => { setDetail(null); setHistoryRetry(value => value + 1) }}>Retry price history</button>
             </div>
           ) : prices.length < 2 ? <p className="ldi-empty">Insufficient price history.</p> : (
             <>
