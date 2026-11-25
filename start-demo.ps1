@@ -117,9 +117,11 @@ function Initialize-LendoraKey {
     Write-Host 'Using the saved local provisioning key for all three backend services.'
 }
 
-function Test-LoginRequired([int]$Port, [string]$Path) {
+function Test-LoginRequired([int]$Port, [string]$Path, [string]$Origin = '') {
+    $headers = @{}
+    if ($Origin) { $headers['Origin'] = $Origin }
     try {
-        $null = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port$Path" -TimeoutSec 4
+        $null = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port$Path" -Headers $headers -TimeoutSec 4
         return $false
     } catch {
         return $null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 401
@@ -245,6 +247,11 @@ try {
     Write-Host $topics.message
 
     foreach ($service in $services) { Start-Component $service }
+    if ($Lendora) {
+        $null = Wait-Ready 'Lendora account route through the API Gateway on port 8090' {
+            Test-LoginRequired 8090 '/api/v1/auth/me' 'http://localhost:5176'
+        }
+    }
     $null = Wait-Ready 'Borrower-to-lender FIX session' {
         $adapter = Get-LocalJson 8082 '/api/v1/adapter/status'
         @($adapter.data.sessions | Where-Object { $_.loggedOn }).Count -gt 0
