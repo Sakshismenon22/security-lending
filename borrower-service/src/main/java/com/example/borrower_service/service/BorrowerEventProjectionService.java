@@ -334,6 +334,7 @@ public class BorrowerEventProjectionService {
 
     private void locate(long org, long id, String type, Map<String, Object> d) {
         var l = db.owned(LocateRequest.class, org, id);
+        String reason = d.get("reason") instanceof String value && !value.isBlank() ? value : null;
         if (type.equals("LOCATE_APPROVED")) {
             require("PENDING".equals(l.get("status")), "Locate is not pending");
             long quantity = number(d, "approvedQuantity");
@@ -345,13 +346,16 @@ public class BorrowerEventProjectionService {
                         entity.setStatus(
                                 quantity == n(l, "quantity") ? "APPROVED" : "PARTIALLY_APPROVED");
                         entity.setApprovedQuantity(quantity);
+                        entity.setDecisionReason(reason);
                     });
         } else
             db.edit(
                     LocateRequest.class,
                     id,
                     entity -> {
-                        entity.setStatus(type.equals("LOCATE_REJECTED") ? "REJECTED" : "EXPIRED");
+                        boolean rejected = type.equals("LOCATE_REJECTED");
+                        entity.setStatus(rejected ? "REJECTED" : "EXPIRED");
+                        if (rejected) entity.setDecisionReason(reason);
                     });
     }
 

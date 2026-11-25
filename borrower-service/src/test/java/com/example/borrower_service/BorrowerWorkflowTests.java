@@ -753,6 +753,25 @@ class BorrowerWorkflowTests {
     }
 
     @Test
+    void locateListIncludesTheReasonSentWithEachLenderDecision() throws Exception {
+        long org = org(), security = security("100"), agreement = agreement(org, 0);
+        var request = new LocateRequest(agreement, security, 10, Instant.now().plusSeconds(3600));
+        long approved = n(lending.locate(org, request), "id");
+        long rejected = n(lending.locate(org, request), "id");
+
+        apply(org, "LOCATE_APPROVED", approved, 1, Map.of(
+                "approvedQuantity", 8, "reason", "Eight shares are available."));
+        apply(org, "LOCATE_REJECTED", rejected, 1, Map.of("reason", "Inventory is committed."));
+
+        mvc.perform(get("/api/v1/organizations/" + org + "/locates"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].id").value(rejected))
+                .andExpect(jsonPath("$.data.content[0].decisionReason").value("Inventory is committed."))
+                .andExpect(jsonPath("$.data.content[1].id").value(approved))
+                .andExpect(jsonPath("$.data.content[1].decisionReason").value("Eight shares are available."));
+    }
+
+    @Test
     void locateApprovalDoesNotAutomaticallyReserveAndLoanDoesNotAutomaticallySettle() {
         long org = org(), security = security("100");
         fund(org, "10000");

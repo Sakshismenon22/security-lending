@@ -8,3 +8,28 @@
 .locate-detail.details-minimized .locate-detail-heading { min-height:35px; }
 .detail-size-toggle { min-width:82px; justify-content:center; }
 .detail-size-toggle svg { width:12px; height:12px; }
+
+.locate-message-dialog {
+  width: min(640px, calc(100% - 32px));
+  max-height: 85vh;
+  padding: 16px;
+  border: 1px solid var(--line, #ddd);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  color: var(--ink);
+}
+.locate-message-dialog::backdrop { background: #13182680; }
+.locate-message-dialog header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.locate-message-dialog h2 { margin: 0; font-size: 16px; }
+.locate-message-dialog header p { margin: 3px 0 12px; }
+.locate-message-body {
+  max-height: 60vh;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--canvas, #f5f6f8);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
