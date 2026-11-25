@@ -275,9 +275,13 @@ function Start-Observability($Paths) {
     $null = Wait-Ready 'Prometheus on port 9090' {
         (Get-EndpointStatus 'http://127.0.0.1:9090/-/ready') -eq 200
     }
-    $targets = Get-LocalJson 9090 '/api/v1/targets'
-    if (-not ($targets.data.activeTargets | Where-Object { $_.labels.job -eq 'lending-services' })) {
-        throw 'Prometheus on port 9090 has no lending-services scrape job. Stop it and rerun the launcher, or add the job from observability/prometheus.yaml.'
+    # The target list can still be empty immediately after Prometheus becomes ready.
+    $loaded = Get-LocalJson 9090 '/api/v1/status/config'
+    if ($loaded.status -ne 'success' -or -not $loaded.data.yaml) {
+        throw 'Could not read the active Prometheus configuration at http://127.0.0.1:9090/api/v1/status/config.'
+    }
+    if ($loaded.data.yaml -notmatch '(?m)^[ 	]*(?:-[ 	]+)?job_name:[ 	]+["'']?lending-services["'']?[ 	]*\r?$') {
+        throw 'The running Prometheus on port 9090 loaded a config without the lending-services scrape job. Stop that Prometheus process and rerun start-lendora.cmd -Observability, or use observability/prometheus.yaml when starting Prometheus yourself.'
     }
 
     if (-not (Test-Port 3000)) {
@@ -347,6 +351,8 @@ try {
         Write-Host 'Lendora mode requires the lendora_db PostgreSQL database in addition to the existing demo databases.'
     }
 
+    if ($Observability) { Start-Observability $observabilityBinaries }
+
     Start-Component $portal
     $health = Get-LocalJson 3001 '/api/health'
     if ($health.bootstrap -notin @('localhost:9092', '127.0.0.1:9092')) {
@@ -362,7 +368,6 @@ try {
 
     foreach ($service in $services) { Start-Component $service }
     if ($Lendora) { Assert-LendoraGatewayRoute }
-    if ($Observability) { Start-Observability $observabilityBinaries }
     $null = Wait-Ready 'Borrower-to-lender FIX session' {
         $adapter = Get-LocalJson 8082 '/api/v1/adapter/status'
         @($adapter.data.sessions | Where-Object { $_.loggedOn }).Count -gt 0
