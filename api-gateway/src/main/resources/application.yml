@@ -32,7 +32,7 @@ spring:
             # Lendora organization registration shares the organizations path prefix
             # with BorrowDesk APIs, so route this exact endpoint before the borrower catch-all.
             - id: lendora-organization-registration
-              uri: ${services.lendora.url:http://localhost:8086}
+              uri: ${services.lendora.url:http://127.0.0.1:8086}
               predicates:
                 - Path=/api/v1/organizations/register
 
@@ -64,7 +64,7 @@ spring:
                 - StripPrefix=1
 
             - id: lendora-service
-              uri: ${services.lendora.url:http://localhost:8086}
+              uri: ${services.lendora.url:http://127.0.0.1:8086}
               predicates:
                 - Path=/lendora/**
               filters:
@@ -72,7 +72,7 @@ spring:
 
             # Keep Lendora login/session endpoints reachable through the gateway.
             - id: lendora-auth
-              uri: ${services.lendora.url:http://localhost:8086}
+              uri: ${services.lendora.url:http://127.0.0.1:8086}
               predicates:
                 - Path=/api/v1/auth/**
 
@@ -138,7 +138,7 @@ services:
   market-data:
     url: ${MARKET_DATA_SERVICE_URL:http://localhost:8080}
   lendora:
-    url: ${LENDORA_SERVICE_URL:http://localhost:8086}
+    url: ${LENDORA_SERVICE_URL:http://127.0.0.1:8086}
   fix-borrower:
     url: ${BORROWER_FIX_ADAPTER_URL:http://localhost:8082}
   fix-lender:

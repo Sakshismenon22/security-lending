@@ -117,15 +117,34 @@ function Initialize-LendoraKey {
     Write-Host 'Using the saved local provisioning key for all three backend services.'
 }
 
-function Test-LoginRequired([int]$Port, [string]$Path, [string]$Origin = '') {
-    $headers = @{}
-    if ($Origin) { $headers['Origin'] = $Origin }
+function Get-EndpointStatus([string]$Url) {
     try {
-        $null = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port$Path" -Headers $headers -TimeoutSec 4
-        return $false
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 4
+        return [int]$response.StatusCode
     } catch {
-        return $null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 401
+        if ($null -ne $_.Exception.Response) {
+            return [int]$_.Exception.Response.StatusCode
+        }
+        return 0
     }
+}
+
+function Test-LoginRequired([int]$Port, [string]$Path) {
+    return (Get-EndpointStatus "http://127.0.0.1:$Port$Path") -eq 401
+}
+
+function Assert-LendoraGatewayRoute {
+    $url = 'http://localhost:8090/api/v1/auth/me'
+    # An anonymous startup probe should receive 401 from the account service.
+    # The browser checks CORS separately. This probe has no Origin or session.
+    $status = 0
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        $status = Get-EndpointStatus $url
+        if ($status -eq 401) { return }
+        if ($attempt -lt 2) { Start-Sleep -Seconds 1 }
+    }
+    $result = if ($status -eq 0) { 'no HTTP response' } else { "HTTP $status" }
+    throw "The Lendora account route at $url returned $result. Expected HTTP 401 before login. Check the API Gateway console and its LENDORA_SERVICE_URL (default http://127.0.0.1:8086)."
 }
 
 function Test-Port([int]$Port) {
@@ -223,9 +242,9 @@ try {
     }
 
     if ($Lendora) {
-        foreach ($port in @(8081, 8082, 8083, 8084, 8086)) {
+        foreach ($port in @(8081, 8082, 8083, 8084, 8086, 8090)) {
             if (Test-Port $port) {
-                throw "Port $port already has a backend running. Stop the borrower, lender, Lendora and both FIX adapter windows first, then rerun to load the shared provisioning key and routing mode consistently."
+                throw "Port $port already has a backend running. Stop the existing borrower, lender, Lendora, FIX adapters, and API Gateway windows first, then rerun to load the shared provisioning key and routing mode consistently."
             }
         }
         Initialize-LendoraKey
@@ -247,11 +266,7 @@ try {
     Write-Host $topics.message
 
     foreach ($service in $services) { Start-Component $service }
-    if ($Lendora) {
-        $null = Wait-Ready 'Lendora account route through the API Gateway on port 8090' {
-            Test-LoginRequired 8090 '/api/v1/auth/me' 'http://localhost:5176'
-        }
-    }
+    if ($Lendora) { Assert-LendoraGatewayRoute }
     $null = Wait-Ready 'Borrower-to-lender FIX session' {
         $adapter = Get-LocalJson 8082 '/api/v1/adapter/status'
         @($adapter.data.sessions | Where-Object { $_.loggedOn }).Count -gt 0
