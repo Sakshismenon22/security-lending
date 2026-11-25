@@ -1,6 +1,8 @@
 package com.example.market_data_service.service;
 
 import com.example.market_data_service.client.YahooFinanceClient;
+import com.example.market_data_service.config.MarketDataCacheConfig;
+import com.example.market_data_service.config.MarketDataCacheConfig.Invalidate;
 import com.example.market_data_service.dto.MarketCandle;
 import com.example.market_data_service.dto.SecurityCandleResponse;
 import com.example.market_data_service.dto.YahooChartResponse;
@@ -14,6 +16,8 @@ import com.example.market_data_service.repository.SecurityMasterRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -61,10 +65,15 @@ public class MarketDataService {
 
     private final TransactionTemplate transactionTemplate;
 
+    private final ApplicationEventPublisher events;
+
     /*
      * Returns all historical candles for one symbol and exchange.
      */
     @Transactional
+    @Cacheable(cacheNames = MarketDataCacheConfig.HISTORY,
+            condition = "#p0 != null && !#p0.isBlank() && #p1 != null && !#p1.isBlank()",
+            key = "T(com.example.market_data_service.service.MarketDataService).historyCacheKey(#p0, #p1)")
     public List<SecurityCandleResponse>
     getAllHistoricalCandles(
             String symbol,
@@ -218,6 +227,12 @@ public class MarketDataService {
                 security,
                 candles
         );
+
+        if (security.getSymbol() != null && !security.getSymbol().isBlank()
+                && security.getExchange() != null && !security.getExchange().isBlank()) {
+            events.publishEvent(new Invalidate(MarketDataCacheConfig.HISTORY,
+                    historyCacheKey(security.getSymbol(), security.getExchange())));
+        }
 
         /*
          * A candle timestamp represents the start of its minute.
@@ -472,7 +487,13 @@ public class MarketDataService {
         );
     }
 
-    private void validateSymbolAndExchange(
+    public static String historyCacheKey(String symbol, String exchange) {
+        validateSymbolAndExchange(symbol, exchange);
+        String normalized = normalizeSymbol(symbol);
+        return normalized.length() + ":" + normalized + normalizeExchange(exchange);
+    }
+
+    private static void validateSymbolAndExchange(
             String symbol,
             String exchange
     ) {
@@ -491,7 +512,7 @@ public class MarketDataService {
         }
     }
 
-    private String normalizeExchange(
+    private static String normalizeExchange(
             String exchange
     ) {
         return exchange
@@ -499,7 +520,7 @@ public class MarketDataService {
                 .toUpperCase(Locale.ROOT);
     }
 
-    private String normalizeSymbol(
+    private static String normalizeSymbol(
             String symbol
     ) {
         String normalized =
