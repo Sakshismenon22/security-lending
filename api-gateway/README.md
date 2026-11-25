@@ -46,8 +46,10 @@ Start PostgreSQL, Kafka, and the backend services using the existing project sta
 
 ```bash
 cd api-gateway
-mvn spring-boot:run
+./mvnw spring-boot:run
 ```
+
+On Windows, run `.\mvnw.cmd spring-boot:run` from `api-gateway`. The demo launcher uses the same wrapper and runs the current checkout's application classes and resources.
 
 Check gateway health:
 

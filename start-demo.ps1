@@ -86,7 +86,7 @@ if ($Lendora) {
         Folder = 'api-gateway'
         Port = 8090
         ReadyPath = '/actuator/health'
-        Command = 'call ..\borrower-service\mvnw.cmd -f pom.xml spring-boot:run'
+        Command = 'call mvnw.cmd spring-boot:run'
     }
     $frontends = @(
         @{ Name = 'BorrowDesk'; Folder = 'borrowdesk'; Port = 5173; ReadyPath = '/'; ExpectedTitle = 'BorrowDesk' },
@@ -117,25 +117,65 @@ function Initialize-LendoraKey {
     Write-Host 'Using the saved local provisioning key for all three backend services.'
 }
 
-function Test-LoginRequired([int]$Port, [string]$Path, [string]$Origin = '') {
-    $headers = @{}
-    if ($Origin) { $headers['Origin'] = $Origin }
+function Get-EndpointStatus([string]$Url) {
+    $response = $null
     try {
-        $null = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port$Path" -Headers $headers -TimeoutSec 4
-        return $false
+        $request = [System.Net.HttpWebRequest]::Create($Url)
+        $request.Proxy = $null
+        $request.AllowAutoRedirect = $false
+        $request.Timeout = 4000
+        $response = $request.GetResponse()
+        return [int]$response.StatusCode
     } catch {
-        return $null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 401
+        # PowerShell may wrap a WebException thrown by the .NET method.
+        for ($errorCause = $_.Exception; $null -ne $errorCause; $errorCause = $errorCause.InnerException) {
+            if ($errorCause -is [System.Net.WebException] -and $null -ne $errorCause.Response) {
+                $response = $errorCause.Response
+                return [int]$response.StatusCode
+            }
+        }
+        return 0
+    } finally {
+        if ($null -ne $response) { $response.Close() }
     }
 }
 
-function Test-Port([int]$Port) {
-    $client = New-Object System.Net.Sockets.TcpClient
+function Test-LoginRequired([int]$Port, [string]$Path) {
+    return (Get-EndpointStatus "http://127.0.0.1:$Port$Path") -eq 401
+}
+
+function Assert-LendoraGatewayRoute {
+    $url = 'http://localhost:8090/api/v1/auth/me'
+    # An anonymous startup probe should receive 401 from the account service.
+    # The browser checks CORS separately. This probe has no Origin or session.
+    $status = 0
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        $status = Get-EndpointStatus $url
+        if ($status -eq 401) { return }
+        if ($attempt -lt 2) { Start-Sleep -Seconds 1 }
+    }
+    $result = if ($status -eq 0) { 'no HTTP response' } else { "HTTP $status" }
+    $ipv4Status = Get-EndpointStatus 'http://127.0.0.1:8090/api/v1/auth/me'
+    if ($ipv4Status -eq 401) {
+        throw "The account route on localhost:8090 returned $result, but the same route on 127.0.0.1:8090 returned HTTP 401. Check whether localhost resolves to a different listener on port 8090 with netstat -ano."
+    }
+
+    $directUrl = 'http://localhost:8086/api/v1/auth/me'
+    $directStatus = Get-EndpointStatus $directUrl
+    $directResult = if ($directStatus -eq 0) { 'no HTTP response' } else { "HTTP $directStatus" }
+    throw "The Lendora account route at $url returned $result. The direct account endpoint at $directUrl returned $directResult. Expected HTTP 401 before login. Check the API Gateway console and its LENDORA_SERVICE_URL (default http://localhost:8086)."
+}
+
+function Test-Port([int]$Port, [string]$Address = '127.0.0.1') {
+    $ip = [System.Net.IPAddress]::Parse($Address)
+    $client = $null
     try {
-        return $client.ConnectAsync('127.0.0.1', $Port).Wait(500) -and $client.Connected
+        $client = [System.Net.Sockets.TcpClient]::new($ip.AddressFamily)
+        return $client.ConnectAsync($ip, $Port).Wait(500) -and $client.Connected
     } catch {
         return $false
     } finally {
-        $client.Dispose()
+        if ($null -ne $client) { $client.Dispose() }
     }
 }
 
@@ -223,9 +263,9 @@ try {
     }
 
     if ($Lendora) {
-        foreach ($port in @(8081, 8082, 8083, 8084, 8086)) {
-            if (Test-Port $port) {
-                throw "Port $port already has a backend running. Stop the borrower, lender, Lendora and both FIX adapter windows first, then rerun to load the shared provisioning key and routing mode consistently."
+        foreach ($port in @(8081, 8082, 8083, 8084, 8086, 8090)) {
+            if ((Test-Port $port) -or ($port -eq 8090 -and (Test-Port 8090 '::1'))) {
+                throw "Port $port already has a backend running. Stop the existing borrower, lender, Lendora, FIX adapters, and API Gateway windows first, then rerun to load the shared provisioning key and routing mode consistently."
             }
         }
         Initialize-LendoraKey
@@ -247,11 +287,7 @@ try {
     Write-Host $topics.message
 
     foreach ($service in $services) { Start-Component $service }
-    if ($Lendora) {
-        $null = Wait-Ready 'Lendora account route through the API Gateway on port 8090' {
-            Test-LoginRequired 8090 '/api/v1/auth/me' 'http://localhost:5176'
-        }
-    }
+    if ($Lendora) { Assert-LendoraGatewayRoute }
     $null = Wait-Ready 'Borrower-to-lender FIX session' {
         $adapter = Get-LocalJson 8082 '/api/v1/adapter/status'
         @($adapter.data.sessions | Where-Object { $_.loggedOn }).Count -gt 0
