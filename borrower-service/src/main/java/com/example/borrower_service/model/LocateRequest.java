@@ -38,6 +38,9 @@ public class LocateRequest {
     @Column(name="status",nullable=false,length=30)
     private String status;
 
+    @Column(name="decision_reason",columnDefinition="text")
+    private String decisionReason;
+
     @Column(name="expires_at",nullable=false)
     private Instant expiresAt;
 
