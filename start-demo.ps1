@@ -322,7 +322,7 @@ try {
             }
             if ($service.Folder -eq 'fix-adapter-service') {
                 $profile = if ($service.Port -eq 8082) { 'borrower' } else { 'lender' }
-                $service.Command = "call mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=$profile,observability"
+                $service.Command = 'call mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles={0},observability"' -f $profile
             } else {
                 $service.Command += ' -Dspring-boot.run.profiles=observability'
             }
