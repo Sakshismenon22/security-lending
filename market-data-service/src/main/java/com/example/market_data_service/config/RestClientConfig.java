@@ -59,7 +59,7 @@ public class RestClientConfig {
                 );
 
         requestFactory.setConnectionRequestTimeout(10_000);
-        requestFactory.setConnectionRequestTimeout(10_000);
+        requestFactory.setReadTimeout(10_000);
         return RestClient.builder()
                 .baseUrl("https://query2.finance.yahoo.com")
                 .defaultHeader(
