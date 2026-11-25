@@ -144,7 +144,10 @@ function Assert-LendoraGatewayRoute {
         if ($attempt -lt 2) { Start-Sleep -Seconds 1 }
     }
     $result = if ($status -eq 0) { 'no HTTP response' } else { "HTTP $status" }
-    throw "The Lendora account route at $url returned $result. Expected HTTP 401 before login. Check the API Gateway console and its LENDORA_SERVICE_URL (default http://127.0.0.1:8086)."
+    $directUrl = 'http://localhost:8086/api/v1/auth/me'
+    $directStatus = Get-EndpointStatus $directUrl
+    $directResult = if ($directStatus -eq 0) { 'no HTTP response' } else { "HTTP $directStatus" }
+    throw "The Lendora account route at $url returned $result. The direct account endpoint at $directUrl returned $directResult. Expected HTTP 401 before login. Check the API Gateway console and its LENDORA_SERVICE_URL (default http://localhost:8086)."
 }
 
 function Test-Port([int]$Port) {
