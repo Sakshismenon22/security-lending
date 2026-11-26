@@ -227,7 +227,8 @@ public class ReadService {
                       loanValue == null ? null : loanValue.getClosedAt(),
                       loanValue == null ? null : loanValue.getConnectionId(),
                       connection == null ? null : connection.getName(),
-                      collateralState);
+                      collateralState,
+                      returned.getMarginCallId());
                 })
             .toList();
     return new PageResponse<>(
