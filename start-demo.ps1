@@ -2,7 +2,9 @@ param(
     [switch]$Plan,
     [switch]$Lendora,
     [ValidateRange(10, 1800)]
-    [int]$StartupTimeoutSeconds = 240
+    [int]$StartupTimeoutSeconds = 240,
+    [Alias('Observabilty')]
+    [switch]$Observability
 )
 
 $ErrorActionPreference = 'Stop'
@@ -238,6 +240,63 @@ function Start-Component($Component) {
     }
 }
 
+function Get-ObservabilityBinaries {
+    $config = Join-Path $PSScriptRoot '.env'
+    if (-not (Test-Path -LiteralPath $config -PathType Leaf)) {
+        throw 'Create a repository-root .env with GRAFANA_PATH and PROMETHEUS_PATH.'
+    }
+    $paths = @{}
+    foreach ($line in Get-Content -LiteralPath $config) {
+        if ($line -match '^\s*(GRAFANA_PATH|PROMETHEUS_PATH)\s*=\s*(.*?)\s*$') {
+            $key, $path = $Matches[1], $Matches[2]
+            if ($path -match '^"(.*)"$' -or $path -match "^'(.*)'$") { $path = $Matches[1] }
+            if ($path -and -not [IO.Path]::IsPathRooted($path)) { $path = Join-Path $PSScriptRoot $path }
+            $paths[$key] = $path
+        }
+    }
+    foreach ($key in @('GRAFANA_PATH', 'PROMETHEUS_PATH')) {
+        if (-not $paths[$key] -or -not (Test-Path -LiteralPath $paths[$key] -PathType Leaf)) {
+            throw "Set $key in .env to the path of the installed executable."
+        }
+        $paths[$key] = (Resolve-Path -LiteralPath $paths[$key]).Path
+    }
+    return $paths
+}
+
+function Start-Observability($Paths) {
+    $config = Join-Path $PSScriptRoot 'observability/prometheus.yaml'
+    $storage = Join-Path $PSScriptRoot 'runtime/prometheus'
+    if (-not (Test-Port 9090)) {
+        $null = New-Item -ItemType Directory -Force -Path $storage
+        Write-Host 'Starting Prometheus on port 9090...'
+        $arguments = '--config.file="{0}" --storage.tsdb.path="{1}" --web.listen-address=127.0.0.1:9090' -f $config, $storage
+        Start-Process -FilePath $Paths.PROMETHEUS_PATH -WorkingDirectory (Split-Path $Paths.PROMETHEUS_PATH) -ArgumentList $arguments
+    }
+    $null = Wait-Ready 'Prometheus on port 9090' {
+        (Get-EndpointStatus 'http://127.0.0.1:9090/-/ready') -eq 200
+    }
+    # The target list can still be empty immediately after Prometheus becomes ready.
+    $loaded = Get-LocalJson 9090 '/api/v1/status/config'
+    if ($loaded.status -ne 'success' -or -not $loaded.data.yaml) {
+        throw 'Could not read the active Prometheus configuration at http://127.0.0.1:9090/api/v1/status/config.'
+    }
+    if ($loaded.data.yaml -notmatch '(?m)^[ 	]*(?:-[ 	]+)?job_name:[ 	]+["'']?lending-services["'']?[ 	]*\r?$') {
+        throw 'The running Prometheus on port 9090 loaded a config without the lending-services scrape job. Stop that Prometheus process and rerun start-lendora.cmd -Observability, or use observability/prometheus.yaml when starting Prometheus yourself.'
+    }
+
+    if (-not (Test-Port 3000)) {
+        $bin = Split-Path $Paths.GRAFANA_PATH
+        $homePath = if ((Split-Path -Leaf $bin) -eq 'bin') { Split-Path $bin } else { $bin }
+        $arguments = '--homepath="{0}"' -f $homePath
+        if ((Split-Path -Leaf $Paths.GRAFANA_PATH) -eq 'grafana.exe') { $arguments = "server $arguments" }
+        Write-Host 'Starting Grafana on port 3000...'
+        Start-Process -FilePath $Paths.GRAFANA_PATH -WorkingDirectory $homePath -ArgumentList $arguments
+    }
+    $null = Wait-Ready 'Grafana on port 3000' {
+        (Get-LocalJson 3000 '/api/health').database -eq 'ok'
+    }
+}
+
 function Invoke-PortalPost([string]$Path) {
     Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:3001$Path" `
         -ContentType 'application/json' -Body '{}' -TimeoutSec 60
@@ -252,7 +311,26 @@ try {
             }
             Write-Host "$($_.Port)  $($_.Name)  [$directory]"
         }
+        if ($Observability) {
+            Write-Host '9090  Prometheus [PROMETHEUS_PATH in .env]'
+            Write-Host '3000  Grafana [GRAFANA_PATH in .env]'
+        }
         exit 0
+    }
+
+    $observabilityBinaries = if ($Observability) { Get-ObservabilityBinaries }
+    if ($Observability) {
+        foreach ($service in $services) {
+            if (Test-Port $service.Port) {
+                throw "Stop $($service.Name) on port $($service.Port) before starting it with observability."
+            }
+            if ($service.Folder -eq 'fix-adapter-service') {
+                $profile = if ($service.Port -eq 8082) { 'borrower' } else { 'lender' }
+                $service.Command = 'call mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles={0},observability"' -f $profile
+            } else {
+                $service.Command += ' -Dspring-boot.run.profiles=observability'
+            }
+        }
     }
 
     if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
@@ -272,6 +350,8 @@ try {
         $env:LENDORA_ROUTING_ENABLED = 'true'
         Write-Host 'Lendora mode requires the lendora_db PostgreSQL database in addition to the existing demo databases.'
     }
+
+    if ($Observability) { Start-Observability $observabilityBinaries }
 
     Start-Component $portal
     $health = Get-LocalJson 3001 '/api/health'
@@ -302,6 +382,10 @@ try {
         Write-Host 'LendDesk:   http://localhost:5175'
     } else {
         Write-Host 'Test frontend: http://127.0.0.1:5176'
+    }
+    if ($Observability) {
+        Write-Host 'Grafana:    http://localhost:3000'
+        Write-Host 'Prometheus: http://localhost:9090'
     }
     Write-Host 'Kafka UI:      http://127.0.0.1:3001'
     Write-Host 'Each application runs in its own Command Prompt.'

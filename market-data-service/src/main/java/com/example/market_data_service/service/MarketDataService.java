@@ -1,6 +1,8 @@
 package com.example.market_data_service.service;
 
 import com.example.market_data_service.client.YahooFinanceClient;
+import com.example.market_data_service.config.MarketDataCacheConfig;
+import com.example.market_data_service.config.MarketDataCacheConfig.Invalidate;
 import com.example.market_data_service.dto.MarketCandle;
 import com.example.market_data_service.dto.SecurityCandleResponse;
 import com.example.market_data_service.dto.YahooChartResponse;
@@ -14,9 +16,13 @@ import com.example.market_data_service.repository.SecurityMasterRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -35,14 +41,8 @@ public class MarketDataService {
 
     private static final String ONE_MINUTE_INTERVAL = "1m";
 
-    /*
-     * Number of minutes requested from Yahoo on every poll.
-     *
-     * The overlap allows the service to receive corrections to
-     * recently returned candles and prevents missing a candle
-     * because of network delay.
-     */
-    private static final long LOOKBACK_MINUTES = 10000L;
+    private static final long MAX_LOOKBACK_MINUTES = 10000L;
+    private static final long OVERLAP_MINUTES = 5L;
 
     private final SecurityMasterRepository
             securityMasterRepository;
@@ -61,10 +61,15 @@ public class MarketDataService {
 
     private final TransactionTemplate transactionTemplate;
 
+    private final ApplicationEventPublisher events;
+
     /*
      * Returns all historical candles for one symbol and exchange.
      */
     @Transactional
+    @Cacheable(cacheNames = MarketDataCacheConfig.HISTORY,
+            condition = "#p0 != null && !#p0.isBlank() && #p1 != null && !#p1.isBlank()",
+            key = "T(com.example.market_data_service.service.MarketDataService).historyCacheKey(#p0, #p1)")
     public List<SecurityCandleResponse>
     getAllHistoricalCandles(
             String symbol,
@@ -159,16 +164,14 @@ public class MarketDataService {
 
         Instant requestTime = Instant.now();
 
-        /*
-         * Request the previous five minutes plus a small future
-         * buffer. The future buffer helps Yahoo include the
-         * latest available candle near the request boundary.
-         */
-        Instant period1 =
-                requestTime.minus(
-                        LOOKBACK_MINUTES,
-                        ChronoUnit.MINUTES
-                );
+        Instant earliest = requestTime.minus(MAX_LOOKBACK_MINUTES, ChronoUnit.MINUTES);
+        Instant overlapStart = requestTime.minus(OVERLAP_MINUTES, ChronoUnit.MINUTES);
+        Instant period1 = securityCurrentPriceRepository.findBySecurityId(security.getId())
+                .map(SecuritiesCurrentPrice::getTradeDateTimestamp)
+                .map(last -> last.minus(OVERLAP_MINUTES, ChronoUnit.MINUTES))
+                .map(last -> last.isBefore(earliest) ? earliest : last)
+                .map(last -> last.isAfter(overlapStart) ? overlapStart : last)
+                .orElse(earliest);
 
         Instant period2 =
                 requestTime.plusSeconds(5);
@@ -219,6 +222,12 @@ public class MarketDataService {
                 candles
         );
 
+        if (security.getSymbol() != null && !security.getSymbol().isBlank()
+                && security.getExchange() != null && !security.getExchange().isBlank()) {
+            events.publishEvent(new Invalidate(MarketDataCacheConfig.HISTORY,
+                    historyCacheKey(security.getSymbol(), security.getExchange())));
+        }
+
         /*
          * A candle timestamp represents the start of its minute.
          *
@@ -235,23 +244,13 @@ public class MarketDataService {
                         ChronoUnit.MINUTES
                 );
 
-        MarketCandle latestCompletedCandle =
-                candles.stream()
-                        .filter(candle ->
-                                candle != null
-                                        && candle
-                                        .tradedDateTimestamp()
-                                        .isBefore(
-                                                currentMinuteStart
-                                        )
-                        )
-                        .max(
-                                Comparator.comparing(
-                                        MarketCandle
-                                                ::tradedDateTimestamp
-                                )
-                        )
-                        .orElse(null);
+        List<MarketCandle> completedCandles = candles.stream()
+                .filter(candle -> candle != null && candle.tradedDateTimestamp() != null
+                        && candle.tradedDateTimestamp().isBefore(currentMinuteStart))
+                .sorted(Comparator.comparing(MarketCandle::tradedDateTimestamp))
+                .toList();
+        MarketCandle latestCompletedCandle = completedCandles.isEmpty()
+                ? null : completedCandles.get(completedCandles.size() - 1);
 
         if (latestCompletedCandle == null) {
             log.warn(
@@ -275,21 +274,22 @@ public class MarketDataService {
                 latestCompletedCandle.volume()
         );
 
-        /*
-         * Update current price with the latest completed candle.
-         */
-        updateCurrentPrice(
-                security,
-                latestCompletedCandle
-        );
+        var current = securityCurrentPriceRepository.findBySecurityId(security.getId())
+                .orElseGet(SecuritiesCurrentPrice::new);
+        var previousTime = current.getTradeDateTimestamp();
+        if (previousTime != null && latestCompletedCandle.tradedDateTimestamp().isBefore(previousTime)) {
+            return;
+        }
 
-        /*
-         * Publish the completed one-minute candle.
-         */
-        publishCurrentPrice(
-                security,
-                latestCompletedCandle
-        );
+        updateCurrentPrice(current, security, latestCompletedCandle);
+
+        if (previousTime == null || latestCompletedCandle.tradedDateTimestamp().equals(previousTime)) {
+            publishCurrentPrice(security, latestCompletedCandle);
+        } else {
+            completedCandles.stream()
+                    .filter(candle -> !candle.tradedDateTimestamp().isBefore(previousTime))
+                    .forEach(candle -> publishCurrentPrice(security, candle));
+        }
     }
 
     /*
@@ -336,18 +336,10 @@ public class MarketDataService {
      * table.
      */
     private void updateCurrentPrice(
+            SecuritiesCurrentPrice currentPrice,
             SecurityMaster security,
             MarketCandle candle
     ) {
-        SecuritiesCurrentPrice currentPrice =
-                securityCurrentPriceRepository
-                        .findBySecurityId(
-                                security.getId()
-                        )
-                        .orElseGet(
-                                SecuritiesCurrentPrice::new
-                        );
-
         currentPrice.setSecurity(security);
 
         /*
@@ -420,10 +412,20 @@ public class MarketDataService {
                 message
         );
 
-        messagingTemplate.convertAndSend(
-                destination,
-                message
-        );
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            messagingTemplate.convertAndSend(destination, message);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    messagingTemplate.convertAndSend(destination, message);
+                } catch (RuntimeException error) {
+                    log.warn("Could not publish committed candle to {}", destination, error);
+                }
+            }
+        });
     }
 
     /*
@@ -472,7 +474,13 @@ public class MarketDataService {
         );
     }
 
-    private void validateSymbolAndExchange(
+    public static String historyCacheKey(String symbol, String exchange) {
+        validateSymbolAndExchange(symbol, exchange);
+        String normalized = normalizeSymbol(symbol);
+        return normalized.length() + ":" + normalized + normalizeExchange(exchange);
+    }
+
+    private static void validateSymbolAndExchange(
             String symbol,
             String exchange
     ) {
@@ -491,7 +499,7 @@ public class MarketDataService {
         }
     }
 
-    private String normalizeExchange(
+    private static String normalizeExchange(
             String exchange
     ) {
         return exchange
@@ -499,7 +507,7 @@ public class MarketDataService {
                 .toUpperCase(Locale.ROOT);
     }
 
-    private String normalizeSymbol(
+    private static String normalizeSymbol(
             String symbol
     ) {
         String normalized =

@@ -257,3 +257,5 @@
 .order-management-dialog .order-management-error { color:#b73e48; }
 .order-management-dialog footer { justify-content:flex-end; margin-top:16px; }
 .order-row-actions button:focus-visible,.order-management-dialog :is(button,input,select):focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+
+.chart-feed-status { position: absolute; inset-inline-end: 8px; bottom: 5px; z-index: 1; padding: 2px 5px; border-radius: 3px; color: var(--muted); background: var(--surface); font-size: 10px; pointer-events: none; }
