@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { getWorkspaceIdentity } from '../../api/sessionApi'
 import { request, orgUrl } from '../../api/apiClient'
 import { NavLink } from 'react-router-dom'
-import { ArrowLeftRight, CalendarClock, ChartNoAxesCombined, ChevronLeft, ChevronRight, ClipboardList, Coins, FileCheck2, FileText, Layers3, Search, ShieldAlert, ShieldCheck, Wallet, BriefcaseBusiness } from 'lucide-react'
+import { ArrowLeftRight, CalendarClock, ChartNoAxesCombined, ChevronLeft, ChevronRight, ClipboardList, Coins, FileCheck2, Layers3, Search, ShieldAlert, ShieldCheck, Wallet, BriefcaseBusiness } from 'lucide-react'
 
 const groups = [
   { title: 'WORKSPACE', items: [['/blotter', 'Overview', ClipboardList], ['/trading', 'Trading', ChartNoAxesCombined], ['/locates', 'Locate requests', Search], ['/reservations', 'Reservations', CalendarClock], ['/holdings', 'Holdings', BriefcaseBusiness], ['/loans', 'Active loans', Layers3]] },
   { title: 'TREASURY', items: [['/collateral', 'Collateral', ShieldCheck], ['/margin-calls', 'Margin calls', ShieldAlert], ['/funding', 'Funding & account', Wallet], ['/fees-rebates', 'Fees & rebates', Coins]] },
-  { title: 'OPERATIONS', items: [['/returns-recalls', 'Returns & recalls', ArrowLeftRight], ['/agreements', 'Agreements', FileCheck2], ['/reports-audit', 'Reports & audit', FileText]] },
+  { title: 'OPERATIONS', items: [['/returns-recalls', 'Returns & recalls', ArrowLeftRight], ['/agreements', 'Agreements', FileCheck2]] },
 ]
 
 const roleNames = { ADMIN: 'Administrator', OPERATIONS: 'Operations', TRADER: 'Trader', READ_ONLY: 'Read only', UNVERIFIED: 'Role unverified', INACTIVE_OR_UNREGISTERED: 'No active workspace role', UNKNOWN: 'Role unavailable' }
