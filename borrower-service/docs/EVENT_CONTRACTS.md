@@ -46,7 +46,7 @@ The market-data service currently exposes REST and STOMP, not Kafka. The borrowe
 | `LOAN_REQUESTED` | Borrower loan ID | reservationId, quantity, proposed collateral |
 | `COLLATERAL_PLEDGE_REQUESTED` | Borrower loan ID | positionId, allocation (including optional marginCallId) |
 | `COLLATERAL_RELEASE_REQUESTED` | Borrower collateral-position ID | loanId |
-| `RETURN_REQUESTED` | Borrower return ID | loanId, quantity, recallId (0 when absent) |
+| `RETURN_REQUESTED` | Borrower return ID | loanId, quantity, recallId (0 when absent), optional marginCallId for a reduce-exposure response |
 | `FEE_REQUESTED` | Borrower payment-request ID | amount, feeId, clientRequestId |
 | `DEPOSIT_REQUESTED`, `WITHDRAWAL_REQUESTED` | Borrower payment-request ID | amount, clientRequestId |
 
