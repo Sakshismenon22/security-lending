@@ -268,12 +268,53 @@ public class LendingService {
         return db.owned(Loan.class, org, id);
     }
 
+    /**
+     * Convert an outstanding monetary margin shortfall into a whole-share return request.
+     * The call remains externally authoritative and is only fulfilled after lender confirmation.
+     */
+    public Map<String, Object> reduceExposure(long org, long marginCallId) {
+        db.lock(org);
+        var call = db.owned(MarginCall.class, org, marginCallId);
+        require(Set.of("OPEN", "PARTIALLY_FULFILLED", "OVERDUE").contains(call.get("status")),
+                "Margin call is not open for a response");
+        BigDecimal remainingShortfall = money(call, "amount").subtract(money(call, "fulfilled_amount"));
+        require(remainingShortfall.signum() > 0, "Margin call has no remaining shortfall");
+        long loanId = n(call, "loan_id");
+        var loan = db.owned(Loan.class, org, loanId);
+        require(Set.of("ACTIVE", "RETURN_PENDING").contains(loan.get("status")),
+                "Loan is not eligible for exposure reduction");
+        var price = market.price(n(loan, "security_id")).price();
+        require(price != null && price.signum() > 0, "A valid market price is required to calculate the return quantity");
+        long quantity = remainingShortfall.divide(price, 0, RoundingMode.CEILING).longValueExact();
+        require(quantity > 0, "Calculated return quantity must be positive");
+        require(db.rows(LoanReturn.class, eq("marginCallId", marginCallId),
+                        oneOf("status", "PENDING", "FAILED")).stream()
+                        .noneMatch(row -> "PENDING".equals(row.get("status"))
+                                || ("FAILED".equals(row.get("status"))
+                                    && !Boolean.TRUE.equals(row.get("assets_released")))),
+                "A return request is already pending for this margin call");
+        var holding = db.matchingRow(Holding.class,
+                eq("organizationId", org), eq("securityId", n(loan, "security_id")));
+        long availableBorrowed = n(holding, "borrowed_quantity") - n(holding, "blocked_borrowed");
+        require(quantity <= availableBorrowed,
+                "Insufficient available borrowed securities to cover the margin shortfall");
+        require(quantity <= n(loan, "outstanding_quantity"),
+                "Required return quantity exceeds the outstanding loan quantity");
+        return requestReturn(org, loanId, new ReturnRequest(quantity, null, marginCallId));
+    }
+
     public Map<String, Object> requestReturn(long org, long loanId, ReturnRequest r) {
         db.lock(org);
         var loan = db.owned(Loan.class, org, loanId);
         require(
                 Set.of("ACTIVE", "RETURN_PENDING").contains(loan.get("status")),
                 "Loan is not active");
+        if (r.marginCallId() != null) {
+            var marginCall = db.owned(MarginCall.class, org, r.marginCallId());
+            require(n(marginCall, "loan_id") == loanId
+                            && Set.of("OPEN", "PARTIALLY_FULFILLED", "OVERDUE").contains(marginCall.get("status")),
+                    "Margin call does not belong to this loan or is already resolved");
+        }
         if (r.recallId() != null) {
             var recall = db.owned(Recall.class, org, r.recallId());
             require(
@@ -341,6 +382,7 @@ public class LendingService {
                             entity.setStatus("PENDING");
                             entity.setOwnedCost(money(h, "average_cost"));
                             entity.setRecallId(r.recallId());
+                            entity.setMarginCallId(r.marginCallId());
                         });
         // Fees are only reserved here. They remain blocked until lender settlement, or are
         // released if the return is rejected.
@@ -361,7 +403,9 @@ public class LendingService {
                         "quantity",
                         r.quantity(),
                         "recallId",
-                        r.recallId() == null ? 0 : r.recallId()));
+                        r.recallId() == null ? 0 : r.recallId(),
+                        "marginCallId",
+                        r.marginCallId() == null ? 0 : r.marginCallId()));
         return db.owned(LoanReturn.class, org, id);
     }
 
