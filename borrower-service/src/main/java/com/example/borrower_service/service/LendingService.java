@@ -284,8 +284,13 @@ public class LendingService {
         require(Set.of("ACTIVE", "RETURN_PENDING").contains(loan.get("status")),
                 "Loan is not eligible for exposure reduction");
         var price = market.price(n(loan, "security_id")).price();
+        BigDecimal coverageRatio = money(loan, "coverage_ratio");
         require(price != null && price.signum() > 0, "A valid market price is required to calculate the return quantity");
-        long quantity = remainingShortfall.divide(price, 0, RoundingMode.CEILING).longValueExact();
+        require(coverageRatio.signum() > 0, "A valid loan coverage ratio is required to calculate the return quantity");
+        // Returning one share reduces the required collateral by its market value multiplied by
+        // the contractual coverage ratio, not merely by the share's market value.
+        BigDecimal coverageReleasedPerShare = price.multiply(coverageRatio);
+        long quantity = remainingShortfall.divide(coverageReleasedPerShare, 0, RoundingMode.CEILING).longValueExact();
         require(quantity > 0, "Calculated return quantity must be positive");
         require(db.rows(LoanReturn.class, eq("marginCallId", marginCallId),
                         oneOf("status", "PENDING", "FAILED")).stream()
