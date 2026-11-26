@@ -3,8 +3,13 @@ const base = orgUrl("");
 const marketBase = (
   import.meta.env.VITE_MARKET_DATA_API || "http://localhost:8090/market-data"
 ).replace(/\/$/, "");
-async function marketGet(path) {
-  const response = await fetch(marketBase + path);
+export function marketSocketUrl() {
+  const url = new URL(marketBase + "/ws", window.location.href);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.href;
+}
+async function marketGet(path, signal) {
+  const response = await fetch(marketBase + path, { signal });
   const payload = await response.json();
   if (!response.ok)
     throw new Error(
@@ -20,12 +25,13 @@ export const tradingDeskApi = {
   watchlist: () => get(base + "/watchlist"),
   addWatch: (id) => put(base + "/watchlist/" + id, {}),
   removeWatch: (id) => del(base + "/watchlist/" + id),
-  candles: (symbol, exchange) =>
+  candles: (symbol, exchange, signal) =>
     marketGet(
       "/api/v1/security-data/history?symbol=" +
         encodeURIComponent(symbol) +
         "&exchange=" +
         encodeURIComponent(exchange),
+      signal,
     ),
   orders: () => get(base + "/orders?page=0&size=100"),
   trades: () => get(base + "/trades?page=0&size=100"),
