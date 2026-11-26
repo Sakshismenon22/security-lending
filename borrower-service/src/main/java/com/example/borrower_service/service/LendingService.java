@@ -283,7 +283,7 @@ public class LendingService {
         var loan = db.owned(Loan.class, org, loanId);
         require(Set.of("ACTIVE", "RETURN_PENDING").contains(loan.get("status")),
                 "Loan is not eligible for exposure reduction");
-        var price = market.price(n(loan, "security_id")).price();
+        BigDecimal price = market.price(n(loan, "security_id")).value();
         BigDecimal coverageRatio = money(loan, "coverage_ratio");
         require(price != null && price.signum() > 0, "A valid market price is required to calculate the return quantity");
         require(coverageRatio.signum() > 0, "A valid loan coverage ratio is required to calculate the return quantity");
